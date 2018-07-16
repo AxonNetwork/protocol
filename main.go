@@ -38,7 +38,7 @@ func main() {
 	talkTo := []string{}
 	if len(os.Args) > 2 {
 		for _, nodeAddr := range os.Args[2:] {
-			talkTo = append(talkTo, "/ip4/127.0.0.1/tcp/"+nodeAddr)
+			talkTo = append(talkTo, nodeAddr)
 		}
 	}
 
@@ -60,7 +60,7 @@ func (blankValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil 
 
 func setupNode(ctx context.Context, listenPort string, talkTo []string) (host.Host, *dht.IpfsDHT) {
 	h, err := libp2p.New(ctx,
-		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%s", listenPort)),
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", listenPort)),
 	)
 	if err != nil {
 		panic(err)
