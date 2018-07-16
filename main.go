@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -284,12 +283,12 @@ func openStream(ctx context.Context, h host.Host, peerIDB58 string, chunkIDStrin
 		panic(err)
 	}
 
-	err = io.Copy(s, f)
+	nn, err := io.Copy(s, f)
 	if err != nil {
 		panic(err)
 	}
 
-	log.Println("[stream] done sending")
+	log.Printf("[stream] sent %v bytes\n", nn)
 }
 
 func cidFromRepoName(repoName string) (*cid.Cid, error) {
