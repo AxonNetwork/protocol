@@ -2,9 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	//"io"
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -29,7 +33,8 @@ import (
 )
 
 const (
-	STREAM_PROTO = "/conscience/chunk-stream/1.0.0"
+	STREAM_PROTO   = "/conscience/chunk-stream/1.0.0"
+	CHUNK_HASH_LEN = 32
 )
 
 func main() {
@@ -102,21 +107,7 @@ func setupNode(ctx context.Context, listenPort string, talkTo []string) (host.Ho
 	}
 	wg.Wait()
 
-	h.SetStreamHandler(STREAM_PROTO, func(s net.Stream) {
-		log.Println("received stream")
-		bs := make([]byte, 32)
-		_, err := s.Read(bs)
-		if err != nil {
-			panic(err)
-		}
-
-		log.Println("[stream]", string(bs))
-
-		_, err = s.Write([]byte("bye bye bye!"))
-		if err != nil {
-			panic(err)
-		}
-	})
+	h.SetStreamHandler(STREAM_PROTO, chunkStreamHandler)
 
 	return h, rt
 }
@@ -168,11 +159,11 @@ func inputLoop(ctx context.Context, rt *dht.IpfsDHT, h host.Host) {
 			findProvider(ctx, rt, parts[1])
 
 		case "stream":
-			if len(parts) < 2 {
+			if len(parts) < 3 {
 				fmt.Println("not enough args")
 				continue
 			}
-			openStream(ctx, h, parts[1])
+			openStream(ctx, h, parts[1], parts[2])
 
 		default:
 			fmt.Println("unknown command")
@@ -259,37 +250,87 @@ func findProvider(ctx context.Context, rt *dht.IpfsDHT, repoName string) {
 	}
 }
 
-func openStream(ctx context.Context, h host.Host, peerIDB58 string) {
+func openStream(ctx context.Context, h host.Host, peerIDB58 string, chunkIDString string) {
+	log.Println("[stream] sending chunk...")
+
 	peerID, err := peer.IDB58Decode(peerIDB58)
 	if err != nil {
 		panic(err)
 	}
 
+	// open the stream
 	s, err := h.NewStream(ctx, peerID, STREAM_PROTO)
 	if err != nil {
 		panic(err)
 	}
+	defer s.Close()
 
-	_, err = s.Write([]byte("hihihihi"))
+	// write the chunk name to the stream (this also allows us to checksum)
+	chunkID, err := hex.DecodeString(chunkIDString)
 	if err != nil {
 		panic(err)
 	}
 
-	bs := make([]byte, 32)
-	_, err = s.Read(bs)
+	n, err := s.Write(chunkID)
+	if err != nil {
+		panic(err)
+	} else if n < 32 {
+		panic(fmt.Sprintf("chunk name: wrote the wrong number of bytes: %v", n))
+	}
+
+	// write the file data
+	f, err := os.Open("./" + chunkIDString)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("[stream]", string(bs))
-
-	err = s.Close()
+	err = io.Copy(s, f)
 	if err != nil {
 		panic(err)
 	}
+
+	log.Println("[stream] done sending")
 }
 
 func cidFromRepoName(repoName string) (*cid.Cid, error) {
 	pref := cid.NewPrefixV1(cid.Raw, multihash.SHA2_256)
 	return pref.Sum([]byte(repoName))
+}
+
+func chunkStreamHandler(s net.Stream) {
+	log.Println("[stream] beginning")
+
+	// read the chunk hash name
+	chunkID := make([]byte, 32)
+	n, err := s.Read(chunkID)
+	if err != nil {
+		panic(err)
+	} else if n < 32 {
+		panic("didn't receive enough bytes for chunk name header")
+	}
+
+	f, err := os.Create("/tmp/" + hex.EncodeToString(chunkID))
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	// copy the data from the p2p stream into the file while calculating
+	// the sha256 hash of the data for checksumming
+	hasher := sha256.New()
+	reader := io.TeeReader(s, hasher)
+	nn, err := io.Copy(f, reader)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("chunk bytes received:", nn)
+
+	hash := hasher.Sum(nil)
+
+	if !bytes.Equal(chunkID, hash) {
+		fmt.Printf("checksums are not equal (%v and %v)\n", hex.EncodeToString(chunkID), hex.EncodeToString(hash))
+	}
+
+	log.Println("[stream] finished")
 }
