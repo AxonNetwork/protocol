@@ -19,12 +19,17 @@ import (
 	pstore "gx/ipfs/QmZR2XWVVBCtbgBWnQhWk2xcQfaR3W8faQPriAiaaj7rsr/go-libp2p-peerstore"
 	"gx/ipfs/Qmb8T6YBBsjYsVGfrihQLfCJveczZnneSBqBKkYEBWDjge/go-libp2p-host"
 	//writer "gx/ipfs/QmcVVHfdyv15GVPk7NrxdWjh2hLVccXnoD8j2tyQShiXJb/go-log/writer"
-	//peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 	//ic "gx/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5/go-libp2p-crypto"
+	"gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	"gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
 	"gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
 	dstore "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
 	dsync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
+)
+
+const (
+	STREAM_PROTO = "/echo/1.0.0"
 )
 
 func main() {
@@ -65,7 +70,7 @@ func setupNode(ctx context.Context, listenPort string, talkTo []string) (host.Ho
 	rt := dht.NewDHT(ctx, h, ds)
 
 	/*validator := record.NamespacedValidator{
-		"pk":   record.PublicKeyValidator{},
+	    "pk":   record.PublicKeyValidator{},
 	}*/
 	rt.Validator = blankValidator{}
 
@@ -96,6 +101,23 @@ func setupNode(ctx context.Context, listenPort string, talkTo []string) (host.Ho
 		}(multiaddr)
 	}
 	wg.Wait()
+
+	h.SetStreamHandler(STREAM_PROTO, func(s net.Stream) {
+		log.Println("received stream")
+		bs := make([]byte, 32)
+		_, err := s.Read(bs)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Println("[stream]", string(bs))
+
+		_, err = s.Write([]byte("bye bye bye!"))
+		if err != nil {
+			panic(err)
+		}
+	})
+
 	return h, rt
 }
 
@@ -111,6 +133,9 @@ func inputLoop(ctx context.Context, rt *dht.IpfsDHT, h host.Host) {
 		}
 
 		switch parts[0] {
+		case "bootstrap":
+			bootstrap(ctx, rt)
+
 		case "peers":
 			logPeers(h)
 
@@ -142,6 +167,13 @@ func inputLoop(ctx context.Context, rt *dht.IpfsDHT, h host.Host) {
 			}
 			findProvider(ctx, rt, parts[1])
 
+		case "stream":
+			if len(parts) < 2 {
+				fmt.Println("not enough args")
+				continue
+			}
+			openStream(ctx, h, parts[1])
+
 		default:
 			fmt.Println("unknown command")
 		}
@@ -150,8 +182,21 @@ func inputLoop(ctx context.Context, rt *dht.IpfsDHT, h host.Host) {
 	}
 }
 
+func bootstrap(ctx context.Context, rt *dht.IpfsDHT) {
+	err := rt.Bootstrap(ctx)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func logPeers(h host.Host) {
 	log.Println("total connected peers: ", len(h.Network().Conns()))
+	for _, peerID := range h.Peerstore().Peers() {
+		fmt.Printf("  - %v (%v)\n", peerID.String(), string(peerID))
+		for _, addr := range h.Peerstore().Addrs(peerID) {
+			fmt.Println("      -", addr)
+		}
+	}
 }
 
 func logValue(ctx context.Context, rt *dht.IpfsDHT, key string) {
@@ -211,6 +256,65 @@ func findProvider(ctx context.Context, rt *dht.IpfsDHT, repoName string) {
 
 	case <-timeout.Done():
 		fmt.Println("timed out, could not find provider of " + repoName)
+	}
+}
+
+func openStream(ctx context.Context, h host.Host, multiaddr string) {
+	// The following code extracts target's the peer ID from the
+	// given multiaddress
+	ipfsaddr, err := ma.NewMultiaddr(multiaddr)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("ipfsaddr %+v\n", ipfsaddr)
+
+	pid, err := ipfsaddr.ValueForProtocol(ma.P_IPFS)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("pid %v\n", pid)
+
+	peerid, err := peer.IDB58Decode(pid)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("peerid %v\n", peerid.String())
+
+	// Decapsulate the /ipfs/<peerID> part from the target
+	// /ip4/<a.b.c.d>/ipfs/<peer> becomes /ip4/<a.b.c.d>
+	targetPeerAddr, _ := ma.NewMultiaddr(
+		fmt.Sprintf("/ipfs/%s", peer.IDB58Encode(peerid)))
+	targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
+
+	// We have a peer ID and a targetAddr so we add it to the peerstore
+	// so LibP2P knows how to contact it
+	h.Peerstore().AddAddr(peerid, targetAddr, pstore.PermanentAddrTTL)
+
+	//
+	//
+	//
+
+	s, err := h.NewStream(ctx, peerid, STREAM_PROTO)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.Write([]byte("hihihihi"))
+	if err != nil {
+		panic(err)
+	}
+
+	bs := make([]byte, 32)
+	_, err = s.Read(bs)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("[stream]", string(bs))
+
+	err = s.Close()
+	if err != nil {
+		panic(err)
 	}
 }
 
