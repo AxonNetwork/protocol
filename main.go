@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	STREAM_PROTO = "/echo/1.0.0"
+	STREAM_PROTO = "/conscience/chunk-stream/1.0.0"
 )
 
 func main() {
@@ -192,7 +192,7 @@ func bootstrap(ctx context.Context, rt *dht.IpfsDHT) {
 func logPeers(h host.Host) {
 	log.Println("total connected peers: ", len(h.Network().Conns()))
 	for _, peerID := range h.Peerstore().Peers() {
-		fmt.Printf("  - %v (%v)\n", peerID.String(), string(peerID))
+		fmt.Printf("  - %v (%v)\n", peerID.String(), peer.IDB58Encode(peerID))
 		for _, addr := range h.Peerstore().Addrs(peerID) {
 			fmt.Println("      -", addr)
 		}
@@ -259,42 +259,13 @@ func findProvider(ctx context.Context, rt *dht.IpfsDHT, repoName string) {
 	}
 }
 
-func openStream(ctx context.Context, h host.Host, multiaddr string) {
-	// The following code extracts target's the peer ID from the
-	// given multiaddress
-	ipfsaddr, err := ma.NewMultiaddr(multiaddr)
+func openStream(ctx context.Context, h host.Host, peerIDB58 string) {
+	peerID, err := peer.IDB58Decode(peerIDB58)
 	if err != nil {
-		log.Fatalln(err)
+		panic(err)
 	}
-	fmt.Printf("ipfsaddr %+v\n", ipfsaddr)
 
-	pid, err := ipfsaddr.ValueForProtocol(ma.P_IPFS)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Printf("pid %v\n", pid)
-
-	peerid, err := peer.IDB58Decode(pid)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Printf("peerid %v\n", peerid.String())
-
-	// Decapsulate the /ipfs/<peerID> part from the target
-	// /ip4/<a.b.c.d>/ipfs/<peer> becomes /ip4/<a.b.c.d>
-	targetPeerAddr, _ := ma.NewMultiaddr(
-		fmt.Sprintf("/ipfs/%s", peer.IDB58Encode(peerid)))
-	targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
-
-	// We have a peer ID and a targetAddr so we add it to the peerstore
-	// so LibP2P knows how to contact it
-	h.Peerstore().AddAddr(peerid, targetAddr, pstore.PermanentAddrTTL)
-
-	//
-	//
-	//
-
-	s, err := h.NewStream(ctx, peerid, STREAM_PROTO)
+	s, err := h.NewStream(ctx, peerID, STREAM_PROTO)
 	if err != nil {
 		panic(err)
 	}
