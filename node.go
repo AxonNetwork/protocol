@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
+	"net/rpc"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -22,7 +24,7 @@ import (
 	//writer "gx/ipfs/QmcVVHfdyv15GVPk7NrxdWjh2hLVccXnoD8j2tyQShiXJb/go-log/writer"
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 	//ic "gx/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5/go-libp2p-crypto"
-	"gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
+	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	dstore "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
 	dsync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
 	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
@@ -33,6 +35,13 @@ type Node struct {
 	DHT         *dht.IpfsDHT
 	RepoManager *RepoManager
 }
+
+// Input/Output formats for RPC communication from push/pull hooks
+type NodeInput struct {
+	Content string
+}
+
+type NodeOutput struct{}
 
 const (
 	STREAM_PROTO   = "/conscience/chunk-stream/1.0.0"
@@ -78,6 +87,15 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 
 	// set the handler function for when we get a new incoming chunk stream
 	n.Host.SetStreamHandler(STREAM_PROTO, n.chunkStreamHandler)
+
+	// Register Node on RPC to listen to procedure from git push/pull hooks
+	// Only listen to calls from localhost
+	rpc.Register(n)
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", listenPort))
+	if err != nil {
+		return nil, err
+	}
+	rpc.Accept(listener)
 
 	return n, nil
 }
@@ -251,7 +269,7 @@ func (n *Node) GetChunk(ctx context.Context, peerIDB58 string, repoName string, 
 	return true, nil
 }
 
-func (n *Node) chunkStreamHandler(stream net.Stream) {
+func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	defer stream.Close()
 
 	// create a buffered reader so we can read up until certain byte delimiters
@@ -333,6 +351,18 @@ func (n *Node) chunkStreamHandler(stream net.Stream) {
 	}
 
 	log.Printf("[stream] sent %v %v (%v bytes)", repoName, chunkIDStr, sent)
+}
+
+func (this *Node) GitPull(in *NodeInput, out *NodeOutput) error {
+	str := in.Content
+	fmt.Printf("\n******************\nGit Pull:\n%s\n******************\n", str)
+	return nil
+}
+
+func (this *Node) GitPush(in *NodeInput, out *NodeOutput) error {
+	str := in.Content
+	fmt.Printf("\n******************\nGit Push:\n%s\n******************\n", str)
+	return nil
 }
 
 type blankValidator struct{}
