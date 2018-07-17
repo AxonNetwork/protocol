@@ -80,12 +80,14 @@ func inputLoop(ctx context.Context, n *Node) {
 			}
 			err = n.FindProviders(ctx, parts[1])
 
-		case "stream":
-			if len(parts) < 3 {
+		case "get-chunk":
+			if len(parts) < 4 {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			err = n.SendChunkStream(ctx, parts[1], parts[2])
+			var hasChunk bool
+			hasChunk, err = n.GetChunk(ctx, parts[1], parts[2], parts[3])
+			log.Printf("has chunk? %v", hasChunk)
 
 		default:
 			err = fmt.Errorf("unknown command")

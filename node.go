@@ -1,13 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,8 +28,9 @@ import (
 )
 
 type Node struct {
-	Host host.Host
-	DHT  *dht.IpfsDHT
+	Host        host.Host
+	DHT         *dht.IpfsDHT
+	RepoManager *RepoManager
 }
 
 const (
@@ -45,9 +46,15 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 		return nil, err
 	}
 
+	rm, err := NewRepoManager("./repos")
+	if err != nil {
+		return nil, err
+	}
+
 	n := &Node{
-		Host: h,
-		DHT:  dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
+		Host:        h,
+		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
+		RepoManager: rm,
 	}
 
 	// set a pass-through validator
@@ -145,79 +152,67 @@ func (n *Node) FindProviders(ctx context.Context, repoName string) error {
 	return nil
 }
 
-func (n *Node) SendChunkStream(ctx context.Context, peerIDB58 string, chunkIDString string) error {
-	log.Printf("[stream] sending chunk...")
+func (n *Node) GetChunk(ctx context.Context, peerIDB58 string, repoName string, chunkIDString string) (bool, error) {
+	log.Printf("[stream] requesting chunk...")
 
 	peerID, err := peer.IDB58Decode(peerIDB58)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// open the stream
-	s, err := n.Host.NewStream(ctx, peerID, STREAM_PROTO)
+	stream, err := n.Host.NewStream(ctx, peerID, STREAM_PROTO)
 	if err != nil {
-		return err
+		return false, err
 	}
-	defer s.Close()
+	defer stream.Close()
 
-	// write the chunk name to the stream (this also allows us to checksum)
+	//
+	// 1. write the repo name and chunk ID to the stream
+	//
 	chunkID, err := hex.DecodeString(chunkIDString)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	written, err := s.Write(chunkID)
+	msg := append([]byte(repoName), 0x0)
+	msg = append(msg, chunkID...)
+	msg = append(msg, 0x0)
+	_, err = stream.Write(msg)
 	if err != nil {
-		return err
-	} else if written < 32 {
-		return fmt.Errorf("chunk name: wrote the wrong number of bytes: %v", n)
+		return false, err
 	}
 
-	// write the file data
-	f, err := os.Open("./" + chunkIDString)
+	//
+	// 2. if the reply is 0x0, the peer doesn't have the chunk.  if it's 0x1, stream the chunk and save to disk.
+	//
+	reply := make([]byte, 1)
+	recvd, err := stream.Read(reply)
 	if err != nil {
-		return err
+		return false, err
+	} else if recvd < 1 {
+		return false, fmt.Errorf("empty reply from chunk request")
 	}
 
-	copied, err := io.Copy(s, f)
+	if reply[0] == 0x0 {
+		return false, nil
+	} else if reply[0] != 0x1 {
+		return false, fmt.Errorf("bad reply from chunk request: %v", reply[0])
+	}
+
+	chunk, err := n.RepoManager.CreateChunk(repoName, hex.EncodeToString(chunkID))
 	if err != nil {
-		return err
+		return false, err
 	}
-
-	log.Printf("[stream] sent %v bytes", copied)
-
-	return nil
-}
-
-func (n *Node) chunkStreamHandler(stream net.Stream) {
-	log.Println("[stream] beginning")
-
-	// read the chunk hash name
-	chunkID := make([]byte, 32)
-	recvd, err := stream.Read(chunkID)
-	if err != nil {
-		log.Errorf("[stream] %v", err)
-		return
-	} else if recvd < 32 {
-		log.Errorf("[stream] didn't receive enough bytes for chunk name header")
-		return
-	}
-
-	file, err := os.Create("/tmp/" + hex.EncodeToString(chunkID))
-	if err != nil {
-		log.Errorf("[stream] %v", err)
-		return
-	}
-	defer file.Close()
+	defer chunk.Close()
 
 	// copy the data from the p2p stream into the file and the SHA256 hasher simultaneously.
 	// use the sha256 hash of the data for checksumming.
 	hasher := sha256.New()
 	reader := io.TeeReader(stream, hasher)
-	recvd2, err := io.Copy(file, reader)
+	recvd2, err := io.Copy(chunk, reader)
 	if err != nil {
-		log.Errorf("[stream] %v", err)
-		return
+		return false, err
 	}
 
 	log.Printf("[stream] chunk bytes received: %v", recvd2)
@@ -229,11 +224,93 @@ func (n *Node) chunkStreamHandler(stream net.Stream) {
 	}
 
 	log.Printf("[stream] finished")
+	return true, nil
 }
 
-//
-// blankValidator just works as a pass-through
-//
+func (n *Node) chunkStreamHandler(stream net.Stream) {
+	defer stream.Close()
+
+	// create a buffered reader so we can read up until certain byte delimiters
+	bufstream := bufio.NewReader(stream)
+
+	var repoName, chunkIDStr string
+
+	//
+	// read the repo name, terminated by a null byte
+	//
+	{
+		repoNameBytes, err := bufstream.ReadBytes(0x0)
+		if err == io.EOF {
+			log.Errorf("[stream] terminated early")
+			return
+		} else if err != nil {
+			log.Errorf("[stream] %v", err)
+			return
+		}
+		repoName = string(repoNameBytes[:len(repoNameBytes)-1])
+	}
+
+	//
+	// read the chunk ID, terminated by a null byte
+	//
+	{
+		chunkID, err := bufstream.ReadBytes(0x0)
+		if err == io.EOF {
+			log.Errorf("[stream] terminated early")
+			return
+		} else if err != nil {
+			log.Errorf("[stream] %v", err)
+			return
+		}
+		chunkIDStr = hex.EncodeToString(chunkID[:len(chunkID)-1])
+	}
+
+	log.Printf("[stream] peer requested %v %v", repoName, chunkIDStr)
+
+	//
+	// send our response:
+	// 1. we don't have the chunk:
+	//    - 0x0
+	//    - <close connection>
+	// 2. we do have the chunk:
+	//    - 0x1
+	//    - [chunk bytes...]
+	//    - <close connection>
+	//
+	hasChunk := n.RepoManager.HasChunk(repoName, chunkIDStr)
+	if !hasChunk {
+		log.Printf("[stream] we don't have %v %v", repoName, chunkIDStr)
+
+		// tell the peer we don't have the chunk and then close the connection
+		_, err := stream.Write([]byte{0x0})
+		if err != nil {
+			log.Errorf("[stream] %v", err)
+			return
+		}
+		return
+	}
+
+	_, err := stream.Write([]byte{0x1})
+	if err != nil {
+		log.Errorf("[stream] %v", err)
+		return
+	}
+
+	chunk, err := n.RepoManager.OpenChunk(repoName, chunkIDStr)
+	if err != nil {
+		log.Errorf("[stream] %v", err)
+		return
+	}
+	defer chunk.Close()
+
+	sent, err := io.Copy(stream, chunk)
+	if err != nil {
+		log.Errorf("[stream] %v", err)
+	}
+
+	log.Printf("[stream] sent %v %v (%v bytes)", repoName, chunkIDStr, sent)
+}
+
 type blankValidator struct{}
 
 func (blankValidator) Validate(_ string, _ []byte) error        { return nil }
