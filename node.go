@@ -176,6 +176,42 @@ func (n *Node) FindProviders(ctx context.Context, repoName string) ([]pstore.Pee
 	return providers, nil
 }
 
+func (n *Node) GetRepo(ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
+	log.Printf("[stream] requesting repo...")
+
+	recentHash := "0983d41ec8d4732136f4b3a5c2cb45a27a18436b" // TDOO: get this from single source of truth
+
+	success, err := n.CrawlGitTree(recentHash, ctx, peerIDB58, repoName)
+
+	return success, err
+}
+
+func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
+	log.Printf("crawling hash: %s", sha1)
+
+	objType, err := n.RepoManager.GitCatKind(sha1, repoName)
+	if err != nil {
+		return false, err
+	}
+
+	log.Printf("objectType: %s", objType)
+	if objType == "tree" {
+		objects, err := n.RepoManager.GitListObjects(sha1, repoName)
+		if err != nil {
+			return false, err
+		}
+
+		// Recurse
+		for obj := range objects {
+//			n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
+		}
+	}
+
+	n.GetChunk(ctx, peerIDB58, repoName, sha1)
+
+	return true, nil
+}
+
 func (n *Node) GetChunk(ctx context.Context, peerIDB58 string, repoName string, chunkIDString string) (bool, error) {
 	log.Printf("[stream] requesting chunk...")
 

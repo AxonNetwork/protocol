@@ -89,6 +89,15 @@ func inputLoop(ctx context.Context, n *Node) {
 			hasChunk, err = n.GetChunk(ctx, parts[1], parts[2], parts[3])
 			log.Printf("has chunk? %v", hasChunk)
 
+		case "get-repo":
+			if len(parts) < 3 {
+				err = fmt.Errorf("not enough args")
+				break
+			}
+			var hasRepo bool
+			hasRepo, err = n.GetRepo(ctx, parts[1], parts[2])
+			log.Printf("has repo? %v", hasRepo)
+
 		default:
 			err = fmt.Errorf("unknown command")
 		}

@@ -3,7 +3,11 @@ package main
 import (
 	"os"
 	"path/filepath"
-
+	"os/exec"
+	"bytes"
+	"strings"
+	"bufio"	
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -82,6 +86,44 @@ func (rm *RepoManager) LogRepos() {
 			log.Printf("      - %v", chunk)
 		}
 	}
+}
+
+func (rm *RepoManager) GitCatKind(sha1 string, repoName string) (string, error) {
+	catFile := exec.Command("git", "cat-file", "-t", sha1)
+
+	thisGitRepo := filepath.Join(rm.root, repoName)
+	catFile.Dir = thisGitRepo
+	out, err := catFile.CombinedOutput()
+
+	log.Printf(strings.TrimSpace(string(out)))
+	return strings.TrimSpace(string(out)), err
+}
+
+func (rm *RepoManager) GitListObjects(ref string, repoName string) ([]string, error) {
+	args := []string{"rev-list", "--objects", ref}
+	revList := exec.Command("git", args...)
+
+
+	thisGitRepo := filepath.Join(rm.root, repoName)
+	if strings.HasSuffix(thisGitRepo, ".git") {
+		thisGitRepo = filepath.Dir(thisGitRepo)
+	}
+	revList.Dir = thisGitRepo // GIT_DIR
+	out, err := revList.CombinedOutput()
+	if err != nil {
+		return nil, errors.Wrapf(err, "rev-list failed: %s\n%q", err, string(out))
+	}
+	var objs []string
+	s := bufio.NewScanner(bytes.NewReader(out))
+	for s.Scan() {
+		objs = append(objs, strings.Split(s.Text(), " ")[0])
+		log.Printf("%v", objs)
+	}
+	if err := s.Err(); err != nil {
+		return nil, errors.Wrapf(err, "scanning rev-list output failed: %s", err)
+	}
+
+	return objs, nil
 }
 
 func (rm *RepoManager) HasChunk(repoName, chunkID string) bool {
