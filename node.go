@@ -36,13 +36,6 @@ type Node struct {
 	RepoManager *RepoManager
 }
 
-// Input/Output formats for RPC communication from push/pull hooks
-type NodeInput struct {
-	Content string
-}
-
-type NodeOutput struct{}
-
 const (
 	STREAM_PROTO   = "/conscience/chunk-stream/1.0.0"
 	CHUNK_HASH_LEN = 32
@@ -353,15 +346,30 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	log.Printf("[stream] sent %v %v (%v bytes)", repoName, chunkIDStr, sent)
 }
 
-func (this *Node) GitPull(in *NodeInput, out *NodeOutput) error {
-	str := in.Content
-	fmt.Printf("\n******************\nGit Pull:\n%s\n******************\n", str)
-	return nil
+// Input/Output formats for RPC communication from push/pull hooks
+type NodeInput struct {
+	RemoteName string
+	RemoteUrl  string
+	Branch     string
+	Commit     string
 }
 
+type NodeOutput struct{}
+
+// func (this *Node) GitPull(in *NodeInput, out *NodeOutput) error {
+// 	str := in.Content
+// 	fmt.Printf("\n******************\nGit Pull:\n%s\n******************\n", str)
+// 	return nil
+// }
+
 func (this *Node) GitPush(in *NodeInput, out *NodeOutput) error {
-	str := in.Content
-	fmt.Printf("\n******************\nGit Push:\n%s\n******************\n", str)
+	fmt.Printf("\n******************\n")
+	fmt.Printf("Git Push:\n")
+	fmt.Println("remoteName: ", in.RemoteName)
+	fmt.Println("remoteUrl: ", in.RemoteUrl)
+	fmt.Println("branch: ", in.Branch)
+	fmt.Println("commit: ", in.Commit)
+	fmt.Printf("******************\n")
 	return nil
 }
 
