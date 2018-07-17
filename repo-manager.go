@@ -64,6 +64,16 @@ func NewRepoManager(root string) (*RepoManager, error) {
 	return rm, nil
 }
 
+func (rm *RepoManager) RepoNames() []string {
+	repoNames := make([]string, len(rm.repos))
+	i := 0
+	for repoName := range rm.repos {
+		repoNames[i] = repoName
+		i++
+	}
+	return repoNames
+}
+
 func (rm *RepoManager) LogRepos() {
 	log.Printf("Known repos:")
 	for repoName, repo := range rm.repos {

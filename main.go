@@ -78,7 +78,7 @@ func inputLoop(ctx context.Context, n *Node) {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			err = n.FindProviders(ctx, parts[1])
+			_, err = n.FindProviders(ctx, parts[1])
 
 		case "get-chunk":
 			if len(parts) < 4 {

@@ -25,6 +25,7 @@ import (
 	"gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	dstore "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
 	dsync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
+	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
 )
 
 type Node struct {
@@ -56,6 +57,21 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
 		RepoManager: rm,
 	}
+
+	go func() {
+		c := time.Tick(5 * time.Second)
+		for range c {
+			repoNames := rm.RepoNames()
+			for _, repoName := range repoNames {
+				log.Printf("[announce] %v", repoName)
+
+				err := n.Provide(ctx, repoName)
+				if err != nil && err != kbucket.ErrLookupFailure {
+					log.Errorf("[announce] %v", err)
+				}
+			}
+		}
+	}()
 
 	// set a pass-through validator
 	n.DHT.Validator = blankValidator{}
@@ -126,30 +142,38 @@ func (n *Node) Provide(ctx context.Context, repoName string) error {
 	return n.DHT.Provide(ctx, c, true)
 }
 
-func (n *Node) FindProviders(ctx context.Context, repoName string) error {
+func (n *Node) FindProviders(ctx context.Context, repoName string) ([]pstore.PeerInfo, error) {
 	c, err := cidFromRepoName(repoName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	chProviders := n.DHT.FindProvidersAsync(ctx, c, 100)
+	chProviders := n.DHT.FindProvidersAsync(ctx, c, 8)
 
 	timeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	select {
-	case provider := <-chProviders:
-		if provider.ID == "" {
-			log.Printf("got nil provider for %v")
-		} else {
-			log.Printf("got provider: %+v", provider)
-		}
+	providers := []pstore.PeerInfo{}
+	for {
+		select {
+		case provider, ok := <-chProviders:
+			if !ok {
+				break
+			}
 
-	case <-timeout.Done():
-		return fmt.Errorf("timed out, could not find provider of %v", repoName)
+			if provider.ID == "" {
+				log.Printf("got nil provider for %v")
+			} else {
+				log.Printf("got provider: %+v", provider)
+				providers = append(providers, provider)
+			}
+
+		case <-timeout.Done():
+			break
+		}
 	}
 
-	return nil
+	return providers, nil
 }
 
 func (n *Node) GetChunk(ctx context.Context, peerIDB58 string, repoName string, chunkIDString string) (bool, error) {
