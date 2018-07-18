@@ -48,7 +48,7 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 		return nil, err
 	}
 
-	rm, err := NewRepoManager("./repos")
+	rm, err := NewRepoManager()
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 	// Only listen to calls from localhost
 	port, err := incrementPort(listenPort)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	err = RegisterRPC(n, port)
 	if err != nil {
@@ -98,18 +98,6 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 
 func (n *Node) Bootstrap(ctx context.Context) error {
 	return n.DHT.Bootstrap(ctx)
-}
-
-func (n *Node) LogPeers() error {
-	log.Printf("total connected peers: %v", len(n.Host.Network().Conns()))
-
-	for _, peerID := range n.Host.Peerstore().Peers() {
-		log.Printf("  - %v (%v)", peerID.String(), peer.IDB58Encode(peerID))
-		for _, addr := range n.Host.Peerstore().Addrs(peerID) {
-			log.Printf("      - %v", addr)
-		}
-	}
-	return nil
 }
 
 func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
@@ -133,14 +121,14 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	return nil
 }
 
-func (n *Node) GetValue(ctx context.Context, key string) error {
+func (n *Node) GetValue(ctx context.Context, key string) ([]byte, error) {
 	val, err := n.DHT.GetValue(ctx, key)
 	if err != nil {
 		log.Printf("%v: nil", key)
 	} else {
 		log.Printf("%v: %v", key, string(val))
 	}
-	return nil
+	return val, nil
 }
 
 func (n *Node) SetValue(ctx context.Context, key, val string) error {

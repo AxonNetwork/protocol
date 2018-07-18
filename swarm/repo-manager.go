@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
 type RepoManager struct {
@@ -17,56 +20,55 @@ type RepoManager struct {
 	repos map[string]map[string]bool
 }
 
-func NewRepoManager(root string) (*RepoManager, error) {
-	err := os.MkdirAll(root, 0777)
-	if err != nil {
-		return nil, err
-	}
-
-	rootDir, err := os.Open(root)
-	if err != nil {
-		return nil, err
-	}
-	defer rootDir.Close()
-
-	repos, err := rootDir.Readdir(-1)
-	if err != nil {
-		return nil, err
-	}
-
+func NewRepoManager() (*RepoManager, error) {
 	rm := &RepoManager{
-		root:  root,
 		repos: make(map[string]map[string]bool),
 	}
+	return rm, nil
+}
 
-	for _, repo := range repos {
-		if repo.IsDir() {
-			rm.repos[repo.Name()] = make(map[string]bool)
-
-			repoDir, err := os.Open(filepath.Join(root, repo.Name()))
-			if err != nil {
-				return nil, err
-			}
-
-			chunks, err := repoDir.Readdir(-1)
-			if err != nil {
-				repoDir.Close()
-				return nil, err
-			}
-
-			for _, chunk := range chunks {
-				if !chunk.IsDir() {
-					rm.repos[repo.Name()][chunk.Name()] = true
-				}
-			}
-
-			repoDir.Close()
-		}
+func (rm *RepoManager) AddRepo(repoPath string) error {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
 	}
 
-	rm.LogRepos()
+	//
+	// get the repo's announce name (its unique ID on the p2p network)
+	//
+	cfg, err := repo.Config()
+	if err != nil {
+		return err
+	}
 
-	return rm, nil
+	section := cfg.Raw.Section("conscience")
+	if section == nil {
+		return fmt.Errorf("repo config doesn't have conscience section")
+	}
+	announceName := section.Option("announcename")
+	if announceName == "" {
+		return fmt.Errorf("repo config doesn't have conscience.announcename key")
+	}
+
+	rm.repos[announceName] = make(map[string]bool)
+
+	//
+	// iterate over the objects and make note that we have them so the Node can .Provide them
+	//
+	oIter, err := repo.Objects()
+	if err != nil {
+		return err
+	}
+
+	err = oIter.ForEach(func(obj object.Object) error {
+		rm.repos[announceName][obj.ID().String()] = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (rm *RepoManager) RepoNames() []string {
@@ -79,14 +81,19 @@ func (rm *RepoManager) RepoNames() []string {
 	return repoNames
 }
 
-func (rm *RepoManager) LogRepos() {
-	log.Printf("Known repos:")
-	for repoName, repo := range rm.repos {
-		log.Printf("  - %v", repoName)
-		for chunk := range repo {
-			log.Printf("      - %v", chunk)
-		}
+func (rm *RepoManager) ChunksForRepo(repoName string) []string {
+	repo, ok := rm.repos[repoName]
+	if !ok {
+		return nil
 	}
+
+	chunks := make([]string, len(repo))
+	i := 0
+	for chunk := range repo {
+		chunks[i] = chunk
+		i++
+	}
+	return chunks
 }
 
 func (rm *RepoManager) GitCatKind(sha1 string, repoName string) (string, error) {

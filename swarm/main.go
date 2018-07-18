@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+
+	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 )
 
 func main() {
@@ -19,8 +21,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	log.Println("peerID is: ", n.Host.ID().Pretty())
 
 	inputLoop(ctx, n)
 }
@@ -39,11 +39,24 @@ func inputLoop(ctx context.Context, n *Node) {
 		var err error
 
 		switch parts[0] {
+		case "addrs":
+			logAddrs(n)
+
+		case "repos":
+			logRepos(n)
+
+		case "peers":
+			logPeers(n)
+
 		case "bootstrap":
 			err = n.Bootstrap(ctx)
 
-		case "peers":
-			err = n.LogPeers()
+		case "add-repo":
+			if len(parts) < 2 {
+				err = fmt.Errorf("not enough args")
+				break
+			}
+			err = n.RepoManager.AddRepo(parts[1])
 
 		case "add-peer":
 			if len(parts) < 2 {
@@ -57,7 +70,7 @@ func inputLoop(ctx context.Context, n *Node) {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			err = n.GetValue(ctx, parts[1])
+			_, err = n.GetValue(ctx, parts[1])
 
 		case "set":
 			if len(parts) < 3 {
@@ -107,5 +120,32 @@ func inputLoop(ctx context.Context, n *Node) {
 		}
 
 		fmt.Printf("> ")
+	}
+}
+
+func logPeers(n *Node) {
+	log.Printf("total connected peers: %v", len(n.Host.Network().Conns()))
+
+	for _, peerID := range n.Host.Peerstore().Peers() {
+		log.Printf("  - %v (%v)", peerID.String(), peer.IDB58Encode(peerID))
+		for _, addr := range n.Host.Peerstore().Addrs(peerID) {
+			log.Printf("      - %v", addr)
+		}
+	}
+}
+
+func logAddrs(n *Node) {
+	for _, addr := range n.Host.Addrs() {
+		log.Println(addr.String() + "/ipfs/" + n.Host.ID().Pretty())
+	}
+}
+
+func logRepos(n *Node) {
+	log.Printf("Known repos:")
+	for _, repoName := range n.RepoManager.RepoNames() {
+		log.Printf("  - %v", repoName)
+		for _, chunk := range n.RepoManager.ChunksForRepo(repoName) {
+			log.Printf("      - %v", chunk)
+		}
 	}
 }
