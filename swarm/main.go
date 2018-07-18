@@ -94,22 +94,34 @@ func inputLoop(ctx context.Context, n *Node) {
 			_, err = n.FindProviders(ctx, parts[1])
 
 		case "get-chunk":
-			if len(parts) < 4 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-			var hasChunk bool
-			hasChunk, err = n.GetChunk(ctx, parts[1], parts[2], parts[3])
-			log.Printf("has chunk? %v", hasChunk)
-
-		case "get-repo":
 			if len(parts) < 3 {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			var hasRepo bool
-			hasRepo, err = n.GetRepo(ctx, parts[1], parts[2])
-			log.Printf("has repo? %v", hasRepo)
+
+			err = n.GetChunk(ctx, parts[1], parts[2])
+
+		case "get-chunk-from-peer":
+			if len(parts) < 4 {
+				err = fmt.Errorf("not enough args")
+				break
+			}
+
+			peerID, err := peer.IDB58Decode(parts[1])
+			if err != nil {
+				break
+			}
+
+			err = n.GetChunkFromPeer(ctx, peerID, parts[2], parts[3])
+
+		// case "get-repo":
+		//  if len(parts) < 3 {
+		//      err = fmt.Errorf("not enough args")
+		//      break
+		//  }
+		//  var hasRepo bool
+		//  hasRepo, err = n.GetRepo(ctx, parts[1], parts[2])
+		//  log.Printf("has repo? %v", hasRepo)
 
 		default:
 			err = fmt.Errorf("unknown command")

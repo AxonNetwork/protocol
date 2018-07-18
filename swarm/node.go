@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
+	// "crypto/sha1"
+	// "crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	// "hash"
 	"io"
 	"time"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"gx/ipfs/QmQYwRL1T9dJtdCScoeRQwwvScbJTcWqnXhq4dYQ6Cu5vX/go-libp2p-kad-dht"
@@ -35,8 +38,11 @@ type Node struct {
 }
 
 const (
-	STREAM_PROTO   = "/conscience/chunk-stream/1.0.0"
-	CHUNK_HASH_LEN = 32
+	CHUNK_STREAM_PROTO = "/conscience/chunk-stream/1.0.0"
+)
+
+var (
+	ErrChunkNotFound = fmt.Errorf("chunk not found")
 )
 
 func NewNode(ctx context.Context, listenPort string) (*Node, error) {
@@ -59,18 +65,20 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 		RepoManager: rm,
 	}
 
-	// start a goroutine for announcing which repos this Node can provide every few seconds
+	// start a goroutine for announcing which repos and chunks this Node can provide (happens every few seconds)
 	// @@TODO: make announce interval configurable
 	go func() {
-		c := time.Tick(5 * time.Second)
+		c := time.Tick(10 * time.Second)
 		for range c {
 			repoNames := rm.RepoNames()
 			for _, repoName := range repoNames {
-				log.Printf("[announce] %v", repoName)
+				// log.Printf("[announce] %v", repoName)
 
-				err := n.Provide(ctx, repoName)
-				if err != nil && err != kbucket.ErrLookupFailure {
-					log.Errorf("[announce] %v", err)
+				for _, chunkID := range rm.ChunksForRepo(repoName) {
+					err := n.Provide(ctx, repoName+":"+chunkID)
+					if err != nil && err != kbucket.ErrLookupFailure {
+						log.Errorf("[announce] %v", err)
+					}
 				}
 			}
 		}
@@ -80,7 +88,7 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 	n.DHT.Validator = blankValidator{}
 
 	// set the handler function for when we get a new incoming chunk stream
-	n.Host.SetStreamHandler(STREAM_PROTO, n.chunkStreamHandler)
+	n.Host.SetStreamHandler(CHUNK_STREAM_PROTO, n.chunkStreamHandler)
 
 	// Register Node on RPC to listen to procedure from git push/pull hooks
 	// Only listen to calls from localhost
@@ -100,6 +108,7 @@ func (n *Node) Bootstrap(ctx context.Context) error {
 	return n.DHT.Bootstrap(ctx)
 }
 
+// Adds a peer to the Node's address book and attempts to .Connect to it using the libp2p Host.
 func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	// The following code extracts the peer ID from the
 	// given multiaddress
@@ -121,6 +130,27 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	return nil
 }
 
+// Attempts to find a peer providing the given chunk.  If a peer is found, the Node tries to
+// download the chunk from that peer.
+func (n *Node) GetChunk(ctx context.Context, repoID, chunkID string) error {
+	c, err := cidFromString(repoID + ":" + chunkID)
+	if err != nil {
+		return err
+	}
+
+	// try to find 1 provider of the chunk within 10 seconds
+	// @@TODO: make timeout configurable
+	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
+	if !found {
+		return errors.New("chunk not found")
+	}
+
+	return n.GetChunkFromPeer(ctx, provider.ID, repoID, chunkID)
+}
+
 func (n *Node) GetValue(ctx context.Context, key string) ([]byte, error) {
 	val, err := n.DHT.GetValue(ctx, key)
 	if err != nil {
@@ -135,8 +165,9 @@ func (n *Node) SetValue(ctx context.Context, key, val string) error {
 	return n.DHT.PutValue(ctx, key, []byte(val))
 }
 
-func (n *Node) Provide(ctx context.Context, repoName string) error {
-	c, err := cidFromRepoName(repoName)
+// Announce to the swarm that this Node can provide a given piece of content.
+func (n *Node) Provide(ctx context.Context, contentID string) error {
+	c, err := cidFromString(contentID)
 	if err != nil {
 		return err
 	}
@@ -144,8 +175,8 @@ func (n *Node) Provide(ctx context.Context, repoName string) error {
 	return n.DHT.Provide(ctx, c, true)
 }
 
-func (n *Node) FindProviders(ctx context.Context, repoName string) ([]pstore.PeerInfo, error) {
-	c, err := cidFromRepoName(repoName)
+func (n *Node) FindProviders(ctx context.Context, contentID string) ([]pstore.PeerInfo, error) {
+	c, err := cidFromString(contentID)
 	if err != nil {
 		return nil, err
 	}
@@ -178,61 +209,56 @@ func (n *Node) FindProviders(ctx context.Context, repoName string) ([]pstore.Pee
 	return providers, nil
 }
 
-func (n *Node) GetRepo(ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
-	log.Printf("[stream] requesting repo...")
+// func (n *Node) GetRepo(ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
+//  log.Printf("[stream] requesting repo...")
 
-	recentHash := "0983d41ec8d4732136f4b3a5c2cb45a27a18436b" // TDOO: get this from single source of truth
+//  recentHash := "0983d41ec8d4732136f4b3a5c2cb45a27a18436b" // TDOO: get this from single source of truth
 
-	success, err := n.CrawlGitTree(recentHash, ctx, peerIDB58, repoName)
+//  success, err := n.CrawlGitTree(recentHash, ctx, peerIDB58, repoName)
 
-	return success, err
-}
+//  return success, err
+// }
 
-func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
-	log.Printf("crawling hash: %s", sha1)
+// func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
+//  log.Printf("crawling hash: %s", sha1)
 
-	objType, err := n.RepoManager.GitCatKind(sha1, repoName)
-	if err != nil {
-		return false, err
-	}
-	
-	log.Printf("object Type: %s", objType)
-	if objType == "tree" {
-		log.Printf("is a tree!")
-		objects, err := n.RepoManager.GitListObjects(sha1, repoName)
+//  objType, err := n.RepoManager.GitCatKind(sha1, repoName)
+//  if err != nil {
+//      return false, err
+//  }
 
-		log.Printf("objects: %v: ", objects)
-		if err != nil {
-			return false, err
-		}
+//  log.Printf("object Type: %s", objType)
+//  if objType == "tree" {
+//      log.Printf("is a tree!")
+//      objects, err := n.RepoManager.GitListObjects(sha1, repoName)
 
-		// 	Recurse
-		for _, obj := range objects {
-			if (obj != sha1) {
-				log.Printf("object: %v", obj)
-				n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
-				return true, nil
-			}
-		}
-	}
+//      log.Printf("objects: %v: ", objects)
+//      if err != nil {
+//          return false, err
+//      }
 
-	n.GetChunk(ctx, peerIDB58, repoName, sha1)
+//      //  Recurse
+//      for _, obj := range objects {
+//          if obj != sha1 {
+//              log.Printf("object: %v", obj)
+//              n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
+//              return true, nil
+//          }
+//      }
+//  }
 
-	return true, nil
-}
+//  n.GetChunk(ctx, peerIDB58, repoName, sha1)
 
-func (n *Node) GetChunk(ctx context.Context, peerIDB58 string, repoName string, chunkIDString string) (bool, error) {
+//  return true, nil
+// }
+
+func (n *Node) GetChunkFromPeer(ctx context.Context, peerID peer.ID, repoID string, chunkIDString string) error {
 	log.Printf("[stream] requesting chunk...")
 
-	peerID, err := peer.IDB58Decode(peerIDB58)
-	if err != nil {
-		return false, err
-	}
-
 	// open the stream
-	stream, err := n.Host.NewStream(ctx, peerID, STREAM_PROTO)
+	stream, err := n.Host.NewStream(ctx, peerID, CHUNK_STREAM_PROTO)
 	if err != nil {
-		return false, err
+		return err
 	}
 	defer stream.Close()
 
@@ -241,15 +267,15 @@ func (n *Node) GetChunk(ctx context.Context, peerIDB58 string, repoName string, 
 	//
 	chunkID, err := hex.DecodeString(chunkIDString)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	msg := append([]byte(repoName), 0x0)
+	msg := append([]byte(repoID), 0x0)
 	msg = append(msg, chunkID...)
 	msg = append(msg, 0x0)
 	_, err = stream.Write(msg)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	//
@@ -258,42 +284,49 @@ func (n *Node) GetChunk(ctx context.Context, peerIDB58 string, repoName string, 
 	reply := make([]byte, 1)
 	recvd, err := stream.Read(reply)
 	if err != nil {
-		return false, err
+		return err
 	} else if recvd < 1 {
-		return false, fmt.Errorf("empty reply from chunk request")
+		return fmt.Errorf("empty reply from chunk request")
 	}
 
 	if reply[0] == 0x0 {
-		return false, nil
+		return ErrChunkNotFound
 	} else if reply[0] != 0x1 {
-		return false, fmt.Errorf("bad reply from chunk request: %v", reply[0])
+		return fmt.Errorf("bad reply from chunk request: %v", reply[0])
 	}
 
-	chunk, err := n.RepoManager.CreateChunk(repoName, hex.EncodeToString(chunkID))
+	hash, chunksize, err := n.RepoManager.CreateChunk(repoID, stream)
 	if err != nil {
-		return false, err
+		return err
 	}
-	defer chunk.Close()
+	// defer chunk.Close()
 
-	// copy the data from the p2p stream into the file and the SHA256 hasher simultaneously.
-	// use the sha256 hash of the data for checksumming.
-	hasher := sha256.New()
-	reader := io.TeeReader(stream, hasher)
-	recvd2, err := io.Copy(chunk, reader)
-	if err != nil {
-		return false, err
-	}
+	// copy the data from the p2p stream into the file and the hasher simultaneously.
+	// use the hash of the data for checksumming.
+	// var hasher hash.Hash
+	// if len(chunkID) == 20 {
+	//  hasher = sha1.New()
+	// } else if len(chunkID) == 32 {
+	//  hasher = sha256.New()
+	// } else {
+	//  return fmt.Errorf("bad chunkID length (%v)", len(chunkID))
+	// }
+	// reader := io.TeeReader(stream, hasher)
+	// chunksize, err := io.Copy(chunk, reader)
+	// if err != nil {
+	//  return err
+	// }
 
-	log.Printf("[stream] chunk bytes received: %v", recvd2)
+	log.Printf("[stream] chunk bytes received: %v", chunksize)
 
-	hash := hasher.Sum(nil)
+	// hash := hasher.Sum(nil)
 
 	if !bytes.Equal(chunkID, hash) {
 		log.Errorf("[stream] checksums are not equal (%v and %v)", hex.EncodeToString(chunkID), hex.EncodeToString(hash))
 	}
 
 	log.Printf("[stream] finished")
-	return true, nil
+	return nil
 }
 
 func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
@@ -303,6 +336,8 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	bufstream := bufio.NewReader(stream)
 
 	var repoName, chunkIDStr string
+	var chunkID []byte
+	var err error
 
 	//
 	// read the repo name, terminated by a null byte
@@ -324,7 +359,7 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	// read the chunk ID, terminated by a null byte
 	//
 	{
-		chunkID, err := bufstream.ReadBytes(0x0)
+		chunkID, err = bufstream.ReadBytes(0x0)
 		if err == io.EOF {
 			log.Errorf("[stream] terminated early")
 			return
@@ -348,7 +383,7 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	//    - [chunk bytes...]
 	//    - <close connection>
 	//
-	if !n.RepoManager.HasChunk(repoName, chunkIDStr) {
+	if !n.RepoManager.HasChunk(repoName, chunkID) {
 		log.Printf("[stream] we don't have %v %v", repoName, chunkIDStr)
 
 		// tell the peer we don't have the chunk and then close the connection
@@ -360,13 +395,13 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 		return
 	}
 
-	_, err := stream.Write([]byte{0x1})
+	_, err = stream.Write([]byte{0x1})
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return
 	}
 
-	chunk, err := n.RepoManager.OpenChunk(repoName, chunkIDStr)
+	chunk, err := n.RepoManager.OpenChunk(repoName, chunkID)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return
