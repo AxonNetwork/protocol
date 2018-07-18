@@ -15,8 +15,6 @@ func main() {
 		panic(err)
 	}
 
-	gitPath := filepath.Join(cwd, ".git", "conscience")
-
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		hexHash := scanner.Text()
@@ -26,7 +24,9 @@ func main() {
 			break
 		}
 
-		f, err := os.Open(filepath.Join(gitPath, hexHash))
+		filePath := filepath.Join(cwd, ".git", "data", hexHash[:2], hexHash[2:])
+
+		f, err := os.Open(filePath)
 		if err != nil {
 			panic(err)
 		}

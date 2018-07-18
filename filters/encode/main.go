@@ -35,10 +35,10 @@ func main() {
 
 		hash := sha256.Sum256(bs.Bytes())
 		hexHash := hex.EncodeToString(hash[:])
-		folderPath := filepath.Join(cwd, ".git", "objects", hexHash[:2])
+		folderPath := filepath.Join(cwd, ".git", "data", hexHash[:2])
 		filePath := filepath.Join(folderPath, hexHash[2:])
 
-		err = os.MkdirAll(folderPath, os.FileMode(0666))
+		err = os.MkdirAll(folderPath, os.FileMode(0777))
 		check(err)
 
 		if !fileExists(filePath) {
