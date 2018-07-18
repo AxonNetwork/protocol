@@ -1,12 +1,13 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
-	"os/exec"
+	"bufio"
 	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
-	"bufio"	
+
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
@@ -102,7 +103,6 @@ func (rm *RepoManager) GitCatKind(sha1 string, repoName string) (string, error) 
 func (rm *RepoManager) GitListObjects(ref string, repoName string) ([]string, error) {
 	args := []string{"rev-list", "--objects", ref}
 	revList := exec.Command("git", args...)
-
 
 	thisGitRepo := filepath.Join(rm.root, repoName)
 	if strings.HasSuffix(thisGitRepo, ".git") {

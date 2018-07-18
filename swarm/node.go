@@ -42,6 +42,7 @@ const (
 func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 	h, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", listenPort)),
+		libp2p.NATPortMap(),
 	)
 	if err != nil {
 		return nil, err
@@ -209,15 +210,15 @@ func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, 
 
 	log.Printf("objectType: %s", objType)
 	// if objType == "tree" {
-	// 	objects, err := n.RepoManager.GitListObjects(sha1, repoName)
-	// 	if err != nil {
-	// 		return false, err
-	// 	}
+	//  objects, err := n.RepoManager.GitListObjects(sha1, repoName)
+	//  if err != nil {
+	//      return false, err
+	//  }
 
-	// 	Recurse
-	// 	for obj := range objects {
-	// 				n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
-	// 	}
+	//  Recurse
+	//  for obj := range objects {
+	//              n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
+	//  }
 	// }
 
 	n.GetChunk(ctx, peerIDB58, repoName, sha1)
