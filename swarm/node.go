@@ -42,6 +42,7 @@ const (
 func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 	h, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", listenPort)),
+		libp2p.NATPortMap(),
 	)
 	if err != nil {
 		return nil, err
@@ -58,6 +59,8 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 		RepoManager: rm,
 	}
 
+	// start a goroutine for announcing which repos this Node can provide every few seconds
+	// @@TODO: make announce interval configurable
 	go func() {
 		c := time.Tick(5 * time.Second)
 		for range c {
@@ -204,7 +207,7 @@ func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, 
 	if err != nil {
 		return false, err
 	}
-
+	
 	log.Printf("object Type: %s", objType)
 	if objType == "tree" {
 		log.Printf("is a tree!")
@@ -325,7 +328,8 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 			log.Errorf("[stream] %v", err)
 			return
 		}
-		repoName = string(repoNameBytes[:len(repoNameBytes)-1])
+		repoNameBytes = repoNameBytes[:len(repoNameBytes)-1] // hack off the null byte at the end
+		repoName = string(repoNameBytes)
 	}
 
 	//
@@ -340,7 +344,8 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 			log.Errorf("[stream] %v", err)
 			return
 		}
-		chunkIDStr = hex.EncodeToString(chunkID[:len(chunkID)-1])
+		chunkID = chunkID[:len(chunkID)-1] // hack off the null byte at the end
+		chunkIDStr = hex.EncodeToString(chunkID)
 	}
 
 	log.Printf("[stream] peer requested %v %v", repoName, chunkIDStr)
@@ -355,8 +360,7 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	//    - [chunk bytes...]
 	//    - <close connection>
 	//
-	hasChunk := n.RepoManager.HasChunk(repoName, chunkIDStr)
-	if !hasChunk {
+	if !n.RepoManager.HasChunk(repoName, chunkIDStr) {
 		log.Printf("[stream] we don't have %v %v", repoName, chunkIDStr)
 
 		// tell the peer we don't have the chunk and then close the connection
