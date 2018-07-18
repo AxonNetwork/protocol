@@ -19,7 +19,6 @@ type RepoManager struct {
 	repos map[string]RepoEntry
 }
 
-// @@TODO: save chunks as byte strings
 type RepoEntry struct {
 	RepoID  string
 	Path    string
@@ -43,14 +42,13 @@ const (
 
 var (
 	ErrRepoNotFound = fmt.Errorf("repo not found")
-	ErrBadChecksum  = fmt.Errorf("chunk error: bad checksum")
+	ErrBadChecksum  = fmt.Errorf("object error: bad checksum")
 )
 
-func NewRepoManager() (*RepoManager, error) {
-	rm := &RepoManager{
+func NewRepoManager() *RepoManager {
+	return &RepoManager{
 		repos: make(map[string]RepoEntry),
 	}
-	return rm, nil
 }
 
 func (rm *RepoManager) AddRepo(repoPath string) error {
@@ -110,13 +108,13 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 				continue
 			}
 
-			// @@TODO: read the contents of each chunk and compare its name to its hash?
+			// @@TODO: read the contents of each object and compare its name to its hash?
 			id, err := hex.DecodeString(entry.Name())
 			if err != nil {
-				log.Errorf("bad conscience data chunk name: %v", entry.Name())
+				log.Errorf("bad conscience data object name: %v", entry.Name())
 				continue
 			} else if len(id) != CONSCIENCE_HASH_LENGTH {
-				log.Errorf("bad conscience data chunk name: %v", entry.Name())
+				log.Errorf("bad conscience data object name: %v", entry.Name())
 				continue
 			}
 			objects[string(id)] = ObjectEntry{ID: id, Type: 0}
@@ -159,23 +157,23 @@ func (rm *RepoManager) ObjectsForRepo(repoName string) []ObjectEntry {
 	return objects
 }
 
-// Returns true if the chunk is known, false otherwise.
-func (rm *RepoManager) HasObject(repoID string, chunkID []byte) bool {
+// Returns true if the object is known, false otherwise.
+func (rm *RepoManager) HasObject(repoID string, objectID []byte) bool {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
 		return false
 	}
-	_, ok = repoEntry.Objects[string(chunkID)]
+	_, ok = repoEntry.Objects[string(objectID)]
 	return ok
 }
 
-func (rm *RepoManager) Object(repoID string, chunkID []byte) (ObjectEntry, bool) {
+func (rm *RepoManager) Object(repoID string, objectID []byte) (ObjectEntry, bool) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
 		return ObjectEntry{}, false
 	}
 
-	entry, ok := repoEntry.Objects[string(chunkID)]
+	entry, ok := repoEntry.Objects[string(objectID)]
 	if !ok {
 		return ObjectEntry{}, false
 	}
@@ -183,24 +181,24 @@ func (rm *RepoManager) Object(repoID string, chunkID []byte) (ObjectEntry, bool)
 	return entry, true
 }
 
-// Open a chunk for reading.  It is the caller's responsibility to .Close() the chunk when finished.
-func (rm *RepoManager) OpenChunk(repoID string, chunkID []byte) (io.ReadCloser, error) {
+// Open a object for reading.  It is the caller's responsibility to .Close() the object when finished.
+func (rm *RepoManager) OpenChunk(repoID string, objectID []byte) (io.ReadCloser, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
 		return nil, ErrRepoNotFound
 	}
 
-	if len(chunkID) == CONSCIENCE_HASH_LENGTH {
-		// Open a Conscience chunk
-		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(chunkID))
+	if len(objectID) == CONSCIENCE_HASH_LENGTH {
+		// Open a Conscience object
+		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		f, err := os.Open(p)
 		if err != nil {
 			return nil, ErrChunkNotFound
 		}
 		return f, nil
 
-	} else if len(chunkID) == GIT_HASH_LENGTH {
-		// Open a Git chunk
+	} else if len(objectID) == GIT_HASH_LENGTH {
+		// Open a Git object
 
 		repo, err := git.PlainOpen(repoEntry.Path)
 		if err != nil {
@@ -210,7 +208,7 @@ func (rm *RepoManager) OpenChunk(repoID string, chunkID []byte) (io.ReadCloser, 
 		// The object might be in a Packfile, so we use a more intelligent function to obtain a readable
 		// handle to it.
 		hash := gitplumbing.Hash{}
-		copy(hash[:], chunkID)
+		copy(hash[:], objectID)
 		obj, err := repo.Storer.EncodedObject(gitplumbing.AnyObject, hash)
 		if err != nil {
 			return nil, err
@@ -223,14 +221,14 @@ func (rm *RepoManager) OpenChunk(repoID string, chunkID []byte) (io.ReadCloser, 
 		}
 		return r, nil
 	} else {
-		return nil, fmt.Errorf("chunkID is wrong size (%v)", len(chunkID))
+		return nil, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
 	}
 }
 
-// Create a new chunk and fill it with the data from the provided io.Reader.  The chunk is saved to
-// disk.  If the hash of the data does not equal the provided chunkID, this function returns an
-// error.  When creating a Conscience chunk, gitObjectType can simply be set to 0.
-func (rm *RepoManager) CreateChunk(repoID string, chunkID []byte, gitObjectType gitplumbing.ObjectType, r io.Reader) (int64, error) {
+// Create a new object and fill it with the data from the provided io.Reader.  The object is saved to
+// disk.  If the hash of the data does not equal the provided objectID, this function returns an
+// error.  When creating a Conscience object, gitObjectType can simply be set to 0.
+func (rm *RepoManager) CreateChunk(repoID string, objectID []byte, gitObjectType gitplumbing.ObjectType, r io.Reader) (int64, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
 		return 0, ErrRepoNotFound
@@ -238,8 +236,8 @@ func (rm *RepoManager) CreateChunk(repoID string, chunkID []byte, gitObjectType 
 
 	var n int64
 
-	if len(chunkID) == CONSCIENCE_HASH_LENGTH {
-		// If this is a Conscience chunk, just write directly to the file system.
+	if len(objectID) == CONSCIENCE_HASH_LENGTH {
+		// If this is a Conscience object, just write directly to the file system.
 
 		// Make sure the .git/data dir exists.
 		err := os.MkdirAll(filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR), 0777)
@@ -247,7 +245,7 @@ func (rm *RepoManager) CreateChunk(repoID string, chunkID []byte, gitObjectType 
 			return 0, err
 		}
 
-		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(chunkID))
+		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		f, err := os.Create(p)
 		if err != nil {
 			return 0, ErrRepoNotFound
@@ -262,14 +260,14 @@ func (rm *RepoManager) CreateChunk(repoID string, chunkID []byte, gitObjectType 
 			return 0, err
 		}
 
-		if !bytes.Equal(chunkID, hasher.Sum(nil)) {
+		if !bytes.Equal(objectID, hasher.Sum(nil)) {
 			f.Close()
 			os.Remove(p)
 			return 0, ErrBadChecksum
 		}
 
-	} else if len(chunkID) == GIT_HASH_LENGTH {
-		// if this is a Git chunk, store it in the objects folder
+	} else if len(objectID) == GIT_HASH_LENGTH {
+		// if this is a Git object, store it in the objects folder
 		repo, err := git.PlainOpen(repoEntry.Path)
 		if err != nil {
 			return 0, err
@@ -295,7 +293,7 @@ func (rm *RepoManager) CreateChunk(repoID string, chunkID []byte, gitObjectType 
 
 		// Check the checksum
 		h := obj.Hash()
-		if !bytes.Equal(chunkID, h[:]) {
+		if !bytes.Equal(objectID, h[:]) {
 			return 0, ErrBadChecksum
 		}
 
@@ -306,10 +304,10 @@ func (rm *RepoManager) CreateChunk(repoID string, chunkID []byte, gitObjectType 
 		}
 
 	} else {
-		return 0, fmt.Errorf("chunkID is wrong size (%v)", len(chunkID))
+		return 0, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
 	}
 
-	rm.repos[repoID].Objects[string(chunkID)] = ObjectEntry{ID: chunkID, Type: gitObjectType}
+	rm.repos[repoID].Objects[string(objectID)] = ObjectEntry{ID: objectID, Type: gitObjectType}
 
 	return n, nil
 }

@@ -8,9 +8,14 @@ import (
 	"gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
 )
 
-func cidFromString(s string) (*cid.Cid, error) {
+func cidForString(s string) (*cid.Cid, error) {
 	pref := cid.NewPrefixV1(cid.Raw, multihash.SHA2_256)
 	return pref.Sum([]byte(s))
+}
+
+func cidForObject(repoID string, objectID []byte) (*cid.Cid, error) {
+	pref := cid.NewPrefixV1(cid.Raw, multihash.SHA2_256)
+	return pref.Sum(append([]byte(repoID+":"), objectID...))
 }
 
 func incrementPort(p string) (string, error) {
