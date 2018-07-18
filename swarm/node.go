@@ -81,7 +81,11 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 
 	// Register Node on RPC to listen to procedure from git push/pull hooks
 	// Only listen to calls from localhost
-	err = RegisterRPC(n, listenPort)
+	port, err := incrementPort(listenPort)
+	if err != nil {
+		panic(err)
+	}
+	err = RegisterRPC(n, port)
 	if err != nil {
 		return nil, err
 	}
@@ -108,21 +112,15 @@ func (n *Node) LogPeers() error {
 func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	// The following code extracts the peer ID from the
 	// given multiaddress
-	fmt.Println("adding peer")
-
 	addr, err := ma.NewMultiaddr(multiaddrString)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("got address")
-
 	pinfo, err := pstore.InfoFromP2pAddr(addr)
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("got peer info")
 
 	err = n.Host.Connect(ctx, *pinfo)
 	if err != nil {
