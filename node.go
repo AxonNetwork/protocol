@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
-	"net/rpc"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -83,12 +81,10 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 
 	// Register Node on RPC to listen to procedure from git push/pull hooks
 	// Only listen to calls from localhost
-	rpc.Register(n)
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", listenPort))
+	err = RegisterRPC(n, listenPort)
 	if err != nil {
 		return nil, err
 	}
-	rpc.Accept(listener)
 
 	return n, nil
 }
@@ -206,17 +202,17 @@ func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, 
 	}
 
 	log.Printf("objectType: %s", objType)
-	if objType == "tree" {
-		objects, err := n.RepoManager.GitListObjects(sha1, repoName)
-		if err != nil {
-			return false, err
-		}
+	// if objType == "tree" {
+	// 	objects, err := n.RepoManager.GitListObjects(sha1, repoName)
+	// 	if err != nil {
+	// 		return false, err
+	// 	}
 
-		// Recurse
-		for obj := range objects {
-//			n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
-		}
-	}
+	// 	Recurse
+	// 	for obj := range objects {
+	// 				n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
+	// 	}
+	// }
 
 	n.GetChunk(ctx, peerIDB58, repoName, sha1)
 
@@ -382,29 +378,13 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	log.Printf("[stream] sent %v %v (%v bytes)", repoName, chunkIDStr, sent)
 }
 
-// Input/Output formats for RPC communication from push/pull hooks
-type NodeInput struct {
-	RemoteName string
-	RemoteUrl  string
-	Branch     string
-	Commit     string
-}
-
-type NodeOutput struct{}
-
-// func (this *Node) GitPull(in *NodeInput, out *NodeOutput) error {
-// 	str := in.Content
-// 	fmt.Printf("\n******************\nGit Pull:\n%s\n******************\n", str)
-// 	return nil
-// }
-
-func (this *Node) GitPush(in *NodeInput, out *NodeOutput) error {
+func (this *Node) GitPush(remoteName string, remoteUrl string, branch string, commit string) error {
 	fmt.Printf("\n******************\n")
 	fmt.Printf("Git Push:\n")
-	fmt.Println("remoteName: ", in.RemoteName)
-	fmt.Println("remoteUrl: ", in.RemoteUrl)
-	fmt.Println("branch: ", in.Branch)
-	fmt.Println("commit: ", in.Commit)
+	fmt.Println("remoteName: ", remoteName)
+	fmt.Println("remoteUrl: ", remoteUrl)
+	fmt.Println("branch: ", branch)
+	fmt.Println("commit: ", commit)
 	fmt.Printf("******************\n")
 	return nil
 }
