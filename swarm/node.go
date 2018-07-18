@@ -2,18 +2,15 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	// "crypto/sha1"
-	// "crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	// "hash"
 	"io"
 	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"gx/ipfs/QmQYwRL1T9dJtdCScoeRQwwvScbJTcWqnXhq4dYQ6Cu5vX/go-libp2p-kad-dht"
 	//"gx/ipfs/QmVsp2KdPYE6M8ryzCk5KHLo3zprcY5hBDaYx6uPCFUdxA/go-libp2p-record"
@@ -43,6 +40,7 @@ const (
 
 var (
 	ErrChunkNotFound = fmt.Errorf("chunk not found")
+	ErrProtocol      = fmt.Errorf("protocol error")
 )
 
 func NewNode(ctx context.Context, listenPort string) (*Node, error) {
@@ -74,8 +72,8 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 			for _, repoName := range repoNames {
 				// log.Printf("[announce] %v", repoName)
 
-				for _, chunkID := range rm.ChunksForRepo(repoName) {
-					err := n.Provide(ctx, repoName+":"+chunkID)
+				for _, object := range rm.ObjectsForRepo(repoName) {
+					err := n.Provide(ctx, repoName+":"+object.IDString())
 					if err != nil && err != kbucket.ErrLookupFailure {
 						log.Errorf("[announce] %v", err)
 					}
@@ -145,7 +143,7 @@ func (n *Node) GetChunk(ctx context.Context, repoID, chunkID string) error {
 
 	provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
 	if !found {
-		return errors.New("chunk not found")
+		return ErrChunkNotFound
 	}
 
 	return n.GetChunkFromPeer(ctx, provider.ID, repoID, chunkID)
@@ -255,7 +253,7 @@ func (n *Node) FindProviders(ctx context.Context, contentID string) ([]pstore.Pe
 func (n *Node) GetChunkFromPeer(ctx context.Context, peerID peer.ID, repoID string, chunkIDString string) error {
 	log.Printf("[stream] requesting chunk...")
 
-	// open the stream
+	// Open the stream
 	stream, err := n.Host.NewStream(ctx, peerID, CHUNK_STREAM_PROTO)
 	if err != nil {
 		return err
@@ -263,7 +261,7 @@ func (n *Node) GetChunkFromPeer(ctx context.Context, peerID peer.ID, repoID stri
 	defer stream.Close()
 
 	//
-	// 1. write the repo name and chunk ID to the stream
+	// 1. Write the repo name and chunk ID to the stream.
 	//
 	chunkID, err := hex.DecodeString(chunkIDString)
 	if err != nil {
@@ -279,52 +277,46 @@ func (n *Node) GetChunkFromPeer(ctx context.Context, peerID peer.ID, repoID stri
 	}
 
 	//
-	// 2. if the reply is 0x0, the peer doesn't have the chunk.  if it's 0x1, stream the chunk and save to disk.
+	// 2. If the reply is 0x0, the peer doesn't have the object.  If the reply is 0x1, it does.
 	//
 	reply := make([]byte, 1)
 	recvd, err := stream.Read(reply)
 	if err != nil {
 		return err
 	} else if recvd < 1 {
-		return fmt.Errorf("empty reply from chunk request")
+		return errors.Wrap(ErrProtocol, "1")
 	}
 
 	if reply[0] == 0x0 {
 		return ErrChunkNotFound
 	} else if reply[0] != 0x1 {
-		return fmt.Errorf("bad reply from chunk request: %v", reply[0])
+		return errors.Wrap(ErrProtocol, "2")
 	}
 
-	hash, chunksize, err := n.RepoManager.CreateChunk(repoID, stream)
+	//
+	// 3. Read the object type.  This only matters for Git objects.  Conscience chunks use 0x0.
+	//
+	recvd, err = stream.Read(reply)
+	if err != nil {
+		return err
+	} else if recvd < 1 {
+		return errors.Wrap(ErrProtocol, "3")
+	}
+
+	objectType := gitplumbing.ObjectType(reply[0])
+	if objectType < 0 || objectType > 7 {
+		return errors.Wrap(ErrProtocol, "4")
+	}
+
+	//
+	// 4. Stream the chunk to disk.
+	//
+	chunksize, err := n.RepoManager.CreateChunk(repoID, chunkID, objectType, stream)
 	if err != nil {
 		return err
 	}
-	// defer chunk.Close()
-
-	// copy the data from the p2p stream into the file and the hasher simultaneously.
-	// use the hash of the data for checksumming.
-	// var hasher hash.Hash
-	// if len(chunkID) == 20 {
-	//  hasher = sha1.New()
-	// } else if len(chunkID) == 32 {
-	//  hasher = sha256.New()
-	// } else {
-	//  return fmt.Errorf("bad chunkID length (%v)", len(chunkID))
-	// }
-	// reader := io.TeeReader(stream, hasher)
-	// chunksize, err := io.Copy(chunk, reader)
-	// if err != nil {
-	//  return err
-	// }
 
 	log.Printf("[stream] chunk bytes received: %v", chunksize)
-
-	// hash := hasher.Sum(nil)
-
-	if !bytes.Equal(chunkID, hash) {
-		log.Errorf("[stream] checksums are not equal (%v and %v)", hex.EncodeToString(chunkID), hex.EncodeToString(hash))
-	}
-
 	log.Printf("[stream] finished")
 	return nil
 }
@@ -335,8 +327,8 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	// create a buffered reader so we can read up until certain byte delimiters
 	bufstream := bufio.NewReader(stream)
 
-	var repoName, chunkIDStr string
-	var chunkID []byte
+	var repoName, objectIDStr string
+	var objectID []byte
 	var err error
 
 	//
@@ -356,10 +348,10 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 	}
 
 	//
-	// read the chunk ID, terminated by a null byte
+	// read the object ID, terminated by a null byte
 	//
 	{
-		chunkID, err = bufstream.ReadBytes(0x0)
+		objectID, err = bufstream.ReadBytes(0x0)
 		if err == io.EOF {
 			log.Errorf("[stream] terminated early")
 			return
@@ -367,26 +359,28 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 			log.Errorf("[stream] %v", err)
 			return
 		}
-		chunkID = chunkID[:len(chunkID)-1] // hack off the null byte at the end
-		chunkIDStr = hex.EncodeToString(chunkID)
+		objectID = objectID[:len(objectID)-1] // hack off the null byte at the end
+		objectIDStr = hex.EncodeToString(objectID)
 	}
 
-	log.Printf("[stream] peer requested %v %v", repoName, chunkIDStr)
+	log.Printf("[stream] peer requested %v %v", repoName, objectIDStr)
 
 	//
 	// send our response:
-	// 1. we don't have the chunk:
+	// 1. we don't have the object:
 	//    - 0x0
 	//    - <close connection>
-	// 2. we do have the chunk:
+	// 2. we do have the object:
 	//    - 0x1
-	//    - [chunk bytes...]
+	//    - [object type byte, only matters for Git objects]
+	//    - [object bytes...]
 	//    - <close connection>
 	//
-	if !n.RepoManager.HasChunk(repoName, chunkID) {
-		log.Printf("[stream] we don't have %v %v", repoName, chunkIDStr)
+	object, exists := n.RepoManager.Object(repoName, objectID)
+	if !exists {
+		log.Printf("[stream] we don't have %v %v", repoName, objectIDStr)
 
-		// tell the peer we don't have the chunk and then close the connection
+		// tell the peer we don't have the object and then close the connection
 		_, err := stream.Write([]byte{0x0})
 		if err != nil {
 			log.Errorf("[stream] %v", err)
@@ -395,25 +389,25 @@ func (n *Node) chunkStreamHandler(stream netp2p.Stream) {
 		return
 	}
 
-	_, err = stream.Write([]byte{0x1})
+	_, err = stream.Write([]byte{0x1, byte(object.Type)})
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return
 	}
 
-	chunk, err := n.RepoManager.OpenChunk(repoName, chunkID)
+	objectData, err := n.RepoManager.OpenChunk(repoName, objectID)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return
 	}
-	defer chunk.Close()
+	defer objectData.Close()
 
-	sent, err := io.Copy(stream, chunk)
+	sent, err := io.Copy(stream, objectData)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 	}
 
-	log.Printf("[stream] sent %v %v (%v bytes)", repoName, chunkIDStr, sent)
+	log.Printf("[stream] sent %v %v (%v bytes)", repoName, objectIDStr, sent)
 }
 
 func (this *Node) GitPush(remoteName string, remoteUrl string, branch string, commit string) error {

@@ -156,8 +156,8 @@ func logRepos(n *Node) {
 	log.Printf("Known repos:")
 	for _, repoName := range n.RepoManager.RepoNames() {
 		log.Printf("  - %v", repoName)
-		for _, chunk := range n.RepoManager.ChunksForRepo(repoName) {
-			log.Printf("      - %v", chunk)
+		for _, object := range n.RepoManager.ObjectsForRepo(repoName) {
+			log.Printf("      - %v", object.IDString())
 		}
 	}
 }
