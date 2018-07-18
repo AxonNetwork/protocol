@@ -205,18 +205,25 @@ func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, 
 		return false, err
 	}
 
-	log.Printf("objectType: %s", objType)
-	// if objType == "tree" {
-	// 	objects, err := n.RepoManager.GitListObjects(sha1, repoName)
-	// 	if err != nil {
-	// 		return false, err
-	// 	}
+	log.Printf("object Type: %s", objType)
+	if objType == "tree" {
+		log.Printf("is a tree!")
+		objects, err := n.RepoManager.GitListObjects(sha1, repoName)
 
-	// 	Recurse
-	// 	for obj := range objects {
-	// 				n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
-	// 	}
-	// }
+		log.Printf("objects: %v: ", objects)
+		if err != nil {
+			return false, err
+		}
+
+		// 	Recurse
+		for _, obj := range objects {
+			if (obj != sha1) {
+				log.Printf("object: %v", obj)
+				n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
+				return true, nil
+			}
+		}
+	}
 
 	n.GetChunk(ctx, peerIDB58, repoName, sha1)
 

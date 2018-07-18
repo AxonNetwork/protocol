@@ -117,7 +117,6 @@ func (rm *RepoManager) GitListObjects(ref string, repoName string) ([]string, er
 	s := bufio.NewScanner(bytes.NewReader(out))
 	for s.Scan() {
 		objs = append(objs, strings.Split(s.Text(), " ")[0])
-		log.Printf("%v", objs)
 	}
 	if err := s.Err(); err != nil {
 		return nil, errors.Wrapf(err, "scanning rev-list output failed: %s", err)
