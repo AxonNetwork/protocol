@@ -26,6 +26,7 @@ import (
 	dstore "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
 	dsync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
 	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
+	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 )
 
 type Node struct {
@@ -152,15 +153,14 @@ func (n *Node) GetObject(ctx context.Context, repoID string, objectID []byte) er
 	return n.GetObjectFromPeer(ctx, provider.ID, repoID, objectID)
 }
 
-func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) error {
+func (n *Node) GetObjectReaderFromPeer(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) (gitplumbing.ObjectType, inet.Stream, error) {
 	log.Printf("[stream] requesting object...")
 
 	// Open the stream
 	stream, err := n.Host.NewStream(ctx, peerID, OBJECT_STREAM_PROTO)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
-	defer stream.Close()
 
 	//
 	// 1. Write the repo name and object ID to the stream.
@@ -177,7 +177,7 @@ func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID str
 	// msg = append(msg, 0x0)
 	_, err = stream.Write(msg)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 
 	//
@@ -186,15 +186,15 @@ func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID str
 	reply := make([]byte, 1)
 	recvd, err := stream.Read(reply)
 	if err != nil {
-		return err
+		return 0, nil, err
 	} else if recvd < 1 {
-		return ErrProtocol
+		return 0, nil, ErrProtocol
 	}
 
 	if reply[0] == 0x0 {
-		return ErrObjectNotFound
+		return 0, nil, ErrObjectNotFound
 	} else if reply[0] != 0x1 {
-		return ErrProtocol
+		return 0, nil, ErrProtocol
 	}
 
 	//
@@ -202,16 +202,24 @@ func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID str
 	//
 	recvd, err = stream.Read(reply)
 	if err != nil {
-		return err
+		return 0, nil, err
 	} else if recvd < 1 {
-		return ErrProtocol
+		return 0, nil, ErrProtocol
 	}
 
 	objectType := gitplumbing.ObjectType(reply[0])
 	if objectType < 0 || objectType > 7 {
-		return ErrProtocol
+		return 0, nil, ErrProtocol
 	}
 
+	return objectType, stream, nil
+}
+func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) error {
+	objectType, stream, err := n.GetObjectReaderFromPeer(ctx, peerID, repoID, objectID)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
 	//
 	// 4. Stream the object to disk.
 	//

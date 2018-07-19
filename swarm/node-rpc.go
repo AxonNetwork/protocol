@@ -36,7 +36,7 @@ type PushHookInput struct {
 
 type PushHookOutput struct{}
 
-func (nr *NodeRPC) PushHook(in *NodeInput, out *NodeOutput) error {
+func (nr *NodeRPC) PushHook(in *PushHookInput, out *PushHookOutput) error {
 	err := nr.node.PushHook(in.RemoteName, in.RemoteUrl, in.Branch, in.Commit)
 	return err
 }
@@ -47,7 +47,7 @@ type PushHelperInput struct {
 
 type PushHelperOutput struct{}
 
-func (nr *NodeRPC) PushHelper(in *NodeInput, out *NodeOutput) error {
+func (nr *NodeRPC) PushHelper(in *PushHelperInput, out *PushHelperOutput) error {
 	err := nr.node.PushHelper(in.variable)
 	return err
 }
@@ -58,7 +58,7 @@ type PullHelperInput struct {
 
 type PullHelperOutput struct{}
 
-func (nr *NodeRPC) PullHelper(in *NodeInput, out *NodeOutput) error {
+func (nr *NodeRPC) PullHelper(in *PullHelperInput, out *PullHelperOutput) error {
 	err := nr.node.PullHelper(in.variable)
 	return err
 }
