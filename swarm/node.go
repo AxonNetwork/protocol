@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -63,11 +63,11 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 	go func() {
 		c := time.Tick(10 * time.Second)
 		for range c {
-			repoNames := rm.RepoNames()
+			repoNames := n.RepoManager.RepoNames()
 			for _, repoName := range repoNames {
 				// log.Printf("[announce] %v", repoName)
 
-				for _, object := range rm.ObjectsForRepo(repoName) {
+				for _, object := range n.RepoManager.ObjectsForRepo(repoName) {
 					err := n.ProvideObject(ctx, repoName, object.ID)
 					if err != nil && err != kbucket.ErrLookupFailure {
 						log.Errorf("[announce] %v", err)
@@ -152,7 +152,7 @@ func (n *Node) GetObject(ctx context.Context, repoID string, objectID []byte) er
 	return n.GetObjectFromPeer(ctx, provider.ID, repoID, objectID)
 }
 
-func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID string, objectIDString string) error {
+func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) error {
 	log.Printf("[stream] requesting object...")
 
 	// Open the stream
@@ -165,14 +165,16 @@ func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID str
 	//
 	// 1. Write the repo name and object ID to the stream.
 	//
-	objectID, err := hex.DecodeString(objectIDString)
-	if err != nil {
-		return err
-	}
 
-	msg := append([]byte(repoID), 0x0)
+	repoIDLen := make([]byte, 8)
+	objectIDLen := make([]byte, 8)
+	binary.LittleEndian.PutUint64(repoIDLen, uint64(len(repoID)))
+	binary.LittleEndian.PutUint64(objectIDLen, uint64(len(objectID)))
+
+	msg := append(repoIDLen, []byte(repoID)...)
+	msg = append(msg, objectIDLen...)
 	msg = append(msg, objectID...)
-	msg = append(msg, 0x0)
+	// msg = append(msg, 0x0)
 	_, err = stream.Write(msg)
 	if err != nil {
 		return err
@@ -223,49 +225,66 @@ func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID str
 	return nil
 }
 
+func readUint64(r io.Reader) (uint64, error) {
+	buf := make([]byte, 8)
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint64(buf), nil
+}
+
 func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	defer stream.Close()
 
 	// create a buffered reader so we can read up until certain byte delimiters
-	bufstream := bufio.NewReader(stream)
+	// bufstream := bufio.NewReader(stream)
 
-	var repoName, objectIDStr string
+	var repoID, objectIDStr string
 	var objectID []byte
 	var err error
 
 	//
-	// read the repo name, terminated by a null byte
+	// read the repo ID
 	//
 	{
-		repoNameBytes, err := bufstream.ReadBytes(0x0)
-		if err == io.EOF {
-			log.Errorf("[stream] terminated early")
-			return
-		} else if err != nil {
+		repoIDLen, err := readUint64(stream)
+		if err != nil {
 			log.Errorf("[stream] %v", err)
 			return
 		}
-		repoNameBytes = repoNameBytes[:len(repoNameBytes)-1] // hack off the null byte at the end
-		repoName = string(repoNameBytes)
+
+		repoIDBytes := make([]byte, repoIDLen)
+		_, err = io.ReadFull(stream, repoIDBytes)
+		if err != nil {
+			log.Errorf("[stream] %v", err)
+			return
+		}
+
+		repoID = string(repoIDBytes)
 	}
 
 	//
-	// read the object ID, terminated by a null byte
+	// read the object ID
 	//
 	{
-		objectID, err = bufstream.ReadBytes(0x0)
-		if err == io.EOF {
-			log.Errorf("[stream] terminated early")
-			return
-		} else if err != nil {
+		objectIDLen, err := readUint64(stream)
+		if err != nil {
 			log.Errorf("[stream] %v", err)
 			return
 		}
-		objectID = objectID[:len(objectID)-1] // hack off the null byte at the end
+
+		objectID = make([]byte, objectIDLen)
+		_, err = io.ReadFull(stream, objectID)
+		if err != nil {
+			log.Errorf("[stream] %v", err)
+			return
+		}
+
 		objectIDStr = hex.EncodeToString(objectID)
 	}
 
-	log.Printf("[stream] peer requested %v %v", repoName, objectIDStr)
+	log.Printf("[stream] peer requested %v %v", repoID, objectIDStr)
 
 	//
 	// send our response:
@@ -278,9 +297,9 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	//    - [object bytes...]
 	//    - <close connection>
 	//
-	object, exists := n.RepoManager.Object(repoName, objectID)
+	object, exists := n.RepoManager.Object(repoID, objectID)
 	if !exists {
-		log.Printf("[stream] we don't have %v %v", repoName, objectIDStr)
+		log.Printf("[stream] we don't have %v %v", repoID, objectIDStr)
 
 		// tell the peer we don't have the object and then close the connection
 		_, err := stream.Write([]byte{0x0})
@@ -297,7 +316,7 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 		return
 	}
 
-	objectData, err := n.RepoManager.OpenObject(repoName, objectID)
+	objectData, err := n.RepoManager.OpenObject(repoID, objectID)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return
@@ -309,7 +328,7 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 		log.Errorf("[stream] %v", err)
 	}
 
-	log.Printf("[stream] sent %v %v (%v bytes)", repoName, objectIDStr, sent)
+	log.Printf("[stream] sent %v %v (%v bytes)", repoID, objectIDStr, sent)
 }
 
 func (this *Node) GitPush(remoteName string, remoteUrl string, branch string, commit string) error {

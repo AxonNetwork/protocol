@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -98,8 +99,13 @@ func inputLoop(ctx context.Context, n *Node) {
 				err = fmt.Errorf("not enough args")
 				break
 			}
+			var objectID []byte
+			objectID, err = hex.DecodeString(parts[2])
+			if err != nil {
+				break
+			}
 
-			err = n.GetChunk(ctx, parts[1], parts[2])
+			err = n.GetObject(ctx, parts[1], objectID)
 
 		case "get-chunk-from-peer":
 			if len(parts) < 4 {
@@ -107,12 +113,19 @@ func inputLoop(ctx context.Context, n *Node) {
 				break
 			}
 
-			peerID, err := peer.IDB58Decode(parts[1])
+			var peerID peer.ID
+			peerID, err = peer.IDB58Decode(parts[1])
 			if err != nil {
 				break
 			}
 
-			err = n.GetChunkFromPeer(ctx, peerID, parts[2], parts[3])
+			var objectID []byte
+			objectID, err = hex.DecodeString(parts[3])
+			if err != nil {
+				break
+			}
+
+			err = n.GetObjectFromPeer(ctx, peerID, parts[2], objectID)
 
 		// case "get-repo":
 		//  if len(parts) < 3 {

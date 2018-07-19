@@ -182,7 +182,7 @@ func (rm *RepoManager) Object(repoID string, objectID []byte) (ObjectEntry, bool
 }
 
 // Open a object for reading.  It is the caller's responsibility to .Close() the object when finished.
-func (rm *RepoManager) OpenChunk(repoID string, objectID []byte) (io.ReadCloser, error) {
+func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
 		return nil, ErrRepoNotFound
@@ -193,7 +193,7 @@ func (rm *RepoManager) OpenChunk(repoID string, objectID []byte) (io.ReadCloser,
 		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		f, err := os.Open(p)
 		if err != nil {
-			return nil, ErrChunkNotFound
+			return nil, ErrObjectNotFound
 		}
 		return f, nil
 
@@ -217,7 +217,7 @@ func (rm *RepoManager) OpenChunk(repoID string, objectID []byte) (io.ReadCloser,
 		r, err := obj.Reader()
 		if err != nil {
 			log.Errorf("WEIRD ERROR (@@todo: diagnose): %v", err)
-			return nil, ErrChunkNotFound
+			return nil, ErrObjectNotFound
 		}
 		return r, nil
 	} else {
@@ -228,7 +228,7 @@ func (rm *RepoManager) OpenChunk(repoID string, objectID []byte) (io.ReadCloser,
 // Create a new object and fill it with the data from the provided io.Reader.  The object is saved to
 // disk.  If the hash of the data does not equal the provided objectID, this function returns an
 // error.  When creating a Conscience object, gitObjectType can simply be set to 0.
-func (rm *RepoManager) CreateChunk(repoID string, objectID []byte, gitObjectType gitplumbing.ObjectType, r io.Reader) (int64, error) {
+func (rm *RepoManager) CreateObject(repoID string, objectID []byte, gitObjectType gitplumbing.ObjectType, r io.Reader) (int64, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
 		return 0, ErrRepoNotFound
