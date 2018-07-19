@@ -35,8 +35,8 @@ func main() {
 
 		hash := sha256.Sum256(bs.Bytes())
 		hexHash := hex.EncodeToString(hash[:])
-		folderPath := filepath.Join(cwd, ".git", "data", hexHash[:2])
-		filePath := filepath.Join(folderPath, hexHash[2:])
+		folderPath := filepath.Join(cwd, ".git", "data")
+		filePath := filepath.Join(folderPath, hexHash[:])
 
 		err = os.MkdirAll(folderPath, os.FileMode(0777))
 		check(err)

@@ -24,7 +24,7 @@ func main() {
 			break
 		}
 
-		filePath := filepath.Join(cwd, ".git", "data", hexHash[:2], hexHash[2:])
+		filePath := filepath.Join(cwd, ".git", "data", hexHash[:])
 
 		f, err := os.Open(filePath)
 		if err != nil {
