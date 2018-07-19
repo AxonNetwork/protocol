@@ -331,13 +331,29 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	log.Printf("[stream] sent %v %v (%v bytes)", repoID, objectIDStr, sent)
 }
 
-func (this *Node) GitPush(remoteName string, remoteUrl string, branch string, commit string) error {
+func (this *Node) PushHook(remoteName string, remoteUrl string, branch string, commit string) error {
 	fmt.Printf("\n******************\n")
-	fmt.Printf("Git Push:\n")
+	fmt.Printf("Push Hook:\n")
 	fmt.Println("remoteName: ", remoteName)
 	fmt.Println("remoteUrl: ", remoteUrl)
 	fmt.Println("branch: ", branch)
 	fmt.Println("commit: ", commit)
+	fmt.Printf("******************\n")
+	return nil
+}
+
+func (this *Node) PushHelper(variable string) error {
+	fmt.Printf("\n******************\n")
+	fmt.Printf("Push Helper:\n")
+	fmt.Println("variable: ", variable)
+	fmt.Printf("******************\n")
+	return nil
+}
+
+func (this *Node) PullHelper(variable string) error {
+	fmt.Printf("\n******************\n")
+	fmt.Printf("Pull Helper:\n")
+	fmt.Println("variable: ", variable)
 	fmt.Printf("******************\n")
 	return nil
 }

@@ -10,21 +10,6 @@ type NodeRPC struct {
 	node *Node
 }
 
-// Input/Output formats for RPC communication from push/pull hooks
-type NodeInput struct {
-	RemoteName string
-	RemoteUrl  string
-	Branch     string
-	Commit     string
-}
-
-type NodeOutput struct{}
-
-func (nr *NodeRPC) GitPush(in *NodeInput, out *NodeOutput) error {
-	err := nr.node.GitPush(in.RemoteName, in.RemoteUrl, in.Branch, in.Commit)
-	return err
-}
-
 func RegisterRPC(n *Node, listenPort string) error {
 	nr := &NodeRPC{n}
 	err := rpc.RegisterName("Node", nr)
@@ -39,4 +24,41 @@ func RegisterRPC(n *Node, listenPort string) error {
 
 	go rpc.Accept(listener)
 	return nil
+}
+
+// Input/Output formats for RPC communication from push/pull hooks
+type PushHookInput struct {
+	RemoteName string
+	RemoteUrl  string
+	Branch     string
+	Commit     string
+}
+
+type PushHookOutput struct{}
+
+func (nr *NodeRPC) PushHook(in *NodeInput, out *NodeOutput) error {
+	err := nr.node.PushHook(in.RemoteName, in.RemoteUrl, in.Branch, in.Commit)
+	return err
+}
+
+type PushHelperInput struct {
+	variable string
+}
+
+type PushHelperOutput struct{}
+
+func (nr *NodeRPC) PushHelper(in *NodeInput, out *NodeOutput) error {
+	err := nr.node.PushHelper(in.variable)
+	return err
+}
+
+type PullHelperInput struct {
+	variable string
+}
+
+type PullHelperOutput struct{}
+
+func (nr *NodeRPC) PullHelper(in *NodeInput, out *NodeOutput) error {
+	err := nr.node.PullHelper(in.variable)
+	return err
 }
