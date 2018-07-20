@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"time"
-
+	"reflect"
 	// "github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -374,7 +374,7 @@ func (this *Node) ListHelper(repoID string, objectID []byte) (inet.Stream, error
 	objectType, stream, err := this.GetObjectReaderFromPeer(ctx, provider.ID, repoID, objectID)
 
 	fmt.Printf("objectType: %v" , objectType)
-	fmt.Printf("stream: %v", stream)
+	fmt.Printf("stream: %v", reflect.TypeOf(stream))
 
 	fmt.Printf("******************\n")
 	return nil, nil
