@@ -1,10 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	"net"
 	"net/rpc"
-	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 )
 
 type NodeRPC struct {
@@ -17,6 +18,8 @@ func RegisterRPC(n *Node, listenPort string) error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("rpc port: ", listenPort)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", listenPort))
 	if err != nil {
@@ -43,11 +46,24 @@ func (nr *NodeRPC) PushHook(in *PushHookInput, out *PushHookOutput) error {
 	return err
 }
 
+type GetObjectInput struct {
+	RepoID   string
+	ObjectID []byte
+}
+
+type GetObjectOutput struct{}
+
+func (nr *NodeRPC) GetObject(in *GetObjectInput, out *GetObjectOutput) error {
+	ctx := context.Background()
+	err := nr.node.GetObject(ctx, in.RepoID, in.ObjectID)
+	return err
+}
+
 type ListHelperInput struct {
 	Root string
 }
 
-type ListHelperOutput struct{
+type ListHelperOutput struct {
 	Stream inet.Stream
 }
 
@@ -56,14 +72,3 @@ func (nr *NodeRPC) ListHelper(in *ListHelperInput, out *ListHelperOutput) error 
 	out.Stream = stream
 	return err
 }
-
-// type PullHelperInput struct {
-// 	variable string
-// }
-
-// type PullHelperOutput struct{}
-
-// func (nr *NodeRPC) PullHelper(in *PullHelperInput, out *PullHelperOutput) error {
-// 	err := nr.node.PullHelper(in.variable)
-// 	return err
-// }
