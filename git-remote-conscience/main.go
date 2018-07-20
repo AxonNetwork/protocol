@@ -1,3 +1,13 @@
+// TO TEST:
+// 1) open 2 terminals and instantiate peer nodes, one on 1337 and one on 8080
+// 2) call add-peer between them. 
+// 3) in a testing folder, create a git repo
+// 4) call "add-repo <route to git repo>" on the peer open at 8080
+// 5) open a new terminal with root at git-remote conscience
+// 6) run "go build *.go"
+// 7) run mv fetch /usr/local/bin/git-remote-conscience
+// 8) run git clone conscience://conscience/testing
+
 package main
 
 import (
