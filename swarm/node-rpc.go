@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
+	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 )
 
 type NodeRPC struct {
@@ -36,29 +37,33 @@ type PushHookInput struct {
 
 type PushHookOutput struct{}
 
+// For git remote helper
 func (nr *NodeRPC) PushHook(in *PushHookInput, out *PushHookOutput) error {
 	err := nr.node.PushHook(in.RemoteName, in.RemoteUrl, in.Branch, in.Commit)
 	return err
 }
 
-type PushHelperInput struct {
-	variable string
+type ListHelperInput struct {
+	Root string
 }
 
-type PushHelperOutput struct{}
+type ListHelperOutput struct{
+	Stream inet.Stream
+}
 
-func (nr *NodeRPC) PushHelper(in *PushHelperInput, out *PushHelperOutput) error {
-	err := nr.node.PushHelper(in.variable)
+func (nr *NodeRPC) ListHelper(in *ListHelperInput, out *ListHelperOutput) error {
+	stream, err := nr.node.ListHelper(in.Root)
+	out.Stream = stream
 	return err
 }
 
-type PullHelperInput struct {
-	variable string
-}
+// type PullHelperInput struct {
+// 	variable string
+// }
 
-type PullHelperOutput struct{}
+// type PullHelperOutput struct{}
 
-func (nr *NodeRPC) PullHelper(in *PullHelperInput, out *PullHelperOutput) error {
-	err := nr.node.PullHelper(in.variable)
-	return err
-}
+// func (nr *NodeRPC) PullHelper(in *PullHelperInput, out *PullHelperOutput) error {
+// 	err := nr.node.PullHelper(in.variable)
+// 	return err
+// }

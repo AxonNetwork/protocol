@@ -350,20 +350,12 @@ func (this *Node) PushHook(remoteName string, remoteUrl string, branch string, c
 	return nil
 }
 
-func (this *Node) PushHelper(variable string) error {
+func (this *Node) ListHelper(root string) (inet.Stream, error) {
 	fmt.Printf("\n******************\n")
-	fmt.Printf("Push Helper:\n")
-	fmt.Println("variable: ", variable)
+	fmt.Printf("ListHelper:\n")
+	fmt.Println("root: ", root)
 	fmt.Printf("******************\n")
-	return nil
-}
-
-func (this *Node) PullHelper(variable string) error {
-	fmt.Printf("\n******************\n")
-	fmt.Printf("Pull Helper:\n")
-	fmt.Println("variable: ", variable)
-	fmt.Printf("******************\n")
-	return nil
+	return nil, nil
 }
 
 type blankValidator struct{}
