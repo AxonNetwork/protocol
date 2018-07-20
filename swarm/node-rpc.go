@@ -44,7 +44,8 @@ func (nr *NodeRPC) PushHook(in *PushHookInput, out *PushHookOutput) error {
 }
 
 type ListHelperInput struct {
-	Root string
+	RepoID string
+	ObjectID []byte
 }
 
 type ListHelperOutput struct{
@@ -52,18 +53,7 @@ type ListHelperOutput struct{
 }
 
 func (nr *NodeRPC) ListHelper(in *ListHelperInput, out *ListHelperOutput) error {
-	stream, err := nr.node.ListHelper(in.Root)
+	stream, err := nr.node.ListHelper(in.RepoID, in.ObjectID)
 	out.Stream = stream
 	return err
 }
-
-// type PullHelperInput struct {
-// 	variable string
-// }
-
-// type PullHelperOutput struct{}
-
-// func (nr *NodeRPC) PullHelper(in *PullHelperInput, out *PullHelperOutput) error {
-// 	err := nr.node.PullHelper(in.variable)
-// 	return err
-// }

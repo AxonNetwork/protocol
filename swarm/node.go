@@ -350,10 +350,32 @@ func (this *Node) PushHook(remoteName string, remoteUrl string, branch string, c
 	return nil
 }
 
-func (this *Node) ListHelper(root string) (inet.Stream, error) {
+func (this *Node) ListHelper(repoID string, objectID []byte) (inet.Stream, error) {
 	fmt.Printf("\n******************\n")
 	fmt.Printf("ListHelper:\n")
-	fmt.Println("root: ", root)
+	fmt.Println("repoID: ", repoID)
+	fmt.Println("objectID: ", objectID)
+
+	//@TODO: refactor with GetObject
+	c, err := cidForObject(repoID, objectID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	provider, found := <-this.DHT.FindProvidersAsync(ctxTimeout, c, 1)
+	if !found {
+		return nil, ErrObjectNotFound
+	}
+
+	objectType, stream, err := this.GetObjectReaderFromPeer(ctx, provider.ID, repoID, objectID)
+
+	fmt.Printf("objectType: %v" , objectType)
+	fmt.Printf("stream: %v", stream)
+
 	fmt.Printf("******************\n")
 	return nil, nil
 }
