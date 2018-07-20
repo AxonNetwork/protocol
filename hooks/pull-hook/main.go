@@ -34,7 +34,7 @@ func main() {
 	section := cfg.Raw.Section("conscience")
 	repoID := section.Option("repoid")
 
-	client, err := rpc.Dial("tcp", fmt.Sprintf("127.0.01:1338"))
+	client, err := rpc.Dial("tcp", fmt.Sprintf("127.0.0.1:1338"))
 
 	for _, entry := range entries {
 		if filepath.Ext(entry.Name) == ".JPG" {

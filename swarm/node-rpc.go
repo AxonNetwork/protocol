@@ -30,21 +30,24 @@ func RegisterRPC(n *Node, listenPort string) error {
 	return nil
 }
 
-// Input/Output formats for RPC communication from push/pull hooks
-type PushHookInput struct {
-	RemoteName string
-	RemoteUrl  string
-	Branch     string
-	Commit     string
+// ********************
+// AddRepo
+// ********************
+
+type AddRepoInput struct {
+	RepoPath string
 }
 
-type PushHookOutput struct{}
+type AddRepoOutput struct{}
 
-// For git remote helper
-func (nr *NodeRPC) PushHook(in *PushHookInput, out *PushHookOutput) error {
-	err := nr.node.PushHook(in.RemoteName, in.RemoteUrl, in.Branch, in.Commit)
+func (nr *NodeRPC) AddRepo(in *AddRepoInput, out *AddRepoOutput) error {
+	err := nr.node.RepoManager.AddRepo(in.RepoPath)
 	return err
 }
+
+// ********************
+// GetObject
+// ********************
 
 type GetObjectInput struct {
 	RepoID   string
@@ -58,6 +61,10 @@ func (nr *NodeRPC) GetObject(in *GetObjectInput, out *GetObjectOutput) error {
 	err := nr.node.GetObject(ctx, in.RepoID, in.ObjectID)
 	return err
 }
+
+// ********************
+// ListHelper
+// ********************
 
 type ListHelperInput struct {
 	Root string
