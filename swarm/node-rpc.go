@@ -1,10 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	"net"
 	"net/rpc"
-	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 )
 
 type NodeRPC struct {
@@ -18,6 +19,8 @@ func RegisterRPC(n *Node, listenPort string) error {
 		return err
 	}
 
+	fmt.Println("rpc port: ", listenPort)
+
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", listenPort))
 	if err != nil {
 		return err
@@ -27,28 +30,48 @@ func RegisterRPC(n *Node, listenPort string) error {
 	return nil
 }
 
-// Input/Output formats for RPC communication from push/pull hooks
-type PushHookInput struct {
-	RemoteName string
-	RemoteUrl  string
-	Branch     string
-	Commit     string
+// ********************
+// AddRepo
+// ********************
+
+type AddRepoInput struct {
+	RepoPath string
 }
 
-type PushHookOutput struct{}
+type AddRepoOutput struct{}
 
-// For git remote helper
-func (nr *NodeRPC) PushHook(in *PushHookInput, out *PushHookOutput) error {
-	err := nr.node.PushHook(in.RemoteName, in.RemoteUrl, in.Branch, in.Commit)
+func (nr *NodeRPC) AddRepo(in *AddRepoInput, out *AddRepoOutput) error {
+	err := nr.node.RepoManager.AddRepo(in.RepoPath)
 	return err
 }
+
+// ********************
+// GetObject
+// ********************
+
+type GetObjectInput struct {
+	RepoID   string
+	ObjectID []byte
+}
+
+type GetObjectOutput struct{}
+
+func (nr *NodeRPC) GetObject(in *GetObjectInput, out *GetObjectOutput) error {
+	ctx := context.Background()
+	err := nr.node.GetObject(ctx, in.RepoID, in.ObjectID)
+	return err
+}
+
+// ********************
+// ListHelper
+// ********************
 
 type ListHelperInput struct {
 	RepoID string
 	ObjectID []byte
 }
 
-type ListHelperOutput struct{
+type ListHelperOutput struct {
 	Stream inet.Stream
 }
 

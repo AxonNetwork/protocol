@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net/rpc"
 	"os"
@@ -12,61 +11,40 @@ const (
 )
 
 func main() {
-	remoteName := os.Args[1]
-	remoteUrl := os.Args[2]
-
-	reader := bufio.NewReader(os.Stdin)
-	branch, err := reader.ReadString(' ')
+	cwd, err := os.Getwd()
 	check(err)
-	commit, err := reader.ReadString(' ')
+
+	client, err := rpc.Dial("tcp", fmt.Sprintf("127.0.0.1:1338"))
 	check(err)
-	// prevBranch, err := reader.ReadString(' ')
-	// check(err)
-	// prevCommit, err := reader.ReadString('\n')
-	// check(err)
 
-	err = GitPush(remoteName, remoteUrl, branch, commit)
-
-	if err != nil {
-		panic(err)
-	} else {
-		fmt.Println("All is well")
+	in := AddRepoInput{
+		cwd,
 	}
+	out := AddRepoOutput{}
+
+	err = client.Call("Node.AddRepo", in, &out)
+	check(err)
+	fmt.Println("Added Repo")
+
+	// remoteName := os.Args[1]
+	// remoteUrl := os.Args[2]
+	// reader := bufio.NewReader(os.Stdin)
+	// branch, err := reader.ReadString(' ')
+	// commit, err := reader.ReadString(' ')
 }
-
-func GitPush(remoteName string, remoteUrl string, branch string, commit string) error {
-	client, err := rpc.Dial("tcp", fmt.Sprintf("127.0.0.1:%s", PORT))
-	if err != nil {
-		panic(err)
-	}
-
-	in := NodeInput{
-		remoteName,
-		remoteUrl,
-		branch,
-		commit,
-	}
-	out := NodeOutput{}
-	err = client.Call("Node.GitPush", in, &out)
-
-	return err
-}
-
-type Node interface {
-	GitPush(*NodeInput, *NodeOutput) error
-}
-
-type NodeInput struct {
-	RemoteName string
-	RemoteUrl  string
-	Branch     string
-	Commit     string
-}
-
-type NodeOutput struct{}
 
 func check(e error) {
 	if e != nil {
 		panic(e)
 	}
 }
+
+type Node interface {
+	AddRepo(AddRepoInput, *AddRepoOutput) error
+}
+
+type AddRepoInput struct {
+	RepoPath string
+}
+
+type AddRepoOutput struct{}
