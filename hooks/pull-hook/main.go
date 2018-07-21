@@ -37,7 +37,7 @@ func main() {
 	client, err := rpc.Dial("tcp", fmt.Sprintf("127.0.0.1:1338"))
 
 	for _, entry := range entries {
-		if filepath.Ext(entry.Name) == ".JPG" {
+		if filepath.Ext(entry.Name) == ".gif" {
 			blob, err := repo.BlobObject(entry.Hash)
 			check(err)
 			downloadChunks(client, repoID, blob)
