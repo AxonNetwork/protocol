@@ -70,10 +70,6 @@ func fetchAndWriteObject(hash string) (*git.Object, error) {
 	return obj, nil
 }
 
-type Node interface {
-	GetObject(GetObjectInput, *GetObjectOutput) error
-}
-
 type GetObjectInput struct {
 	RepoID   string
 	ObjectID []byte

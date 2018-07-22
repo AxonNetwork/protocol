@@ -56,8 +56,8 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		case strings.HasPrefix(text, "list"):
 			log.Log("msg", head)
-			fmt.Fprintf(w, "%s refs/heads/masters\n", head)
-			fmt.Fprintln(w, "@refs/heads/masters HEAD")
+			fmt.Fprintf(w, "%s refs/heads/master\n", head)
+			fmt.Fprintln(w, "@refs/heads/master HEAD")
 			fmt.Fprintln(w)
 
 		case strings.HasPrefix(text, "fetch"):
