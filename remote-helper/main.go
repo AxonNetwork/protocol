@@ -33,13 +33,6 @@ func main() {
 		panic("empty GIT_DIR")
 	}
 
-	log.Errorln("GIT_DIR ~>", GIT_DIR)
-	log.Errorln("dir ~>", filepath.Dir(GIT_DIR))
-	_, err = os.Stat(GIT_DIR)
-	if err != nil {
-		log.Errorln("STAT ~>", err)
-	}
-
 	repo, err = git.PlainOpen(filepath.Dir(GIT_DIR))
 	if err != nil {
 		panic(err)

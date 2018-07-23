@@ -19,7 +19,7 @@ import (
 var GIT_DIR string = os.Getenv("GIT_DIR")
 
 func main() {
-	repo, err := git.PlainOpen(GIT_DIR)
+	repo, err := git.PlainOpen(filepath.Dir(GIT_DIR))
 	check(err)
 
 	cfg, err := repo.Config()
