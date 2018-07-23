@@ -1,18 +1,18 @@
-package main
+package swarm
 
 import (
-	"context"
 	"fmt"
-	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	"net"
 	"net/rpc"
+
+	inet "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 )
 
 type NodeRPC struct {
 	node *Node
 }
 
-func RegisterRPC(n *Node, listenPort string) error {
+func RegisterRPC(n *Node, listenPort int) error {
 	nr := &NodeRPC{n}
 	err := rpc.RegisterName("Node", nr)
 	if err != nil {
@@ -21,7 +21,7 @@ func RegisterRPC(n *Node, listenPort string) error {
 
 	fmt.Println("rpc port: ", listenPort)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", listenPort))
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%v", listenPort))
 	if err != nil {
 		return err
 	}
@@ -49,25 +49,18 @@ func (nr *NodeRPC) AddRepo(in *AddRepoInput, out *AddRepoOutput) error {
 // GetObject
 // ********************
 
-type GetObjectInput struct {
-	RepoID   string
-	ObjectID []byte
-}
-
-type GetObjectOutput struct{}
-
-func (nr *NodeRPC) GetObject(in *GetObjectInput, out *GetObjectOutput) error {
-	ctx := context.Background()
-	err := nr.node.GetObject(ctx, in.RepoID, in.ObjectID)
-	return err
-}
+// func (nr *NodeRPC) GetObject(in *noderpc.GetObjectInput, out *noderpc.GetObjectOutput) error {
+//  ctx := context.Background()
+//  err := nr.node.GetObject(ctx, in.RepoID, in.ObjectID)
+//  return err
+// }
 
 // ********************
 // ListHelper
 // ********************
 
 type ListHelperInput struct {
-	RepoID string
+	RepoID   string
 	ObjectID []byte
 }
 

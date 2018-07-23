@@ -1,4 +1,4 @@
-package main
+package swarm
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/src-d/go-git.v4"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -28,6 +29,7 @@ type RepoEntry struct {
 type ObjectEntry struct {
 	ID   []byte
 	Type gitplumbing.ObjectType
+	Len  int
 }
 
 func (oe ObjectEntry) IDString() string {
@@ -182,10 +184,10 @@ func (rm *RepoManager) Object(repoID string, objectID []byte) (ObjectEntry, bool
 }
 
 // Open a object for reading.  It is the caller's responsibility to .Close() the object when finished.
-func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser, error) {
+func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser, gitplumbing.ObjectType, int64, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
-		return nil, ErrRepoNotFound
+		return nil, 0, 0, errors.WithStack(ErrRepoNotFound)
 	}
 
 	if len(objectID) == CONSCIENCE_HASH_LENGTH {
@@ -193,16 +195,21 @@ func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser
 		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		f, err := os.Open(p)
 		if err != nil {
-			return nil, ErrObjectNotFound
+			return nil, 0, 0, errors.Wrapf(ErrObjectNotFound, "RepoManager - %v:%v", repoID, hex.EncodeToString(objectID))
 		}
-		return f, nil
+		stat, err := f.Stat()
+		if err != nil {
+			return nil, 0, 0, err
+		}
+
+		return f, 0, stat.Size(), nil
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
 		// Open a Git object
 
 		repo, err := git.PlainOpen(repoEntry.Path)
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 
 		// The object might be in a Packfile, so we use a more intelligent function to obtain a readable
@@ -211,17 +218,19 @@ func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser
 		copy(hash[:], objectID)
 		obj, err := repo.Storer.EncodedObject(gitplumbing.AnyObject, hash)
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 
 		r, err := obj.Reader()
 		if err != nil {
 			log.Errorf("WEIRD ERROR (@@todo: diagnose): %v", err)
-			return nil, ErrObjectNotFound
+			return nil, 0, 0, errors.WithStack(ErrObjectNotFound)
 		}
-		return r, nil
+
+		return r, obj.Type(), obj.Size(), nil
+
 	} else {
-		return nil, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
+		return nil, 0, 0, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
 	}
 }
 
@@ -231,7 +240,7 @@ func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser
 func (rm *RepoManager) CreateObject(repoID string, objectID []byte, gitObjectType gitplumbing.ObjectType, r io.Reader) (int64, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
-		return 0, ErrRepoNotFound
+		return 0, errors.WithStack(ErrRepoNotFound)
 	}
 
 	var n int64
@@ -248,7 +257,7 @@ func (rm *RepoManager) CreateObject(repoID string, objectID []byte, gitObjectTyp
 		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		f, err := os.Create(p)
 		if err != nil {
-			return 0, ErrRepoNotFound
+			return 0, errors.WithStack(ErrRepoNotFound)
 		}
 
 		hasher := sha256.New()
@@ -263,7 +272,7 @@ func (rm *RepoManager) CreateObject(repoID string, objectID []byte, gitObjectTyp
 		if !bytes.Equal(objectID, hasher.Sum(nil)) {
 			f.Close()
 			os.Remove(p)
-			return 0, ErrBadChecksum
+			return 0, errors.WithStack(ErrBadChecksum)
 		}
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
@@ -294,13 +303,13 @@ func (rm *RepoManager) CreateObject(repoID string, objectID []byte, gitObjectTyp
 		// Check the checksum
 		h := obj.Hash()
 		if !bytes.Equal(objectID, h[:]) {
-			return 0, ErrBadChecksum
+			return 0, errors.WithStack(ErrBadChecksum)
 		}
 
 		// Write the object to disk
 		_, err = repo.Storer.SetEncodedObject(obj)
 		if err != nil {
-			return 0, err
+			return 0, errors.WithStack(err)
 		}
 
 	} else {

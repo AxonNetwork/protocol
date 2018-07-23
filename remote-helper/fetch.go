@@ -1,37 +1,55 @@
 package main
 
 import (
-	"encoding/hex"
-	// "fmt"
-	"github.com/cryptix/exp/git"
-	"os"
-	"path/filepath"
+	"fmt"
+	"io"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
-func recurseCommit(hash string) error {
+func recurseCommit(hash gitplumbing.Hash) error {
+	log.Printf("recurseCommit %v", hash.String())
 	obj, err := fetchAndWriteObject(hash)
 	if err != nil {
 		return err
 	}
-	commit, _ := obj.Commit()
 
-	if commit.Parent != "" {
-		recurseCommit(commit.Parent)
+	// commit, err := repo.CommitObject(hash)
+	// if err != nil {
+	//  return errors.WithStack(err)
+	// }
+	commit := &gitobject.Commit{}
+	commit.Decode(obj)
+
+	if commit.NumParents() > 0 {
+		for _, phash := range commit.ParentHashes {
+			err := recurseCommit(phash)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+		}
 	}
 
-	fetchTree(commit.Tree)
-	return nil
+	return fetchTree(commit.TreeHash)
 }
 
-func fetchTree(hash string) error {
-	obj, err := fetchAndWriteObject(hash)
+func fetchTree(hash gitplumbing.Hash) error {
+	log.Printf("fetchTree %v", hash.String())
+	_, err := fetchAndWriteObject(hash)
 	if err != nil {
 		return err
 	}
-	entries, _ := obj.Tree()
 
-	for _, t := range entries {
-		_, err := fetchAndWriteObject(t.SHA1Sum.String())
+	tIter, err := repo.TreeObject(hash)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	for _, entry := range tIter.Entries {
+		_, err := fetchAndWriteObject(entry.Hash)
 		if err != nil {
 			return err
 		}
@@ -40,39 +58,44 @@ func fetchTree(hash string) error {
 	return nil
 }
 
-func fetchAndWriteObject(hash string) (*git.Object, error) {
-	objectID, err := hex.DecodeString(hash)
+func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, error) {
+	log.Printf("fetchAndWriteObject %v", hash.String())
+	objectStream, objectType, objectLen, err := client.GetObject(repoID, hash[:])
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
+	}
+	defer objectStream.Close()
+
+	obj := repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
+	obj.SetType(objectType)
+
+	w, err := obj.Writer()
+	if err != nil {
+		return nil, errors.WithStack(err)
 	}
 
-	in := GetObjectInput{
-		repoID,
-		objectID,
-	}
-	out := GetObjectOutput{}
-	err = client.Call("Node.GetObject", in, &out)
+	copied, err := io.Copy(w, objectStream)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
+	} else if copied != objectLen {
+		return nil, errors.WithStack(fmt.Errorf("object stream bad length"))
 	}
 
-	p := filepath.Join(repoPath, ".git", "objects", hash[:2], hash[2:])
-	f, err := os.Open(p)
+	err = w.Close()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
-	obj, err := git.DecodeObject(f)
+	// Check the checksum
+	if hash != obj.Hash() {
+		return nil, errors.WithStack(fmt.Errorf("bad checksum for piece %v", hash.String()))
+	}
+
+	// Write the object to disk
+	_, err = repo.Storer.SetEncodedObject(obj)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return obj, nil
 }
-
-type GetObjectInput struct {
-	RepoID   string
-	ObjectID []byte
-}
-
-type GetObjectOutput struct{}

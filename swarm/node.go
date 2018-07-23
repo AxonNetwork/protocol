@@ -1,4 +1,4 @@
-package main
+package swarm
 
 import (
 	"context"
@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"time"
+	"net"
 	"reflect"
-	// "github.com/pkg/errors"
+	"time"
+
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
@@ -44,9 +46,11 @@ var (
 	ErrProtocol       = fmt.Errorf("protocol error")
 )
 
-func NewNode(ctx context.Context, listenPort string) (*Node, error) {
+func NewNode(ctx context.Context, listenPort int) (*Node, error) {
 	h, err := libp2p.New(ctx,
-		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", listenPort)),
+		libp2p.ListenAddrStrings(
+			fmt.Sprintf("/ip4/0.0.0.0/tcp/%v", listenPort),
+		),
 		libp2p.NATPortMap(),
 	)
 	if err != nil {
@@ -86,20 +90,14 @@ func NewNode(ctx context.Context, listenPort string) (*Node, error) {
 
 	// Register Node on RPC to listen to procedure from git push/pull hooks
 	// Only listen to calls from localhost
-	port, err := incrementPort(listenPort)
-	if err != nil {
-		return nil, err
-	}
-	err = RegisterRPC(n, port)
+	// @@TODO: make listen addr configurable (including unix FDs for direct IPC)
+	err = n.initRPC("tcp", fmt.Sprintf("127.0.0.1:%v", listenPort+1))
+	// err = n.initRPC("unix", "/tmp/conscience-socket")
 	if err != nil {
 		return nil, err
 	}
 
 	return n, nil
-}
-
-func (n *Node) Bootstrap(ctx context.Context) error {
-	return n.DHT.Bootstrap(ctx)
 }
 
 // Adds a peer to the Node's address book and attempts to .Connect to it using the libp2p Host.
@@ -134,10 +132,15 @@ func (n *Node) ProvideObject(ctx context.Context, repoID string, objectID []byte
 
 // Attempts to find a peer providing the given object.  If a peer is found, the Node tries to
 // download the object from that peer.
-func (n *Node) GetObject(ctx context.Context, repoID string, objectID []byte) error {
+func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (io.ReadCloser, gitplumbing.ObjectType, int64, error) {
+	// If we detect that we already have the object locally, just open a regular file stream
+	if n.RepoManager.HasObject(repoID, objectID) {
+		return n.openLocalObjectReader(repoID, objectID)
+	}
+
 	c, err := cidForObject(repoID, objectID)
 	if err != nil {
-		return err
+		return nil, 0, 0, err
 	}
 
 	// Try to find 1 provider of the object within 10 seconds
@@ -147,19 +150,30 @@ func (n *Node) GetObject(ctx context.Context, repoID string, objectID []byte) er
 
 	provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
 	if !found {
-		return ErrObjectNotFound
+		return nil, 0, 0, errors.New("can't find peer with object " + repoID + ":" + hex.EncodeToString(objectID))
 	}
 
-	return n.GetObjectFromPeer(ctx, provider.ID, repoID, objectID)
+	if provider.ID == n.Host.ID() {
+		// We have the object locally (perhaps in another clone of the same repository)
+		return n.openLocalObjectReader(repoID, objectID)
+
+	} else {
+		// We found a peer with the object
+		return n.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
+	}
 }
 
-func (n *Node) GetObjectReaderFromPeer(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) (gitplumbing.ObjectType, inet.Stream, error) {
+func (n *Node) openLocalObjectReader(repoID string, objectID []byte) (io.ReadCloser, gitplumbing.ObjectType, int64, error) {
+	return n.RepoManager.OpenObject(repoID, objectID)
+}
+
+func (n *Node) openPeerObjectReader(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) (io.ReadCloser, gitplumbing.ObjectType, int64, error) {
 	log.Printf("[stream] requesting object...")
 
 	// Open the stream
 	stream, err := n.Host.NewStream(ctx, peerID, OBJECT_STREAM_PROTO)
 	if err != nil {
-		return 0, nil, err
+		return nil, 0, 0, err
 	}
 
 	//
@@ -177,7 +191,7 @@ func (n *Node) GetObjectReaderFromPeer(ctx context.Context, peerID peer.ID, repo
 	// msg = append(msg, 0x0)
 	_, err = stream.Write(msg)
 	if err != nil {
-		return 0, nil, err
+		return nil, 0, 0, err
 	}
 
 	//
@@ -186,15 +200,15 @@ func (n *Node) GetObjectReaderFromPeer(ctx context.Context, peerID peer.ID, repo
 	reply := make([]byte, 1)
 	recvd, err := stream.Read(reply)
 	if err != nil {
-		return 0, nil, err
+		return nil, 0, 0, err
 	} else if recvd < 1 {
-		return 0, nil, ErrProtocol
+		return nil, 0, 0, errors.WithStack(ErrProtocol)
 	}
 
 	if reply[0] == 0x0 {
-		return 0, nil, ErrObjectNotFound
+		return nil, 0, 0, errors.New("peer doesn't have object " + repoID + ":" + hex.EncodeToString(objectID))
 	} else if reply[0] != 0x1 {
-		return 0, nil, ErrProtocol
+		return nil, 0, 0, errors.WithStack(ErrProtocol)
 	}
 
 	//
@@ -202,44 +216,22 @@ func (n *Node) GetObjectReaderFromPeer(ctx context.Context, peerID peer.ID, repo
 	//
 	recvd, err = stream.Read(reply)
 	if err != nil {
-		return 0, nil, err
+		return nil, 0, 0, err
 	} else if recvd < 1 {
-		return 0, nil, ErrProtocol
+		return nil, 0, 0, errors.WithStack(ErrProtocol)
 	}
 
 	objectType := gitplumbing.ObjectType(reply[0])
 	if objectType < 0 || objectType > 7 {
-		return 0, nil, ErrProtocol
+		return nil, 0, 0, errors.WithStack(ErrProtocol)
 	}
 
-	return objectType, stream, nil
-}
-func (n *Node) GetObjectFromPeer(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) error {
-	objectType, stream, err := n.GetObjectReaderFromPeer(ctx, peerID, repoID, objectID)
+	objectLen, err := readUint64(stream)
 	if err != nil {
-		return err
-	}
-	defer stream.Close()
-	//
-	// 4. Stream the object to disk.
-	//
-	objectsize, err := n.RepoManager.CreateObject(repoID, objectID, objectType, stream)
-	if err != nil {
-		return err
+		return nil, 0, 0, err
 	}
 
-	log.Printf("[stream] object bytes received: %v", objectsize)
-	log.Printf("[stream] finished")
-	return nil
-}
-
-func readUint64(r io.Reader) (uint64, error) {
-	buf := make([]byte, 8)
-	_, err := io.ReadFull(r, buf)
-	if err != nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint64(buf), nil
+	return stream, objectType, int64(objectLen), nil
 }
 
 func (n *Node) objectStreamHandler(stream netp2p.Stream) {
@@ -302,6 +294,7 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	// 2. we do have the object:
 	//    - 0x1
 	//    - [object type byte, only matters for Git objects]
+	//    - [object length]
 	//    - [object bytes...]
 	//    - <close connection>
 	//
@@ -324,19 +317,109 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 		return
 	}
 
-	objectData, err := n.RepoManager.OpenObject(repoID, objectID)
+	objectData, _, objectLen, err := n.RepoManager.OpenObject(repoID, objectID)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return
 	}
 	defer objectData.Close()
 
+	err = writeUint64(stream, uint64(objectLen))
+	if err != nil {
+		log.Errorf("[stream] %v", err)
+		return
+	}
+
 	sent, err := io.Copy(stream, objectData)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 	}
 
+	if sent < objectLen {
+		log.Errorf("[stream] terminated while sending")
+	}
+
 	log.Printf("[stream] sent %v %v (%v bytes)", repoID, objectIDStr, sent)
+}
+
+func (n *Node) initRPC(network, addr string) error {
+	listener, err := net.Listen(network, addr)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Errorf("[rpc stream] %v", err)
+			} else {
+				go n.rpcStreamHandler(conn)
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
+	log.Printf("[rpc stream] opening new stream")
+
+	defer func() {
+		stream.Close()
+		log.Printf("[rpc stream] closing stream")
+	}()
+
+	msgType, err := readUint64(stream)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("[rpc stream] msgType = %v", msgType)
+
+	switch RPCMessageType(msgType) {
+	case RPCMessageType_GetObject:
+		log.Printf("[rpc stream] GetObject")
+		req := GetObjectRequest{}
+		err := readStructPacket(stream, &req)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Printf("[rpc stream] %+v", req)
+
+		objectReader, objectType, objectLen, err := n.GetObjectReader(context.Background(), req.RepoID, req.ObjectID)
+		// @@TODO: maybe don't assume err == 404
+		if err != nil {
+			log.Printf("[rpc stream] don't have object: %v", err)
+			err = writeStructPacket(stream, &GetObjectResponse{HasObject: false})
+			if err != nil {
+				panic(err)
+			}
+			return
+		}
+
+		log.Printf("[rpc stream] do have object")
+		err = writeStructPacket(stream, &GetObjectResponse{
+			HasObject:  true,
+			ObjectType: objectType,
+			ObjectLen:  objectLen,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		// Write the object
+		n, err := io.Copy(stream, objectReader)
+		if err != nil {
+			panic(err)
+		} else if n < objectLen {
+			panic("n < objectLen")
+		}
+
+	default:
+		log.Errorf("Node.rpcStreamHandler: bad message type from peer (%v)", msgType)
+	}
 }
 
 func (this *Node) PushHook(remoteName string, remoteUrl string, branch string, commit string) error {
@@ -368,12 +451,12 @@ func (this *Node) ListHelper(repoID string, objectID []byte) (inet.Stream, error
 
 	provider, found := <-this.DHT.FindProvidersAsync(ctxTimeout, c, 1)
 	if !found {
-		return nil, ErrObjectNotFound
+		return nil, errors.WithStack(ErrObjectNotFound)
 	}
 
-	objectType, stream, err := this.GetObjectReaderFromPeer(ctx, provider.ID, repoID, objectID)
+	objectType, stream, _, err := this.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
 
-	fmt.Printf("objectType: %v" , objectType)
+	fmt.Printf("objectType: %v", objectType)
 	fmt.Printf("stream: %v", reflect.TypeOf(stream))
 
 	fmt.Printf("******************\n")
@@ -388,30 +471,6 @@ func (blankValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil 
 //
 // Everything below here is fairly unimportant.
 //
-
-func (n *Node) GetValue(ctx context.Context, key string) ([]byte, error) {
-	val, err := n.DHT.GetValue(ctx, key)
-	if err != nil {
-		log.Printf("%v: nil", key)
-	} else {
-		log.Printf("%v: %v", key, string(val))
-	}
-	return val, nil
-}
-
-func (n *Node) SetValue(ctx context.Context, key, val string) error {
-	return n.DHT.PutValue(ctx, key, []byte(val))
-}
-
-// Announce to the swarm that this Node can provide a given piece of content.
-func (n *Node) Provide(ctx context.Context, contentID string) error {
-	c, err := cidForString(contentID)
-	if err != nil {
-		return err
-	}
-
-	return n.DHT.Provide(ctx, c, true)
-}
 
 func (n *Node) FindProviders(ctx context.Context, contentID string) ([]pstore.PeerInfo, error) {
 	c, err := cidForString(contentID)
@@ -446,46 +505,3 @@ func (n *Node) FindProviders(ctx context.Context, contentID string) ([]pstore.Pe
 
 	return providers, nil
 }
-
-// func (n *Node) GetRepo(ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
-//  log.Printf("[stream] requesting repo...")
-
-//  recentHash := "0983d41ec8d4732136f4b3a5c2cb45a27a18436b" // TDOO: get this from single source of truth
-
-//  success, err := n.CrawlGitTree(recentHash, ctx, peerIDB58, repoName)
-
-//  return success, err
-// }
-
-// func (n *Node) CrawlGitTree(sha1 string, ctx context.Context, peerIDB58 string, repoName string) (bool, error) {
-//  log.Printf("crawling hash: %s", sha1)
-
-//  objType, err := n.RepoManager.GitCatKind(sha1, repoName)
-//  if err != nil {
-//      return false, err
-//  }
-
-//  log.Printf("object Type: %s", objType)
-//  if objType == "tree" {
-//      log.Printf("is a tree!")
-//      objects, err := n.RepoManager.GitListObjects(sha1, repoName)
-
-//      log.Printf("objects: %v: ", objects)
-//      if err != nil {
-//          return false, err
-//      }
-
-//      //  Recurse
-//      for _, obj := range objects {
-//          if obj != sha1 {
-//              log.Printf("object: %v", obj)
-//              n.CrawlGitTree(obj, ctx, peerIDB58, repoName)
-//              return true, nil
-//          }
-//      }
-//  }
-
-//  n.GetObject(ctx, peerIDB58, repoName, sha1)
-
-//  return true, nil
-// }
