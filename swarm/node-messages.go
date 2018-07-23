@@ -4,10 +4,10 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-type RPCMessageType uint64
+type MessageType uint64
 
 const (
-	RPCMessageType_GetObject RPCMessageType = 0x1
+	MessageType_GetObject MessageType = 0x1
 )
 
 type GetObjectRequest struct {

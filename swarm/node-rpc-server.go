@@ -39,8 +39,8 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 	log.Printf("[rpc stream] msgType = %v", msgType)
 
-	switch RPCMessageType(msgType) {
-	case RPCMessageType_GetObject:
+	switch MessageType(msgType) {
+	case MessageType_GetObject:
 		log.Printf("[rpc stream] GetObject")
 		req := GetObjectRequest{}
 		err := readStructPacket(stream, &req)
