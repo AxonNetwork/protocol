@@ -12,17 +12,17 @@ import (
 
 func recurseCommit(hash gitplumbing.Hash) error {
 	log.Printf("recurseCommit %v", hash.String())
+
 	obj, err := fetchAndWriteObject(hash)
 	if err != nil {
 		return err
 	}
 
-	// commit, err := repo.CommitObject(hash)
-	// if err != nil {
-	//  return errors.WithStack(err)
-	// }
 	commit := &gitobject.Commit{}
-	commit.Decode(obj)
+	err = commit.Decode(obj)
+	if err != nil {
+		return err
+	}
 
 	if commit.NumParents() > 0 {
 		for _, phash := range commit.ParentHashes {
