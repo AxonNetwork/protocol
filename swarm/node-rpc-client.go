@@ -29,7 +29,6 @@ func (c *RPCClient) GetObject(repoID string, objectID []byte) (ObjectReader, err
 	}
 
 	// Write the message type
-	log.Printf("RPCClient.GetObject(%v, %v)", repoID, hex.EncodeToString(objectID))
 	err = writeUint64(conn, uint64(MessageType_GetObject))
 	if err != nil {
 		return nil, err

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -18,18 +19,34 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		panic("usage: swarm <port>")
-	}
-
-	listenPort, err := strconv.ParseUint(os.Args[1], 10, 64)
-	if err != nil {
-		panic("usage: swarm <port>")
-	}
-
 	ctx := context.Background()
 
-	n, err := swarm.NewNode(ctx, int(listenPort))
+	// Read the config file in the user's homedir
+	cfg, err := swarm.ReadConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	// Allow overriding the P2P listen port
+	if len(os.Args) >= 2 {
+		listenPort, err := strconv.ParseUint(os.Args[1], 10, 64)
+		if err != nil {
+			panic("usage: swarm [p2p port] [rpc port]")
+		}
+		cfg.Node.P2PListenPort = int(listenPort)
+	}
+
+	// Allow overriding the RPC listen port
+	if len(os.Args) >= 3 {
+		listenPort, err := strconv.ParseUint(os.Args[2], 10, 64)
+		if err != nil {
+			panic("usage: swarm [p2p port] [rpc port]")
+		}
+		cfg.Node.RPCListenNetwork = "tcp"
+		cfg.Node.RPCListenHost = fmt.Sprintf("127.0.0.1:%v", listenPort)
+	}
+
+	n, err := swarm.NewNode(ctx, cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -59,6 +76,9 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 
 		case "peers":
 			logPeers(n)
+
+		case "config":
+			logConfig(n)
 
 		case "add-repo":
 			if len(parts) < 2 {
@@ -151,4 +171,26 @@ func logRepos(n *swarm.Node) {
 			log.Printf("      - %v", object.IDString())
 		}
 	}
+}
+
+func logConfig(n *swarm.Node) {
+	log.Printf("Config:")
+
+	var doLog func(interface{})
+	doLog = func(x interface{}) {
+		s := reflect.ValueOf(x) //.Elem()
+		configType := s.Type()
+
+		for i := 0; i < s.NumField(); i++ {
+			f := s.Field(i)
+			if f.Kind() == reflect.Struct {
+				log.Printf(configType.Field(i).Name)
+				doLog(f.Interface())
+			} else {
+				log.Printf("%v: = %v", configType.Field(i).Name, f.Interface())
+			}
+		}
+	}
+
+	doLog(n.Config)
 }
