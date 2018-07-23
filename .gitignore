@@ -4,5 +4,6 @@ swarm/repos/
 swarm/main
 testzone/original
 testzone/testing
+remote-helper/head
 
 .consciencerc
