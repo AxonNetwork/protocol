@@ -101,7 +101,7 @@ func downloadChunk(client *swarm.RPCClient, repoID string, objectIDStr string) e
 
 	fmt.Fprintf(os.Stderr, "Downloading chunk %v...\n", objectIDStr)
 
-	objectStream, _, objectLen, err := client.GetObject(repoID, objectID)
+	objectStream, err := client.GetObject(repoID, objectID)
 	if err != nil {
 		return err
 	}
@@ -127,10 +127,10 @@ func downloadChunk(client *swarm.RPCClient, repoID string, objectIDStr string) e
 		f.Close()
 		os.Remove(chunkPath)
 		return err
-	} else if copied < objectLen {
+	} else if copied < objectStream.Len() {
 		f.Close()
 		os.Remove(chunkPath)
-		return fmt.Errorf("copied (%v) < objectLen (%v)", copied, objectLen)
+		return fmt.Errorf("copied (%v) < objectLen (%v)", copied, objectStream.Len())
 	} else if !bytes.Equal(objectID, hasher.Sum(nil)) {
 		f.Close()
 		os.Remove(chunkPath)

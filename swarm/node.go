@@ -4,15 +4,11 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"reflect"
 	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
-	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	"gx/ipfs/QmQYwRL1T9dJtdCScoeRQwwvScbJTcWqnXhq4dYQ6Cu5vX/go-libp2p-kad-dht"
 	ma "gx/ipfs/QmYmsdtJ3HsodkePE3eU3TsCaP2YvPZJ4LoXnNkDE5Tpt7/go-multiaddr"
 	"gx/ipfs/QmZ86eLPtXkQ1Dfa992Q8NpXArUoWWh3y728JDcWvzRrvC/go-libp2p"
@@ -123,7 +119,7 @@ func (n *Node) ProvideObject(ctx context.Context, repoID string, objectID []byte
 
 // Attempts to find a peer providing the given object.  If a peer is found, the Node tries to
 // download the object from that peer.
-func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (io.ReadCloser, gitplumbing.ObjectType, int64, error) {
+func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (ObjectReader, error) {
 	// If we detect that we already have the object locally, just open a regular file stream
 	if n.RepoManager.HasObject(repoID, objectID) {
 		return n.openLocalObjectReader(repoID, objectID)
@@ -131,7 +127,7 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 
 	c, err := cidForObject(repoID, objectID)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, err
 	}
 
 	// Try to find 1 provider of the object within 10 seconds
@@ -141,7 +137,7 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 
 	provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
 	if !found {
-		return nil, 0, 0, errors.New("can't find peer with object " + repoID + ":" + hex.EncodeToString(objectID))
+		return nil, errors.New("can't find peer with object " + repoID + ":" + hex.EncodeToString(objectID))
 	}
 
 	if provider.ID == n.Host.ID() {
@@ -154,50 +150,50 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 	}
 }
 
-func (n *Node) openLocalObjectReader(repoID string, objectID []byte) (io.ReadCloser, gitplumbing.ObjectType, int64, error) {
+func (n *Node) openLocalObjectReader(repoID string, objectID []byte) (ObjectReader, error) {
 	return n.RepoManager.OpenObject(repoID, objectID)
 }
 
-func (this *Node) PushHook(remoteName string, remoteUrl string, branch string, commit string) error {
-	fmt.Printf("\n******************\n")
-	fmt.Printf("Push Hook:\n")
-	fmt.Println("remoteName: ", remoteName)
-	fmt.Println("remoteUrl: ", remoteUrl)
-	fmt.Println("branch: ", branch)
-	fmt.Println("commit: ", commit)
-	fmt.Printf("******************\n")
-	return nil
-}
+// func (this *Node) PushHook(remoteName string, remoteUrl string, branch string, commit string) error {
+//  fmt.Printf("\n******************\n")
+//  fmt.Printf("Push Hook:\n")
+//  fmt.Println("remoteName: ", remoteName)
+//  fmt.Println("remoteUrl: ", remoteUrl)
+//  fmt.Println("branch: ", branch)
+//  fmt.Println("commit: ", commit)
+//  fmt.Printf("******************\n")
+//  return nil
+// }
 
-func (this *Node) ListHelper(repoID string, objectID []byte) (netp2p.Stream, error) {
-	fmt.Printf("\n******************\n")
-	fmt.Printf("ListHelper:\n")
-	fmt.Println("repoID: ", repoID)
-	fmt.Println("objectID: ", objectID)
+// func (this *Node) ListHelper(repoID string, objectID []byte) (netp2p.Stream, error) {
+//  fmt.Printf("\n******************\n")
+//  fmt.Printf("ListHelper:\n")
+//  fmt.Println("repoID: ", repoID)
+//  fmt.Println("objectID: ", objectID)
 
-	//@TODO: refactor with GetObject
-	c, err := cidForObject(repoID, objectID)
-	if err != nil {
-		return nil, err
-	}
+//  //@TODO: refactor with GetObject
+//  c, err := cidForObject(repoID, objectID)
+//  if err != nil {
+//      return nil, err
+//  }
 
-	ctx := context.Background()
-	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+//  ctx := context.Background()
+//  ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+//  defer cancel()
 
-	provider, found := <-this.DHT.FindProvidersAsync(ctxTimeout, c, 1)
-	if !found {
-		return nil, errors.WithStack(ErrObjectNotFound)
-	}
+//  provider, found := <-this.DHT.FindProvidersAsync(ctxTimeout, c, 1)
+//  if !found {
+//      return nil, errors.WithStack(ErrObjectNotFound)
+//  }
 
-	objectType, stream, _, err := this.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
+//  objectType, stream, _, err := this.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
 
-	fmt.Printf("objectType: %v", objectType)
-	fmt.Printf("stream: %v", reflect.TypeOf(stream))
+//  fmt.Printf("objectType: %v", objectType)
+//  fmt.Printf("stream: %v", reflect.TypeOf(stream))
 
-	fmt.Printf("******************\n")
-	return nil, nil
-}
+//  fmt.Printf("******************\n")
+//  return nil, nil
+// }
 
 type blankValidator struct{}
 

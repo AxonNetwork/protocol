@@ -50,7 +50,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc stream] %+v", req)
 
-		objectReader, objectType, objectLen, err := n.GetObjectReader(context.Background(), req.RepoID, req.ObjectID)
+		objectReader, err := n.GetObjectReader(context.Background(), req.RepoID, req.ObjectID)
 		// @@TODO: maybe don't assume err == 404
 		if err != nil {
 			log.Printf("[rpc stream] don't have object: %v", err)
@@ -64,19 +64,19 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		log.Printf("[rpc stream] do have object")
 		err = writeStructPacket(stream, &GetObjectResponse{
 			HasObject:  true,
-			ObjectType: objectType,
-			ObjectLen:  objectLen,
+			ObjectType: objectReader.Type(),
+			ObjectLen:  objectReader.Len(),
 		})
 		if err != nil {
 			panic(err)
 		}
 
 		// Write the object
-		n, err := io.Copy(stream, objectReader)
+		written, err := io.Copy(stream, objectReader)
 		if err != nil {
 			panic(err)
-		} else if n < objectLen {
-			panic("n < objectLen")
+		} else if written < objectReader.Len() {
+			panic("written < objectLen")
 		}
 
 	default:

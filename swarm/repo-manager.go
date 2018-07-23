@@ -3,7 +3,6 @@ package swarm
 import (
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -167,25 +166,11 @@ func (rm *RepoManager) HasObject(repoID string, objectID []byte) bool {
 	return ok
 }
 
-func (rm *RepoManager) Object(repoID string, objectID []byte) (ObjectEntry, bool) {
-	repoEntry, ok := rm.repos[repoID]
-	if !ok {
-		return ObjectEntry{}, false
-	}
-
-	entry, ok := repoEntry.Objects[string(objectID)]
-	if !ok {
-		return ObjectEntry{}, false
-	}
-
-	return entry, true
-}
-
 // Open a object for reading.  It is the caller's responsibility to .Close() the object when finished.
-func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser, gitplumbing.ObjectType, int64, error) {
+func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (ObjectReader, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {
-		return nil, 0, 0, errors.WithStack(ErrRepoNotFound)
+		return nil, errors.WithStack(ErrRepoNotFound)
 	}
 
 	if len(objectID) == CONSCIENCE_HASH_LENGTH {
@@ -193,21 +178,27 @@ func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser
 		p := filepath.Join(repoEntry.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		f, err := os.Open(p)
 		if err != nil {
-			return nil, 0, 0, errors.Wrapf(ErrObjectNotFound, "RepoManager - %v:%v", repoID, hex.EncodeToString(objectID))
+			return nil, errors.Wrapf(ErrObjectNotFound, "RepoManager - %v:%v", repoID, hex.EncodeToString(objectID))
 		}
 		stat, err := f.Stat()
 		if err != nil {
-			return nil, 0, 0, err
+			return nil, err
 		}
 
-		return f, 0, stat.Size(), nil
+		or := objectReader{
+			Reader:     f,
+			Closer:     f,
+			objectType: 0,
+			objectLen:  stat.Size(),
+		}
+		return or, nil
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
 		// Open a Git object
 
 		repo, err := git.PlainOpen(repoEntry.Path)
 		if err != nil {
-			return nil, 0, 0, err
+			return nil, err
 		}
 
 		// The object might be in a Packfile, so we use a more intelligent function to obtain a readable
@@ -216,18 +207,24 @@ func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (io.ReadCloser
 		copy(hash[:], objectID)
 		obj, err := repo.Storer.EncodedObject(gitplumbing.AnyObject, hash)
 		if err != nil {
-			return nil, 0, 0, err
+			return nil, err
 		}
 
 		r, err := obj.Reader()
 		if err != nil {
 			log.Errorf("WEIRD ERROR (@@todo: diagnose): %v", err)
-			return nil, 0, 0, errors.WithStack(ErrObjectNotFound)
+			return nil, errors.WithStack(ErrObjectNotFound)
 		}
 
-		return r, obj.Type(), obj.Size(), nil
+		or := objectReader{
+			Reader:     r,
+			Closer:     r,
+			objectType: obj.Type(),
+			objectLen:  obj.Size(),
+		}
+		return or, nil
 
 	} else {
-		return nil, 0, 0, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
+		return nil, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
 	}
 }

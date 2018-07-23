@@ -13,91 +13,45 @@ import (
 func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	defer stream.Close()
 
-	var repoID, objectIDStr string
-	var objectID []byte
-	var err error
-
-	//
-	// read the repo ID
-	//
-	{
-		repoIDLen, err := readUint64(stream)
-		if err != nil {
-			log.Errorf("[stream] %v", err)
-			return
-		}
-
-		repoIDBytes := make([]byte, repoIDLen)
-		_, err = io.ReadFull(stream, repoIDBytes)
-		if err != nil {
-			log.Errorf("[stream] %v", err)
-			return
-		}
-
-		repoID = string(repoIDBytes)
+	// Read the request packet
+	req := GetObjectRequest{}
+	err := readStructPacket(stream, &req)
+	if err != nil {
+		log.Errorf("[stream] %v", err)
+		return
 	}
 
-	//
-	// read the object ID
-	//
-	{
-		objectIDLen, err := readUint64(stream)
-		if err != nil {
-			log.Errorf("[stream] %v", err)
-			return
-		}
-
-		objectID = make([]byte, objectIDLen)
-		_, err = io.ReadFull(stream, objectID)
-		if err != nil {
-			log.Errorf("[stream] %v", err)
-			return
-		}
-
-		objectIDStr = hex.EncodeToString(objectID)
-	}
-
-	log.Printf("[stream] peer requested %v %v", repoID, objectIDStr)
+	log.Printf("[stream] peer requested %v %v", req.RepoID, hex.EncodeToString(req.ObjectID))
 
 	//
-	// send our response:
+	// Send our response:
 	// 1. we don't have the object:
-	//    - 0x0
+	//    - GetObjectResponse{HasObject: false}
 	//    - <close connection>
 	// 2. we do have the object:
-	//    - 0x1
-	//    - [object type byte, only matters for Git objects]
-	//    - [object length]
-	//    - [object bytes...]
+	//    - GetObjectResponse{HasObject: true, ObjectType: ..., ObjectLen: ...}
+	//    - [stream of object bytes...]
 	//    - <close connection>
 	//
-	object, exists := n.RepoManager.Object(repoID, objectID)
-	if !exists {
-		log.Printf("[stream] we don't have %v %v", repoID, objectIDStr)
+	objectStream, err := n.RepoManager.OpenObject(req.RepoID, req.ObjectID)
+	if err != nil {
+		log.Printf("[stream] we don't have %v %v (err: %v)", req.RepoID, hex.EncodeToString(req.ObjectID), err)
 
 		// tell the peer we don't have the object and then close the connection
-		_, err := stream.Write([]byte{0x0})
+		err := writeStructPacket(stream, &GetObjectResponse{HasObject: false})
 		if err != nil {
 			log.Errorf("[stream] %v", err)
 			return
 		}
-		return
-	}
-
-	_, err = stream.Write([]byte{0x1, byte(object.Type)})
-	if err != nil {
-		log.Errorf("[stream] %v", err)
-		return
-	}
-
-	objectStream, _, objectLen, err := n.RepoManager.OpenObject(repoID, objectID)
-	if err != nil {
-		log.Errorf("[stream] %v", err)
 		return
 	}
 	defer objectStream.Close()
 
-	err = writeUint64(stream, uint64(objectLen))
+	err = writeStructPacket(stream, &GetObjectResponse{
+		HasObject:  true,
+		ObjectType: objectStream.Type(),
+		ObjectLen:  objectStream.Len(),
+	})
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return
@@ -106,11 +60,9 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	sent, err := io.Copy(stream, objectStream)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
-	}
-
-	if sent < objectLen {
+	} else if sent < objectStream.Len() {
 		log.Errorf("[stream] terminated while sending")
 	}
 
-	log.Printf("[stream] sent %v %v (%v bytes)", repoID, objectIDStr, sent)
+	log.Printf("[stream] sent %v %v (%v bytes)", req.RepoID, hex.EncodeToString(req.ObjectID), sent)
 }

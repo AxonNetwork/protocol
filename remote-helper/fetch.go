@@ -60,14 +60,14 @@ func fetchTree(hash gitplumbing.Hash) error {
 
 func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, error) {
 	log.Printf("fetchAndWriteObject %v", hash.String())
-	objectStream, objectType, objectLen, err := client.GetObject(repoID, hash[:])
+	objectStream, err := client.GetObject(repoID, hash[:])
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	defer objectStream.Close()
 
 	obj := repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
-	obj.SetType(objectType)
+	obj.SetType(objectStream.Type())
 
 	w, err := obj.Writer()
 	if err != nil {
@@ -77,7 +77,7 @@ func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, erro
 	copied, err := io.Copy(w, objectStream)
 	if err != nil {
 		return nil, errors.WithStack(err)
-	} else if copied != objectLen {
+	} else if copied != objectStream.Len() {
 		return nil, errors.WithStack(fmt.Errorf("object stream bad length"))
 	}
 
