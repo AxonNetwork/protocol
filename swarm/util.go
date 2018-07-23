@@ -57,10 +57,7 @@ func writeStructPacket(w io.Writer, obj interface{}) error {
 		return err
 	}
 
-	log.Printf("writeStructPacket: %+v", obj)
-
 	buflen := buf.Len()
-	log.Printf("writeStructPacket: %v bytes (%v)", buflen, uint64(buflen))
 	err = writeUint64(w, uint64(buflen))
 	if err != nil {
 		return err
@@ -68,42 +65,32 @@ func writeStructPacket(w io.Writer, obj interface{}) error {
 
 	n, err := io.Copy(w, buf)
 	if err != nil {
-		log.Printf("writeStructPacket ERR: %v", err)
 		return err
 	} else if n != int64(buflen) {
-		log.Printf("writeStructPacket ERR: could not write entire packet", err)
+		log.Printf("writeStructPacket ERR: could not write entire packet")
 		return fmt.Errorf("writeStructPacket: could not write entire packet")
 	}
-	log.Printf("writeStructPacket OK")
+	log.Printf("writeStructPacket: (%v bytes) %+v", buflen, obj)
 	return nil
 }
 
 func readStructPacket(r io.Reader, obj interface{}) error {
-	log.Printf("readStructPacket")
 	size, err := readUint64(r)
 	if err != nil {
-		log.Printf("readStructPacket ERR: %v", err)
 		return err
 	}
-	log.Printf("readStructPacket: %v bytes (%v)", size, int64(size))
 
 	buf := &bytes.Buffer{}
-
-	n, err := io.CopyN(buf, r, int64(size))
+	_, err = io.CopyN(buf, r, int64(size))
 	if err != nil {
-		log.Printf("readStructPacket ERR: %v", err)
 		return err
 	}
 
-	log.Printf("readStructPacket: copied %v bytes", n)
-
 	err = struc.Unpack(buf, obj)
-	// if err != nil {
-	//  log.Printf("readStructPacket ERR: %v", err)
-	//  return err
-	// }
-	log.Printf("readStructPacket: %+v", obj)
-	log.Printf("readStructPacket: OK")
+	if err != nil {
+		return err
+	}
+	log.Printf("readStructPacket: (%v bytes) %+v", size, obj)
 	return nil
 }
 
