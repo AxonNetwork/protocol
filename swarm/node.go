@@ -23,7 +23,6 @@ type Node struct {
 	Host        host.Host
 	DHT         *dht.IpfsDHT
 	RepoManager *RepoManager
-	Config      Config
 }
 
 const (
@@ -35,15 +34,10 @@ var (
 	ErrProtocol       = fmt.Errorf("protocol error")
 )
 
-func NewNode(ctx context.Context, config *Config) (*Node, error) {
-	if config == nil {
-		config = &Config{}
-	}
-	applyDefaults(config)
-
+func NewNode(ctx context.Context, listenPort int) (*Node, error) {
 	h, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(
-			fmt.Sprintf("/ip4/0.0.0.0/tcp/%v", config.Node.P2PListenPort),
+			fmt.Sprintf("/ip4/0.0.0.0/tcp/%v", listenPort),
 		),
 		libp2p.NATPortMap(),
 	)
@@ -55,42 +49,42 @@ func NewNode(ctx context.Context, config *Config) (*Node, error) {
 		Host:        h,
 		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
 		RepoManager: NewRepoManager(),
-		Config:      *config,
 	}
+
+	// start a goroutine for announcing which repos and objects this Node can provide (happens every few seconds)
+	// @@TODO: make announce interval configurable
+	go func() {
+		c := time.Tick(10 * time.Second)
+		for range c {
+			repoNames := n.RepoManager.RepoNames()
+			for _, repoName := range repoNames {
+				// log.Printf("[announce] %v", repoName)
+
+				for _, object := range n.RepoManager.ObjectsForRepo(repoName) {
+					err := n.ProvideObject(ctx, repoName, object.ID)
+					if err != nil && err != kbucket.ErrLookupFailure {
+						log.Errorf("[announce] %v", err)
+					}
+				}
+			}
+		}
+	}()
 
 	// Set a pass-through validator
 	n.DHT.Validator = blankValidator{}
-
-	// Start a goroutine for announcing which repos and objects this Node can provide (happens every few seconds)
-	go n.announceContent(ctx)
 
 	// Set the handler function for when we get a new incoming object stream
 	n.Host.SetStreamHandler(OBJECT_STREAM_PROTO, n.objectStreamHandler)
 
 	// Setup the RPC interface so our git helpers can push and pull objects to the network
-	err = n.initRPC(config.Node.RPCListenNetwork, config.Node.RPCListenHost)
+	// @@TODO: make listen addr configurable (including unix FDs for direct IPC)
+	err = n.initRPC("tcp", fmt.Sprintf("127.0.0.1:%v", listenPort+1))
+	// err = n.initRPC("unix", "/tmp/conscience-socket")
 	if err != nil {
 		return nil, err
 	}
 
 	return n, nil
-}
-
-func (n *Node) announceContent(ctx context.Context) {
-	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))
-	for range c {
-		repoNames := n.RepoManager.RepoNames()
-		for _, repoName := range repoNames {
-			// log.Printf("[announce] %v", repoName)
-
-			for _, object := range n.RepoManager.ObjectsForRepo(repoName) {
-				err := n.ProvideObject(ctx, repoName, object.ID)
-				if err != nil && err != kbucket.ErrLookupFailure {
-					log.Errorf("[announce] %v", err)
-				}
-			}
-		}
-	}
 }
 
 // Adds a peer to the Node's address book and attempts to .Connect to it using the libp2p Host.
@@ -108,7 +102,7 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 
 	err = n.Host.Connect(ctx, *pinfo)
 	if err != nil {
-		return fmt.Errorf("connect to peer failed: %v", err)
+		return fmt.Errorf("connect to bootstrapper failed: %v", err)
 	}
 
 	return nil
@@ -136,9 +130,9 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 		return nil, err
 	}
 
-	// Try to find 1 provider of the object within the given timeout
-	// @@TODO: reach out to multiple peers, take first responder
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
+	// Try to find 1 provider of the object within 10 seconds
+	// @@TODO: make timeout configurable
+	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
@@ -159,47 +153,6 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 func (n *Node) openLocalObjectReader(repoID string, objectID []byte) (ObjectReader, error) {
 	return n.RepoManager.OpenObject(repoID, objectID)
 }
-
-// func (this *Node) PushHook(remoteName string, remoteUrl string, branch string, commit string) error {
-//  fmt.Printf("\n******************\n")
-//  fmt.Printf("Push Hook:\n")
-//  fmt.Println("remoteName: ", remoteName)
-//  fmt.Println("remoteUrl: ", remoteUrl)
-//  fmt.Println("branch: ", branch)
-//  fmt.Println("commit: ", commit)
-//  fmt.Printf("******************\n")
-//  return nil
-// }
-
-// func (this *Node) ListHelper(repoID string, objectID []byte) (netp2p.Stream, error) {
-//  fmt.Printf("\n******************\n")
-//  fmt.Printf("ListHelper:\n")
-//  fmt.Println("repoID: ", repoID)
-//  fmt.Println("objectID: ", objectID)
-
-//  //@TODO: refactor with GetObject
-//  c, err := cidForObject(repoID, objectID)
-//  if err != nil {
-//      return nil, err
-//  }
-
-//  ctx := context.Background()
-//  ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-//  defer cancel()
-
-//  provider, found := <-this.DHT.FindProvidersAsync(ctxTimeout, c, 1)
-//  if !found {
-//      return nil, errors.WithStack(ErrObjectNotFound)
-//  }
-
-//  objectType, stream, _, err := this.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
-
-//  fmt.Printf("objectType: %v", objectType)
-//  fmt.Printf("stream: %v", reflect.TypeOf(stream))
-
-//  fmt.Printf("******************\n")
-//  return nil, nil
-// }
 
 type blankValidator struct{}
 
