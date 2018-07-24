@@ -1,6 +1,9 @@
 vendor/
-
+main
 swarm/repos/
 swarm/main
+testzone/original
+testzone/testing
+remote-helper/head
 
-testzone/
+.consciencerc

@@ -2,4 +2,4 @@
 all: build
 
 build:
-	go build *.go
+	go build cmd/main.go

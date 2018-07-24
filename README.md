@@ -1,3 +1,31 @@
+# Node push/pull
+
+## setup
+
+first setup your testzone
+
+1. `cd testzone`
+
+2. `./setup.sh`
+
+"original" is the existing repo. "testing" is the repo that you want to pull into
+
+3. open two terminal windows
+
+4. `./main 1337` in one
+
+5. `./main 8080` in the other
+
+6. add them as peers by doing `addrs` in one, copying the multiaddr with `127.0.0.1` in it and adding it to the other with `add-peer [multiaddr]`
+
+7. add "original" to the node on `8080` and "testing" on the other with `add-repo [path/to/repo]`  
+
+8. `cd` into "testing" and run `git pull`
+
+It should pull all the git objects from original into it. Verify by checking `.git/objects`
+
+Pull hook for conscience chunks is having issues right now. Will fix soon.
+
 # p2p-dht
 
 ## building
