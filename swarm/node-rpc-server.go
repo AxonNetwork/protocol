@@ -14,6 +14,8 @@ func (n *Node) initRPC(network, addr string) error {
 		return err
 	}
 
+	n.rpcListener = listener
+
 	go func() {
 		for {
 			conn, err := listener.Accept()

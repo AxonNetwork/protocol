@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/pkg/errors"
@@ -26,6 +27,7 @@ type Node struct {
 	DHT         *dht.IpfsDHT
 	RepoManager *RepoManager
 	Config      config.Config
+	rpcListener net.Listener
 }
 
 const (
@@ -57,6 +59,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
 		RepoManager: NewRepoManager(),
 		Config:      *cfg,
+		rpcListener: nil,
 	}
 
 	// Set a pass-through validator
@@ -75,6 +78,10 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	}
 
 	return n, nil
+}
+
+func (n *Node) Close() error {
+	return n.rpcListener.Close()
 }
 
 func (n *Node) announceContent(ctx context.Context) {

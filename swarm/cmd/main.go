@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"reflect"
 	"strconv"
 	"strings"
@@ -51,6 +52,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	// Catch ctrl+c so that we can gracefully shut down the Node
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		n.Close()
+		os.Exit(1)
+	}()
 
 	inputLoop(ctx, n)
 }
