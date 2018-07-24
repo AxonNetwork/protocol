@@ -17,13 +17,15 @@ import (
 	dstore "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
 	dsync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
 	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
+
+	"../config"
 )
 
 type Node struct {
 	Host        host.Host
 	DHT         *dht.IpfsDHT
 	RepoManager *RepoManager
-	Config      Config
+	Config      config.Config
 }
 
 const (
@@ -35,15 +37,14 @@ var (
 	ErrProtocol       = fmt.Errorf("protocol error")
 )
 
-func NewNode(ctx context.Context, config *Config) (*Node, error) {
-	if config == nil {
-		config = &Config{}
+func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
+	if cfg == nil {
+		cfg = &config.DefaultConfig
 	}
-	applyDefaults(config)
 
 	h, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(
-			fmt.Sprintf("/ip4/0.0.0.0/tcp/%v", config.Node.P2PListenPort),
+			fmt.Sprintf("/ip4/0.0.0.0/tcp/%v", cfg.Node.P2PListenPort),
 		),
 		libp2p.NATPortMap(),
 	)
@@ -55,7 +56,7 @@ func NewNode(ctx context.Context, config *Config) (*Node, error) {
 		Host:        h,
 		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
 		RepoManager: NewRepoManager(),
-		Config:      *config,
+		Config:      *cfg,
 	}
 
 	// Set a pass-through validator
@@ -68,7 +69,7 @@ func NewNode(ctx context.Context, config *Config) (*Node, error) {
 	n.Host.SetStreamHandler(OBJECT_STREAM_PROTO, n.objectStreamHandler)
 
 	// Setup the RPC interface so our git helpers can push and pull objects to the network
-	err = n.initRPC(config.Node.RPCListenNetwork, config.Node.RPCListenHost)
+	err = n.initRPC(cfg.Node.RPCListenNetwork, cfg.Node.RPCListenHost)
 	if err != nil {
 		return nil, err
 	}

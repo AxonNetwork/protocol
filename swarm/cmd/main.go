@@ -16,18 +16,19 @@ import (
 	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
 	swarm ".."
+	"../../config"
 )
 
 func main() {
 	ctx := context.Background()
 
 	// Read the config file in the user's homedir
-	cfg, err := swarm.ReadConfig()
+	cfg, err := config.ReadConfig()
 	if err != nil {
 		panic(err)
 	}
 
-	// Allow overriding the P2P listen port
+	// Allow overriding the P2P listen port from the command line
 	if len(os.Args) >= 2 {
 		listenPort, err := strconv.ParseUint(os.Args[1], 10, 64)
 		if err != nil {
@@ -36,7 +37,7 @@ func main() {
 		cfg.Node.P2PListenPort = int(listenPort)
 	}
 
-	// Allow overriding the RPC listen port
+	// Allow overriding the RPC listen port from the command line
 	if len(os.Args) >= 3 {
 		listenPort, err := strconv.ParseUint(os.Args[2], 10, 64)
 		if err != nil {
@@ -184,10 +185,11 @@ func logConfig(n *swarm.Node) {
 		for i := 0; i < s.NumField(); i++ {
 			f := s.Field(i)
 			if f.Kind() == reflect.Struct {
-				log.Printf(configType.Field(i).Name)
+				log.Println()
+				log.Printf("____ %v ________", configType.Field(i).Name)
 				doLog(f.Interface())
 			} else {
-				log.Printf("%v: = %v", configType.Field(i).Name, f.Interface())
+				log.Printf("%v = %v", configType.Field(i).Name, f.Interface())
 			}
 		}
 	}

@@ -13,33 +13,24 @@ import (
 
 	"gopkg.in/src-d/go-git.v4"
 
+	"../../config"
 	"../../swarm"
 )
 
 var GIT_DIR string = os.Getenv("GIT_DIR")
 
 func main() {
-	repo, err := git.PlainOpen(filepath.Dir(GIT_DIR))
+	repoID, err := getRepoID()
 	if err != nil {
 		panic(err)
 	}
 
-	cfg, err := repo.Config()
+	cfg, err := config.ReadConfig()
 	if err != nil {
 		panic(err)
 	}
 
-	section := cfg.Raw.Section("conscience")
-	if section == nil {
-		panic("missing conscience config in .git/config")
-	}
-
-	repoID := section.Option("repoid")
-	if repoID == "" {
-		panic("missing conscience config in .git/config")
-	}
-
-	client, err := swarm.NewRPCClient("tcp", "127.0.0.1:1338")
+	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
 		panic(err)
 	}
@@ -113,6 +104,30 @@ func main() {
 		panic(err)
 	case <-chDone:
 	}
+}
+
+func getRepoID() (string, error) {
+	repo, err := git.PlainOpen(filepath.Dir(GIT_DIR))
+	if err != nil {
+		return "", err
+	}
+
+	cfg, err := repo.Config()
+	if err != nil {
+		return "", err
+	}
+
+	section := cfg.Raw.Section("conscience")
+	if section == nil {
+		return "", fmt.Errorf("missing conscience config in .git/config")
+	}
+
+	repoID := section.Option("repoid")
+	if repoID == "" {
+		return "", fmt.Errorf("missing conscience config in .git/config")
+	}
+
+	return repoID, nil
 }
 
 func downloadChunk(client *swarm.RPCClient, repoID string, objectIDStr string) error {

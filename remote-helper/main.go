@@ -12,6 +12,7 @@ import (
 	"gopkg.in/src-d/go-git.v4"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
+	"../config"
 	"../swarm"
 )
 
@@ -25,9 +26,16 @@ var (
 
 func main() {
 	var err error
-	client, err = swarm.NewRPCClient("tcp", "127.0.0.1:1338")
-	// client, err = swarm.NewRPCClient("unix", "/tmp/conscience-socket")
-	check(err)
+
+	cfg, err := config.ReadConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	client, err = swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	if err != nil {
+		panic(err)
+	}
 
 	if GIT_DIR == "" {
 		panic("empty GIT_DIR")
