@@ -9,16 +9,23 @@ import (
 )
 
 type Config struct {
+	User      UserConfig
 	Node      NodeConfig
 	RPCClient RPCClientConfig
 }
 
+type UserConfig struct {
+	Username string
+}
+
 type NodeConfig struct {
+	P2PListenAddr       string
 	P2PListenPort       int
 	RPCListenNetwork    string
 	RPCListenHost       string
 	AnnounceInterval    Duration
 	FindProviderTimeout Duration
+	ReplicateRepos      []string
 }
 
 type RPCClientConfig struct {
@@ -27,12 +34,17 @@ type RPCClientConfig struct {
 }
 
 var DefaultConfig = Config{
+	User: UserConfig{
+		Username: "nobody",
+	},
 	Node: NodeConfig{
+		P2PListenAddr:       "0.0.0.0",
 		P2PListenPort:       1337,
 		RPCListenNetwork:    "tcp",
 		RPCListenHost:       "127.0.0.1:1338",
 		AnnounceInterval:    Duration(10 * time.Second),
 		FindProviderTimeout: Duration(10 * time.Second),
+		ReplicateRepos:      []string{},
 	},
 	RPCClient: RPCClientConfig{
 		Network: "tcp",
