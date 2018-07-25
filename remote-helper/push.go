@@ -23,7 +23,7 @@ func push(src string, dst string) error {
 		src = src[1:]
 	}
 	dir := filepath.Dir(GIT_DIR)
-	err = client.AddRepo(dir)
+	err := client.AddRepo(dir)
 	if err != nil {
 		return err
 	}

@@ -394,3 +394,61 @@ ForLoop:
 
 	return providers, nil
 }
+
+func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
+	err := n.RepoManager.AddRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	repo, err := n.RepoManager.GetGitRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	_, repoID, err := n.RepoManager.GetRepoInfo(repo)
+	if err != nil {
+		return err
+	}
+	refs, err := n.GetRefs(ctx, repoID)
+	if len(refs) > 0 {
+		// If refs exist, don't need to add HEAD
+		return nil
+	}
+	head, err := n.RepoManager.GetHEAD(repo)
+	if err != nil {
+		return err
+	}
+	_, err = n.AddRef(ctx, repoID, head, "refs/heads/master")
+	if err != nil {
+		return err
+	}
+	_, err = n.AddRef(ctx, repoID, "@refs/heads/master", "HEAD")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *Node) AddRef(ctx context.Context, repoID string, target string, name string) (map[string]string, error) {
+	refs, err := n.GetRefs(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	refs[name] = target
+	refStr, err := json.Marshal(refs)
+	err = n.DHT.PutValue(ctx, repoID, refStr)
+	return refs, err
+}
+
+func (n *Node) GetRefs(ctx context.Context, repoID string) (map[string]string, error) {
+	refsBin, err := n.DHT.GetValue(ctx, repoID)
+	if err != nil {
+		// refs don't exist
+		return map[string]string{}, nil
+	}
+	refs := map[string]string{}
+	err = json.Unmarshal(refsBin, &refs)
+	if err != nil {
+		return nil, err
+	}
+	return refs, nil
+}

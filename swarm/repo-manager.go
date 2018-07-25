@@ -46,7 +46,7 @@ func NewRepoManager() *RepoManager {
 }
 
 func (rm *RepoManager) AddRepo(repoPath string) error {
-	repo, err := git.PlainOpen(repoPath)
+	repo, err := rm.GetGitRepo(repoPath)
 	if err != nil {
 		return err
 	}
@@ -54,22 +54,9 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 	//
 	// Get the repo's unique ID on the p2p network
 	//
-	cfg, err := repo.Config()
+	username, repoID, err := rm.GetRepoInfo(repo)
 	if err != nil {
 		return err
-	}
-
-	section := cfg.Raw.Section("conscience")
-	if section == nil {
-		return fmt.Errorf("repo config doesn't have conscience section")
-	}
-	username := section.Option("username")
-	if username == "" {
-		return fmt.Errorf("repo config doesn't have conscience.username key")
-	}
-	repoID := section.Option("repoid")
-	if repoID == "" {
-		return fmt.Errorf("repo config doesn't have conscience.repoid key")
 	}
 
 	//
@@ -155,6 +142,41 @@ func (r RepoEntry) ForEachObject(fn func([]byte) error) error {
 		}
 	}
 	return nil
+}
+
+func (rm *RepoManager) GetGitRepo(repoPath string) (*git.Repository, error) {
+	repo, err := git.PlainOpen(repoPath)
+	return repo, err
+}
+
+func (rm *RepoManager) GetRepoInfo(repo *git.Repository) (string, string, error) {
+	cfg, err := repo.Config()
+	if err != nil {
+		return "", "", err
+	}
+
+	section := cfg.Raw.Section("conscience")
+	if section == nil {
+		return "", "", fmt.Errorf("repo config doesn't have conscience section")
+	}
+	username := section.Option("username")
+	if username == "" {
+		return "", "", fmt.Errorf("repo config doesn't have conscience.username key")
+	}
+	repoID := section.Option("repoid")
+	if repoID == "" {
+		return "", "", fmt.Errorf("repo config doesn't have conscience.repoid key")
+	}
+
+	return username, repoID, nil
+}
+
+func (rm *RepoManager) GetHEAD(repo *git.Repository) (string, error) {
+	head, err := repo.Head()
+	if err != nil {
+		return "", err
+	}
+	return head.Hash().String(), nil
 }
 
 // Returns true if the object is known, false otherwise.

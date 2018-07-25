@@ -13,6 +13,5 @@ func getRefs() ([]string, error) {
 	for name, target := range refs {
 		refsList = append(refsList, fmt.Sprintf("%s %s", target, name))
 	}
-	refsList = append(refsList, fmt.Sprintf("@refs/heads/master HEAD"))
 	return refsList, nil
 }
