@@ -18,18 +18,21 @@ func (n *Node) initRPC(network, addr string) error {
 
 	go func() {
 		for {
-			select {
-			case <-n.chShutdown:
-				return
-			default:
-				conn, err := listener.Accept()
-				if err != nil {
-					log.Errorf("[rpc stream] %v", err)
-				} else {
-					log.Printf("[rpc stream] opening new stream")
-					go n.rpcStreamHandler(conn)
+			conn, err := listener.Accept()
+			if err != nil {
+				// this is the awkward way that Go requires us to detect that listener.Close() has been called
+				select {
+				case <-n.chShutdown:
+					return
+				default:
 				}
+
+				log.Errorf("[rpc stream] %v", err)
+			} else {
+				log.Printf("[rpc stream] opening new stream")
+				go n.rpcStreamHandler(conn)
 			}
+
 		}
 	}()
 

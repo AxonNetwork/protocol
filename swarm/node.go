@@ -83,6 +83,8 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 }
 
 func (n *Node) Close() error {
+	close(n.chShutdown)
+
 	err := n.Host.Close()
 	if err != nil {
 		return err
