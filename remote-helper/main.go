@@ -17,17 +17,27 @@ import (
 )
 
 var (
-	client  *swarm.RPCClient
-	repoID  string = "testing"
-	head    string
-	repo    *git.Repository
-	GIT_DIR string = os.Getenv("GIT_DIR")
+	GIT_DIR  string = os.Getenv("GIT_DIR")
+	client   *swarm.RPCClient
+	repo     *git.Repository
+	repoUser string
+	repoID   string
+	head     string
 )
 
 func main() {
 	var err error
 
-	log.Errorf("os.Args %v", os.Args)
+	remoteURL := os.Args[2]
+	remoteURLParts := strings.Split(
+		strings.Replace(remoteURL, "conscience://", "", -1),
+		"/",
+	)
+	if len(remoteURLParts) != 2 {
+		panic("malformed remote URL")
+	}
+
+	repoUser, repoID = remoteURLParts[0], remoteURLParts[1]
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
