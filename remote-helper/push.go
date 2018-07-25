@@ -3,6 +3,7 @@ package main
 import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -20,11 +21,8 @@ func push(src string, dst string) error {
 	if force {
 		src = src[1:]
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	err = client.AddRepo(cwd)
+	dir := filepath.Dir(GIT_DIR)
+	err = client.AddRepo(dir)
 	if err != nil {
 		return err
 	}
