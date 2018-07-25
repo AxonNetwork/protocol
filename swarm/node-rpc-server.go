@@ -160,6 +160,23 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
+	case MessageType_Pull:
+		req := PullRequest{}
+		err := readStructPacket(stream, &req)
+		if err != nil {
+			panic(err)
+		}
+
+		err = n.requestReplication(context.Background(), req.RepoID)
+		if err != nil {
+			panic(err)
+		}
+
+		err = writeStructPacket(stream, &PullResponse{OK: true})
+		if err != nil {
+			panic(err)
+		}
+
 	default:
 		log.Errorf("Node.rpcStreamHandler: bad message type from peer (%v)", msgType)
 	}

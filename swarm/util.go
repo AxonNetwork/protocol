@@ -17,6 +17,11 @@ var (
 	ErrUnexpectedEOF = errors.New("unexpected EOF")
 )
 
+type blankValidator struct{}
+
+func (blankValidator) Validate(_ string, _ []byte) error        { return nil }
+func (blankValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil }
+
 func cidForString(s string) (*cid.Cid, error) {
 	pref := cid.NewPrefixV1(cid.Raw, multihash.SHA2_256)
 	return pref.Sum([]byte(s))

@@ -7,10 +7,12 @@ import (
 type MessageType uint64
 
 const (
-	MessageType_GetObject MessageType = 0x1
-	MessageType_AddRepo   MessageType = 0x2
-	MessageType_GetRefs   MessageType = 0x3
-	MessageType_AddRef    MessageType = 0x4
+	MessageType_Invalid MessageType = iota
+	MessageType_GetObject
+	MessageType_AddRepo
+	MessageType_GetRefs
+	MessageType_AddRef
+	MessageType_Pull
 )
 
 type GetObjectRequest struct {
@@ -57,4 +59,15 @@ type AddRefRequest struct {
 type AddRefResponse struct {
 	RefsLen int `struc:"sizeof=Refs"`
 	Refs    []byte
+}
+
+type PullRequest struct {
+	// UsernameLen   int `struc:"sizeof=Username"`
+	// Username      string
+	RepoIDLen int `struc:"sizeof=RepoID"`
+	RepoID    string
+}
+
+type PullResponse struct {
+	OK bool
 }

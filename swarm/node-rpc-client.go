@@ -8,6 +8,7 @@ import (
 	"net"
 
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 type RPCClient struct {
@@ -166,4 +167,35 @@ func (c *RPCClient) AddRef(repoID string, target string, name string) (map[strin
 	}
 
 	return refs, nil
+}
+
+func (c *RPCClient) RequestPull(repoID string) error {
+	conn, err := net.Dial(c.network, c.addr)
+	if err != nil {
+		return err
+	}
+
+	// Write the message type
+	err = writeUint64(conn, uint64(MessageType_Pull))
+	if err != nil {
+		return err
+	}
+
+	// Write the request packet
+	err = writeStructPacket(conn, &PullRequest{
+		RepoID: repoID,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Read the response packet (i.e., the header for the subsequent object stream)
+	resp := PullResponse{}
+	err = readStructPacket(conn, &resp)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[rpc stream] RequestPull: ok = %v", resp.OK)
+	return nil
 }

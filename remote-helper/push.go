@@ -1,10 +1,11 @@
 package main
 
 import (
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	"os"
 	"path/filepath"
 	"strings"
+
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
 func addRepo() error {
@@ -31,5 +32,10 @@ func push(src string, dst string) error {
 		return err
 	}
 	_, err = client.AddRef(repoID, ref.Strings()[1], dst)
+	if err != nil {
+		return err
+	}
+
+	err = client.RequestPull(repoID)
 	return err
 }

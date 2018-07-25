@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	// "strings"
-	// gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
 func getRefs() ([]string, error) {

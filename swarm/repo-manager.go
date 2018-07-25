@@ -25,7 +25,7 @@ type RepoEntry struct {
 }
 
 // func (oe ObjectEntry) IDString() string {
-// 	return hex.EncodeToString(oe.ID)
+//  return hex.EncodeToString(oe.ID)
 // }
 
 const (
@@ -129,6 +129,14 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 	return nil
 }
 
+func (rm *RepoManager) Repo(repoID string) *RepoEntry {
+	repo, ok := rm.repos[repoID]
+	if !ok {
+		return nil
+	}
+	return &repo
+}
+
 func (rm *RepoManager) ForEachRepo(fn func(RepoEntry) error) error {
 	for _, entry := range rm.repos {
 		err := fn(entry)
@@ -159,7 +167,7 @@ func (rm *RepoManager) HasObject(repoID string, objectID []byte) bool {
 	return ok
 }
 
-// Open a object for reading.  It is the caller's responsibility to .Close() the object when finished.
+// Open an object for reading.  It is the caller's responsibility to .Close() the object when finished.
 func (rm *RepoManager) OpenObject(repoID string, objectID []byte) (ObjectReader, error) {
 	repoEntry, ok := rm.repos[repoID]
 	if !ok {

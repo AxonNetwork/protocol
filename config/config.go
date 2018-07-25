@@ -25,6 +25,7 @@ type NodeConfig struct {
 	RPCListenHost       string
 	AnnounceInterval    Duration
 	FindProviderTimeout Duration
+	LocalRepos          []string
 	ReplicateRepos      []string
 }
 
