@@ -22,7 +22,6 @@ var (
 	repo     *git.Repository
 	repoUser string
 	repoID   string
-	head     string
 )
 
 func main() {
@@ -58,11 +57,6 @@ func main() {
 		panic(err)
 	}
 
-	head, err = readHead()
-	check(err)
-
-	createRefs()
-
 	err = speakGit(os.Stdin, os.Stdout)
 	check(err)
 }
@@ -71,7 +65,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		text := scanner.Text()
-		log.Println("msg", text)
+		log.Println(text)
 
 		switch {
 
@@ -82,18 +76,45 @@ func speakGit(r io.Reader, w io.Writer) error {
 			fmt.Fprintln(w)
 
 		case strings.HasPrefix(text, "list"):
-			log.Println("msg", head)
-			fmt.Fprintf(w, "%s refs/heads/master\n", head)
-			fmt.Fprintln(w, "@refs/heads/master HEAD")
+			// forPush := strings.Contains(text, "for-push")
+			refs, err := getRefs()
+			if err != nil {
+				return err
+			}
+			for _, ref := range refs {
+				log.Println(ref)
+				fmt.Fprintln(w, ref)
+			}
 			fmt.Fprintln(w)
 
 		case strings.HasPrefix(text, "fetch"):
 			fetchArgs := strings.Split(text, " ")
 			objHash := fetchArgs[1]
-			log.Println("msg", objHash)
 			err := recurseCommit(gitplumbing.NewHash(objHash))
 			if err != nil {
 				return err
+			}
+			fmt.Fprintln(w)
+
+		case strings.HasPrefix(text, "push"):
+			for scanner.Scan() {
+				pushSplit := strings.Split(text, " ")
+				if len(pushSplit) < 2 {
+					return fmt.Errorf("malformed 'push' command. %q", text)
+				}
+				srcDstSplit := strings.Split(pushSplit[1], ":")
+				if len(srcDstSplit) < 2 {
+					return fmt.Errorf("malformed 'push' command. %q", text)
+				}
+				src, dst := srcDstSplit[0], srcDstSplit[1]
+				err := push(src, dst)
+				if err != nil {
+					return err
+				}
+				text = scanner.Text()
+				if text == "" {
+					break
+				}
 			}
 			fmt.Fprintln(w)
 
@@ -107,46 +128,6 @@ func speakGit(r io.Reader, w io.Writer) error {
 	}
 	return nil
 
-}
-
-func readHead() (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	p := filepath.Join(cwd, "../", "../", "remote-helper", "head")
-	f, err := os.Open(p)
-	if err != nil {
-		return "", err
-	}
-	r := bufio.NewReader(f)
-	head, _, err := r.ReadLine()
-	if err != nil {
-		return "", err
-	}
-	return string(head), nil
-}
-
-func createRefs() error {
-	p := filepath.Join(GIT_DIR, "HEAD")
-	f, err := os.Create(p)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString("ref: refs/heads/master")
-	if err != nil {
-		return err
-	}
-	p = filepath.Join(GIT_DIR, "refs", "heads", "master")
-	f, err = os.Create(p)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString(head)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func check(err error) {

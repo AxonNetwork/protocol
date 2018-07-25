@@ -146,6 +146,23 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 			}
 			_, err = n.FindProviders(ctx, parts[1])
 
+		case "add-ref":
+			if len(parts) < 4 {
+				err = fmt.Errorf("not enough args")
+				break
+			}
+			_, err = n.AddRef(ctx, parts[1], parts[2], parts[3])
+
+		case "get-refs":
+			if len(parts) < 2 {
+				err = fmt.Errorf("not enough args")
+				break
+			}
+			var refs map[string]string
+			refs, err = n.GetRefs(ctx, parts[1])
+
+			log.Printf("refs: %v", refs)
+
 		default:
 			err = fmt.Errorf("unknown command")
 		}

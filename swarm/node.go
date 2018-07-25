@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -220,4 +221,29 @@ func (n *Node) FindProviders(ctx context.Context, contentID string) ([]pstore.Pe
 	}
 
 	return providers, nil
+}
+
+func (n *Node) AddRef(ctx context.Context, repoID string, target string, name string) (map[string]string, error) {
+	refs, err := n.GetRefs(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	refs[name] = target
+	refStr, err := json.Marshal(refs)
+	err = n.DHT.PutValue(ctx, repoID, refStr)
+	return refs, err
+}
+
+func (n *Node) GetRefs(ctx context.Context, repoID string) (map[string]string, error) {
+	refsBin, err := n.DHT.GetValue(ctx, repoID)
+	if err != nil {
+		// refs don't exist
+		return map[string]string{}, nil
+	}
+	refs := map[string]string{}
+	err = json.Unmarshal(refsBin, &refs)
+	if err != nil {
+		return nil, err
+	}
+	return refs, nil
 }

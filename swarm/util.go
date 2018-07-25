@@ -89,33 +89,3 @@ func readStructPacket(r io.Reader, obj interface{}) error {
 	}
 	return nil
 }
-
-// type ChunkID struct {
-//  RepoID string
-//  Hash   ChunkHash
-// }
-
-// type Hash interface {
-//  String() string
-//  Bytes() []byte
-//     Len() int
-//     MatchesContent([]byte) bool
-// }
-
-// type GitHash [20]byte
-
-// func (h GitHash) String() string {
-//     return hex.EncodeToString(h[:])
-// }
-
-// func (h GitHash) Bytes() []byte {
-//     return h[:]
-// }
-
-// func (h GitHash) Len() int {
-//     return 20
-// }
-
-// func (h GitHash) MatchesContent(bs []byte) bool {
-
-// }

@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 
@@ -48,6 +49,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 	}
 
 	switch MessageType(msgType) {
+
 	case MessageType_GetObject:
 		req := GetObjectRequest{}
 		err := readStructPacket(stream, &req)
@@ -82,33 +84,83 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic("written < objectLen")
 		}
 
+	case MessageType_AddRepo:
+		log.Printf("[rpc stream] AddRepo")
+		req := AddRepoRequest{}
+		err := readStructPacket(stream, &req)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Printf("[rpc stream] add repo: %s", req.RepoPath)
+
+		success := true
+		err = n.RepoManager.AddRepo(req.RepoPath)
+		if err != nil {
+			log.Printf("[rpc stream] couldn't add repo")
+			success = false
+		}
+
+		err = writeStructPacket(stream, &AddRepoResponse{
+			Success: success,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+	case MessageType_GetRefs:
+		log.Printf("[rpc stream] GetRefs")
+		req := GetRefsRequest{}
+		err := readStructPacket(stream, &req)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Printf("[rpc stream] get refs from %s", req.RepoID)
+		refs, err := n.GetRefs(context.Background(), req.RepoID)
+
+		if err != nil {
+			log.Printf("[rpc stream] couldn't find refs")
+			refs = map[string]string{}
+		}
+		refsBin, err := json.Marshal(refs)
+		if err != nil {
+			panic(err)
+		}
+		err = writeStructPacket(stream, &GetRefsResponse{
+			Refs: refsBin,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+	case MessageType_AddRef:
+		log.Printf("[rpc stream] AddRef")
+		req := AddRefRequest{}
+		err := readStructPacket(stream, &req)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Printf("[rpc stream] add ref to %s: %s %s", req.RepoID, req.Target, req.Name)
+		refs, err := n.AddRef(context.Background(), req.RepoID, req.Target, req.Name)
+
+		if err != nil {
+			log.Printf("[rpc stream] couldn't add ref")
+			refs = map[string]string{}
+		}
+		refsBin, err := json.Marshal(refs)
+		if err != nil {
+			panic(err)
+		}
+		err = writeStructPacket(stream, &AddRefResponse{
+			Refs: refsBin,
+		})
+		if err != nil {
+			panic(err)
+		}
+
 	default:
 		log.Errorf("Node.rpcStreamHandler: bad message type from peer (%v)", msgType)
 	}
 }
-
-// type AddRepoInput struct {
-//  RepoPath string
-// }
-
-// type AddRepoOutput struct{}
-
-// func (nr *NodeRPC) AddRepo(in *AddRepoInput, out *AddRepoOutput) error {
-//  err := nr.node.RepoManager.AddRepo(in.RepoPath)
-//  return err
-// }
-
-// type ListHelperInput struct {
-//  RepoID   string
-//  ObjectID []byte
-// }
-
-// type ListHelperOutput struct {
-//  Stream inet.Stream
-// }
-
-// func (nr *NodeRPC) ListHelper(in *ListHelperInput, out *ListHelperOutput) error {
-//  stream, err := nr.node.ListHelper(in.RepoID, in.ObjectID)
-//  out.Stream = stream
-//  return err
-// }
