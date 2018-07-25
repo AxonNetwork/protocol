@@ -6,4 +6,5 @@ testzone/original
 testzone/testing
 remote-helper/head
 
+*.swp
 .consciencerc
