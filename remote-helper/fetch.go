@@ -58,8 +58,7 @@ func fetchTree(hash gitplumbing.Hash) error {
 }
 
 func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, error) {
-	p := filepath.Join(repoUser, repoID)
-	objectStream, err := client.GetObject(p, hash[:])
+	objectStream, err := client.GetObject(repoID, hash[:])
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
