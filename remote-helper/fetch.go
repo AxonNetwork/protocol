@@ -5,14 +5,11 @@ import (
 	"io"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
 func recurseCommit(hash gitplumbing.Hash) error {
-	log.Printf("recurseCommit %v", hash.String())
-
 	obj, err := fetchAndWriteObject(hash)
 	if err != nil {
 		return err
@@ -37,7 +34,6 @@ func recurseCommit(hash gitplumbing.Hash) error {
 }
 
 func fetchTree(hash gitplumbing.Hash) error {
-	log.Printf("fetchTree %v", hash.String())
 	_, err := fetchAndWriteObject(hash)
 	if err != nil {
 		return err
@@ -59,7 +55,6 @@ func fetchTree(hash gitplumbing.Hash) error {
 }
 
 func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, error) {
-	log.Printf("fetchAndWriteObject %v", hash.String())
 	objectStream, err := client.GetObject(repoID, hash[:])
 	if err != nil {
 		return nil, errors.WithStack(err)

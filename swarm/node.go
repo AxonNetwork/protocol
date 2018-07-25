@@ -28,6 +28,7 @@ type Node struct {
 	RepoManager *RepoManager
 	Config      config.Config
 	rpcListener net.Listener
+	chShutdown  chan struct{}
 }
 
 const (
@@ -60,6 +61,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		RepoManager: NewRepoManager(),
 		Config:      *cfg,
 		rpcListener: nil,
+		chShutdown:  make(chan struct{}),
 	}
 
 	// Set a pass-through validator
@@ -81,6 +83,16 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 }
 
 func (n *Node) Close() error {
+	err := n.Host.Close()
+	if err != nil {
+		return err
+	}
+
+	err = n.DHT.Close()
+	if err != nil {
+		return err
+	}
+
 	return n.rpcListener.Close()
 }
 

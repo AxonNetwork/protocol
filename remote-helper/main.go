@@ -27,6 +27,8 @@ var (
 func main() {
 	var err error
 
+	log.Errorf("os.Args %v", os.Args)
+
 	cfg, err := config.ReadConfig()
 	if err != nil {
 		panic(err)

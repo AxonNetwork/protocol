@@ -18,12 +18,17 @@ func (n *Node) initRPC(network, addr string) error {
 
 	go func() {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				log.Errorf("[rpc stream] %v", err)
-			} else {
-				log.Printf("[rpc stream] opening new stream")
-				go n.rpcStreamHandler(conn)
+			select {
+			case <-n.chShutdown:
+				return
+			default:
+				conn, err := listener.Accept()
+				if err != nil {
+					log.Errorf("[rpc stream] %v", err)
+				} else {
+					log.Printf("[rpc stream] opening new stream")
+					go n.rpcStreamHandler(conn)
+				}
 			}
 		}
 	}()
@@ -39,23 +44,17 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		panic(err)
 	}
 
-	log.Printf("[rpc stream] msgType = %v", msgType)
-
 	switch MessageType(msgType) {
 	case MessageType_GetObject:
-		log.Printf("[rpc stream] GetObject")
 		req := GetObjectRequest{}
 		err := readStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
-		log.Printf("[rpc stream] %+v", req)
-
 		objectReader, err := n.GetObjectReader(context.Background(), req.RepoID, req.ObjectID)
 		// @@TODO: maybe don't assume err == 404
 		if err != nil {
-			log.Printf("[rpc stream] don't have object: %v", err)
 			err = writeStructPacket(stream, &GetObjectResponse{HasObject: false})
 			if err != nil {
 				panic(err)
@@ -63,7 +62,6 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			return
 		}
 
-		log.Printf("[rpc stream] do have object")
 		err = writeStructPacket(stream, &GetObjectResponse{
 			HasObject:  true,
 			ObjectType: objectReader.Type(),

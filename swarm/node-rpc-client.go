@@ -6,7 +6,6 @@ import (
 	"net"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 type RPCClient struct {
@@ -46,8 +45,6 @@ func (c *RPCClient) GetObject(repoID string, objectID []byte) (ObjectReader, err
 	if err != nil {
 		return nil, err
 	}
-
-	log.Printf("[rpc stream] response %+v", resp)
 
 	if !resp.HasObject {
 		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%v", repoID, hex.EncodeToString(objectID))

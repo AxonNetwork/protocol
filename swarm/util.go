@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunixbochs/struc"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 
 	"gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
 	"gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
@@ -67,10 +66,8 @@ func writeStructPacket(w io.Writer, obj interface{}) error {
 	if err != nil {
 		return err
 	} else if n != int64(buflen) {
-		log.Printf("writeStructPacket ERR: could not write entire packet")
 		return fmt.Errorf("writeStructPacket: could not write entire packet")
 	}
-	log.Printf("writeStructPacket: (%v bytes) %+v", buflen, obj)
 	return nil
 }
 
@@ -90,7 +87,6 @@ func readStructPacket(r io.Reader, obj interface{}) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("readStructPacket: (%v bytes) %+v", size, obj)
 	return nil
 }
 
