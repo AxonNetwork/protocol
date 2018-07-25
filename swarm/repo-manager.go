@@ -24,9 +24,9 @@ type RepoEntry struct {
 	Objects  map[string]struct{}
 }
 
-func (oe ObjectEntry) IDString() string {
-	return hex.EncodeToString(oe.ID)
-}
+// func (oe ObjectEntry) IDString() string {
+// 	return hex.EncodeToString(oe.ID)
+// }
 
 const (
 	CONSCIENCE_DATA_SUBDIR = "data"
@@ -76,7 +76,7 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 	// Iterate over the objects and make note that we have them so the Node can .Provide them
 	//
 
-	objects := map[string]ObjectEntry{}
+	objects := map[string]struct{}{}
 
 	// First crawl the Git objects
 	oIter, err := repo.Objects()
@@ -139,7 +139,7 @@ func (rm *RepoManager) ForEachRepo(fn func(RepoEntry) error) error {
 	return nil
 }
 
-func (r RepoEntry) ForEachObject(fn func([]byte) error) {
+func (r RepoEntry) ForEachObject(fn func([]byte) error) error {
 	for key := range r.Objects {
 		err := fn([]byte(key))
 		if err != nil {

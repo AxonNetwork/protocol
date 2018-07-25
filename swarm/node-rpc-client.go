@@ -91,8 +91,6 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 		return fmt.Errorf("Repo could not be added")
 	}
 
-	log.Printf("[rpc stream] response %+v", resp)
-
 	return nil
 }
 
@@ -123,7 +121,6 @@ func (c *RPCClient) GetRefs(repoID string) (map[string]string, error) {
 		return nil, err
 	}
 
-	log.Printf("[rpc stream] response %+v", resp)
 	refs := map[string]string{}
 	err = json.Unmarshal(resp.Refs, &refs)
 	if err != nil {
@@ -162,7 +159,6 @@ func (c *RPCClient) AddRef(repoID string, target string, name string) (map[strin
 		return nil, err
 	}
 
-	log.Printf("[rpc stream] response %+v", resp)
 	refs := map[string]string{}
 	err = json.Unmarshal(resp.Refs, &refs)
 	if err != nil {
