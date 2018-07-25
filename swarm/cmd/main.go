@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
@@ -176,12 +177,14 @@ func logAddrs(n *swarm.Node) {
 
 func logRepos(n *swarm.Node) {
 	log.Printf("Known repos:")
-	for _, repoName := range n.RepoManager.RepoNames() {
-		log.Printf("  - %v", repoName)
-		for _, object := range n.RepoManager.ObjectsForRepo(repoName) {
-			log.Printf("      - %v", object.IDString())
-		}
-	}
+
+	n.RepoManager.ForEachRepo(func(repo RepoEntry) error {
+		log.Printf("  - %v/%v", repo.Username, repo.RepoID)
+
+		repo.ForEachObject(func(objectID []byte) error {
+			log.Printf("      - %v", hex.EncodeToString(objectID))
+		})
+	})
 }
 
 func logConfig(n *swarm.Node) {

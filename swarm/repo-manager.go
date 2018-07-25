@@ -21,13 +21,7 @@ type RepoEntry struct {
 	Username string
 	RepoID   string
 	Path     string
-	Objects  map[string]ObjectEntry
-}
-
-type ObjectEntry struct {
-	ID   []byte
-	Type gitplumbing.ObjectType
-	Len  int
+	Objects  map[string]struct{}
 }
 
 func (oe ObjectEntry) IDString() string {
@@ -92,7 +86,7 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 
 	err = oIter.ForEach(func(obj gitobject.Object) error {
 		id := obj.ID()
-		objects[string(id[:])] = ObjectEntry{ID: id[:], Type: obj.Type()}
+		objects[string(id[:])] = struct{}{}
 		return nil
 	})
 	if err != nil {
@@ -121,44 +115,38 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 				log.Errorf("bad conscience data object name: %v", entry.Name())
 				continue
 			}
-			objects[string(id)] = ObjectEntry{ID: id, Type: 0}
+			objects[string(id)] = struct{}{}
 		}
 	}
 
 	rm.repos[repoID] = RepoEntry{
-		RepoID:  repoID,
-		Path:    repoPath,
-		Objects: objects,
+		Username: username,
+		RepoID:   repoID,
+		Path:     repoPath,
+		Objects:  objects,
 	}
 
 	return nil
 }
 
-// @@TODO: make this a ForEach with a closure
-func (rm *RepoManager) RepoNames() []string {
-	repoNames := make([]string, len(rm.repos))
-	i := 0
-	for repoName := range rm.repos {
-		repoNames[i] = repoName
-		i++
+func (rm *RepoManager) ForEachRepo(fn func(RepoEntry) error) error {
+	for _, entry := range rm.repos {
+		err := fn(entry)
+		if err != nil {
+			return err
+		}
 	}
-	return repoNames
+	return nil
 }
 
-// @@TODO: make this a ForEach with a closure
-func (rm *RepoManager) ObjectsForRepo(repoName string) []ObjectEntry {
-	repoEntry, ok := rm.repos[repoName]
-	if !ok {
-		return nil
+func (r RepoEntry) ForEachObject(fn func([]byte) error) {
+	for key := range r.Objects {
+		err := fn([]byte(key))
+		if err != nil {
+			return err
+		}
 	}
-
-	objects := make([]ObjectEntry, len(repoEntry.Objects))
-	i := 0
-	for _, object := range repoEntry.Objects {
-		objects[i] = object
-		i++
-	}
-	return objects
+	return nil
 }
 
 // Returns true if the object is known, false otherwise.

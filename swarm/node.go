@@ -101,16 +101,13 @@ func (n *Node) Close() error {
 func (n *Node) announceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))
 	for range c {
-		repoNames := n.RepoManager.RepoNames()
-		for _, repoName := range repoNames {
-			// log.Printf("[announce] %v", repoName)
-
-			for _, object := range n.RepoManager.ObjectsForRepo(repoName) {
-				err := n.ProvideObject(ctx, repoName, object.ID)
-				if err != nil && err != kbucket.ErrLookupFailure {
-					log.Errorf("[announce] %v", err)
-				}
-			}
+		err := n.RepoManager.ForEachRepo(func(repo RepoEntry) error {
+			return repo.ForEachObject(func(objectID []byte) error {
+				return n.ProvideObject(ctx, repo.RepoID, objectID)
+			})
+		})
+		if err != nil && err != kbucket.ErrLookupFailure {
+			log.Errorf("[announce] %v", err)
 		}
 	}
 }
