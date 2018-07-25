@@ -18,9 +18,10 @@ type RepoManager struct {
 }
 
 type RepoEntry struct {
-	RepoID  string
-	Path    string
-	Objects map[string]ObjectEntry
+	Username string
+	RepoID   string
+	Path     string
+	Objects  map[string]ObjectEntry
 }
 
 type ObjectEntry struct {
@@ -67,6 +68,10 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 	section := cfg.Raw.Section("conscience")
 	if section == nil {
 		return fmt.Errorf("repo config doesn't have conscience section")
+	}
+	username := section.Option("username")
+	if username == "" {
+		return fmt.Errorf("repo config doesn't have conscience.username key")
 	}
 	repoID := section.Option("repoid")
 	if repoID == "" {
