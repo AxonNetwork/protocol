@@ -32,6 +32,10 @@ func cidForObject(repoID string, objectID []byte) (*cid.Cid, error) {
 	return pref.Sum(append([]byte(repoID+":"), objectID...))
 }
 
+func formatRepoID(username string, repoName string) string {
+	return fmt.Sprintf("%s/%s", username, repoName)
+}
+
 func readUint64(r io.Reader) (uint64, error) {
 	buf := make([]byte, 8)
 	_, err := io.ReadFull(r, buf)

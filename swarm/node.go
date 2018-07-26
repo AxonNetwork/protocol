@@ -211,10 +211,12 @@ func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
 	if err != nil {
 		return err
 	}
-	_, repoID, err := n.RepoManager.GetRepoInfo(repo)
+	username, repoName, err := n.RepoManager.GetRepoInfo(repo)
 	if err != nil {
 		return err
 	}
+	repoID := formatRepoID(username, repoName)
+
 	refs, err := n.GetRefs(ctx, repoID)
 	if len(refs) > 0 {
 		// If refs exist, don't need to add HEAD

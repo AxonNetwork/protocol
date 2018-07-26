@@ -19,6 +19,7 @@ type RepoManager struct {
 
 type RepoEntry struct {
 	Username string
+	RepoName string
 	RepoID   string
 	Path     string
 	Objects  map[string]struct{}
@@ -54,10 +55,12 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 	//
 	// Get the repo's unique ID on the p2p network
 	//
-	username, repoID, err := rm.GetRepoInfo(repo)
+	username, repoName, err := rm.GetRepoInfo(repo)
 	if err != nil {
 		return err
 	}
+
+	repoID := formatRepoID(username, repoName)
 
 	//
 	// Iterate over the objects and make note that we have them so the Node can .Provide them
@@ -108,6 +111,7 @@ func (rm *RepoManager) AddRepo(repoPath string) error {
 
 	rm.repos[repoID] = RepoEntry{
 		Username: username,
+		RepoName: repoName,
 		RepoID:   repoID,
 		Path:     repoPath,
 		Objects:  objects,
@@ -163,7 +167,7 @@ func (rm *RepoManager) GetRepoInfo(repo *git.Repository) (string, string, error)
 	if username == "" {
 		return "", "", fmt.Errorf("repo config doesn't have conscience.username key")
 	}
-	repoID := section.Option("repoid")
+	repoID := section.Option("reponame")
 	if repoID == "" {
 		return "", "", fmt.Errorf("repo config doesn't have conscience.repoid key")
 	}

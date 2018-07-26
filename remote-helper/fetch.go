@@ -111,7 +111,7 @@ func checkConfig() error {
 		raw.AddOption("conscience", "", "", "")
 	}
 
-	raw.AddOption("conscience", "", "repoid", repoID)
+	raw.AddOption("conscience", "", "reponame", repoName)
 
 	username := section.Option("username")
 	if username == "" {

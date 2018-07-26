@@ -21,6 +21,7 @@ var (
 	client   *swarm.RPCClient
 	repo     *git.Repository
 	repoUser string
+	repoName string
 	repoID   string
 )
 
@@ -36,7 +37,8 @@ func main() {
 		panic("malformed remote URL")
 	}
 
-	repoUser, repoID = remoteURLParts[0], remoteURLParts[1]
+	repoUser, repoName = remoteURLParts[0], remoteURLParts[1]
+	repoID = fmt.Sprintf("%s/%s", repoUser, repoName)
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
