@@ -3,12 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-	gitconfig "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
@@ -96,43 +93,4 @@ func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, erro
 	}
 
 	return obj, nil
-}
-
-func checkConfig() error {
-	cfg, err := repo.Config()
-	if err != nil {
-		return err
-	}
-
-	raw := cfg.Raw
-
-	section := raw.Section("conscience")
-	if section == nil {
-		raw.AddOption("conscience", "", "", "")
-	}
-
-	raw.AddOption("conscience", "", "reponame", repoName)
-
-	username := section.Option("username")
-	if username == "" {
-		raw.AddOption("conscience", "", "username", repoUser)
-	}
-
-	cfg.Raw.AddOption("filter", "conscience", "clean", "conscience_encode")
-	cfg.Raw.AddOption("filter", "conscience", "smudge", "conscience_decode")
-
-	p := filepath.Join(GIT_DIR, "config")
-	f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
-	if err != nil {
-		return err
-	}
-	w := io.Writer(f)
-
-	enc := gitconfig.NewEncoder(w)
-	err = enc.Encode(cfg.Raw)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

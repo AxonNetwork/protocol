@@ -78,7 +78,15 @@ func speakGit(r io.Reader, w io.Writer) error {
 			fmt.Fprintln(w)
 
 		case strings.HasPrefix(text, "list"):
-			// forPush := strings.Contains(text, "for-push")
+			forPush := strings.Contains(text, "for-push")
+			// @TODO: find a better spot for this?
+			if !forPush {
+				err := setupConfig()
+				if err != nil {
+					return err
+				}
+			}
+
 			refs, err := getRefs()
 			if err != nil {
 				return err
@@ -90,13 +98,9 @@ func speakGit(r io.Reader, w io.Writer) error {
 			fmt.Fprintln(w)
 
 		case strings.HasPrefix(text, "fetch"):
-			err := checkConfig()
-			if err != nil {
-				return err
-			}
 			fetchArgs := strings.Split(text, " ")
 			objHash := fetchArgs[1]
-			err = recurseCommit(gitplumbing.NewHash(objHash))
+			err := recurseCommit(gitplumbing.NewHash(objHash))
 			if err != nil {
 				return err
 			}
