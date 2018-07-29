@@ -22,7 +22,10 @@ type RepoEntry struct {
 	RepoName string
 	RepoID   string
 	Path     string
-	Objects  map[string]struct{}
+	// The string key is not the hexadecimal representation of the object ID (which is always a
+	// []byte).  It's just a string typecast of the []byte because Go maps can't be keyed by byte
+	// slices.
+	Objects map[string]struct{}
 }
 
 // func (oe ObjectEntry) IDString() string {
