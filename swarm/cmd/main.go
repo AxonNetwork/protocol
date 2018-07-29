@@ -92,6 +92,14 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 		case "config":
 			logConfig(n)
 
+		case "get-refs-x":
+			var x string
+			x, err = n.GetRefsX(context.Background(), "testrepo", 0)
+			if err != nil {
+				break
+			}
+			log.Printf("refs: %v", x)
+
 		case "add-repo":
 			if len(parts) < 2 {
 				err = fmt.Errorf("not enough args")

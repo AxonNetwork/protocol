@@ -32,9 +32,10 @@ import (
 type Node struct {
 	Host        host.Host
 	DHT         *dht.IpfsDHT
+	eth         *nodeETH
+	rpc         net.Listener
 	RepoManager *RepoManager
 	Config      config.Config
-	rpcListener net.Listener
 	chShutdown  chan struct{}
 }
 
@@ -63,12 +64,18 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
+	eth, err := initETH(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	n := &Node{
 		Host:        h,
 		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
+		eth:         eth,
 		RepoManager: NewRepoManager(),
 		Config:      *cfg,
-		rpcListener: nil,
+		rpc:         nil,
 		chShutdown:  make(chan struct{}),
 	}
 
@@ -81,6 +88,14 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	// Set the handler function for when we get a new incoming object stream
 	n.Host.SetStreamHandler(OBJECT_STREAM_PROTO, n.objectStreamHandler)
 	n.Host.SetStreamHandler(PULL_PROTO, n.pullHandler)
+
+	// Connect to our list of bootstrap peers
+	for _, peeraddr := range cfg.Node.BootstrapPeers {
+		err = n.AddPeer(ctx, peeraddr)
+		if err != nil {
+			log.Errorf("[node] could not reach boostrap peer %v", peeraddr)
+		}
+	}
 
 	// Setup the RPC interface so our git helpers can push and pull objects to the network
 	err = n.initRPC(cfg.Node.RPCListenNetwork, cfg.Node.RPCListenHost)
@@ -104,7 +119,17 @@ func (n *Node) Close() error {
 		return err
 	}
 
-	return n.rpcListener.Close()
+	err = n.eth.Close()
+	if err != nil {
+		return err
+	}
+
+	err = n.rpc.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (n *Node) announceContent(ctx context.Context) {
@@ -278,20 +303,18 @@ func (n *Node) requestReplication(ctx context.Context, repoID string) error {
 
 	wg := &sync.WaitGroup{}
 	for provider := range chProviders {
-		log.Printf("[pull] my ID: %v / their ID: %v", n.Host.ID(), provider.ID)
 		if provider.ID == n.Host.ID() {
-			log.Printf("[pull] skipping %v", provider.ID)
 			continue
 		}
 
 		wg.Add(1)
 
 		go func(peerID peer.ID) {
-			err = n.requestPull(ctx, peerID, repoID)
+			defer wg.Done()
+			err := n.requestPull(ctx, peerID, repoID)
 			if err != nil {
 				log.Errorf("[pull] error: %v", err)
 			}
-			wg.Done()
 		}(provider.ID)
 	}
 	wg.Wait()
@@ -427,4 +450,8 @@ ForLoop:
 	}
 
 	return providers, nil
+}
+
+func (n *Node) GetRefsX(ctx context.Context, repoID string, page int64) (string, error) {
+	return n.eth.GetRefsX(ctx, repoID, page)
 }

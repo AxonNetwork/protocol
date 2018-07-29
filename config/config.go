@@ -23,10 +23,13 @@ type NodeConfig struct {
 	P2PListenPort       int
 	RPCListenNetwork    string
 	RPCListenHost       string
+	EthereumHost        string
+	ProtocolContract    string
 	AnnounceInterval    Duration
 	FindProviderTimeout Duration
 	LocalRepos          []string
 	ReplicateRepos      []string
+	BootstrapPeers      []string
 }
 
 type RPCClientConfig struct {
@@ -43,9 +46,12 @@ var DefaultConfig = Config{
 		P2PListenPort:       1337,
 		RPCListenNetwork:    "tcp",
 		RPCListenHost:       "127.0.0.1:1338",
+		EthereumHost:        "127.0.0.1:8595",
+		ProtocolContract:    "",
 		AnnounceInterval:    Duration(10 * time.Second),
 		FindProviderTimeout: Duration(10 * time.Second),
 		ReplicateRepos:      []string{},
+		BootstrapPeers:      []string{},
 	},
 	RPCClient: RPCClientConfig{
 		Network: "tcp",

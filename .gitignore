@@ -5,6 +5,7 @@ swarm/main
 testzone/original
 testzone/testing
 remote-helper/head
+eth/build
 
 *.swp
 .consciencerc
