@@ -85,15 +85,13 @@ func main() {
 				chErr <- err
 				return
 			}
+			defer f.Close()
 
 			_, err = io.Copy(os.Stdout, f)
 			if err != nil {
-				f.Close()
 				chErr <- err
 				return
 			}
-
-			f.Close()
 		}
 
 		close(chDone)
@@ -162,24 +160,22 @@ func downloadChunk(client *swarm.RPCClient, repoID string, objectIDStr string) e
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
 	hasher := sha256.New()
 	reader := io.TeeReader(objectStream, hasher)
 
 	copied, err := io.Copy(f, reader)
 	if err != nil {
-		f.Close()
 		os.Remove(chunkPath)
 		return err
 	} else if copied != objectStream.Len() {
-		f.Close()
 		os.Remove(chunkPath)
 		return fmt.Errorf("copied (%v) != objectLen (%v)", copied, objectStream.Len())
 	} else if !bytes.Equal(objectID, hasher.Sum(nil)) {
-		f.Close()
 		os.Remove(chunkPath)
 		return fmt.Errorf("checksum error (objectID: %v)", objectIDStr)
 	}
 
-	return f.Close()
+	return nil
 }
