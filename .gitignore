@@ -7,5 +7,7 @@ testzone/testing
 remote-helper/head
 eth/build
 
+eth/truffle.js
+
 *.swp
 .consciencerc
