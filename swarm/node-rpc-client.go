@@ -108,9 +108,7 @@ func (c *RPCClient) GetRefs(repoID string) (map[string]string, error) {
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &GetRefsRequest{
-		RepoID: repoID,
-	})
+	err = writeStructPacket(conn, &GetRefsRequest{RepoID: repoID})
 	if err != nil {
 		return nil, err
 	}

@@ -93,12 +93,14 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 			logConfig(n)
 
 		case "get-refs-x":
-			var x string
+			var x []swarm.Ref
 			x, err = n.GetRefsX(context.Background(), "testrepo", 0)
 			if err != nil {
 				break
 			}
-			log.Printf("refs: %v", x)
+			for _, ref := range x {
+				log.Printf("%+v", ref)
+			}
 
 		case "add-repo":
 			if len(parts) < 2 {

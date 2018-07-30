@@ -452,6 +452,11 @@ ForLoop:
 	return providers, nil
 }
 
-func (n *Node) GetRefsX(ctx context.Context, repoID string, page int64) (string, error) {
+type Ref struct {
+	Name   string
+	Commit string
+}
+
+func (n *Node) GetRefsX(ctx context.Context, repoID string, page int64) ([]Ref, error) {
 	return n.eth.GetRefsX(ctx, repoID, page)
 }

@@ -1,12 +1,8 @@
 pragma solidity ^0.4.24;
 // pragma experimental ABIEncoderV2;
 
-import "./strings.sol";
-
 contract Protocol
 {
-    using strings for *;
-
     mapping(address => string) public usernamesByAddress;
     mapping(bytes32 => address) public addressesByUsername;
 
@@ -118,30 +114,62 @@ contract Protocol
     function getRefs(string repoID, uint page)
         public
         view
-        returns (string)
+        returns (bytes)
     {
         bytes32 repoIDHash = hashString(repoID);
         Repo storage repo = repositories[repoIDHash];
         require(repo.exists);
 
-        string[] memory refNames = new string[](10);
-        string[] memory commits = new string[](10);
+        string refName;
+        string commit;
+        bytes32 refNameHash;
+        uint len = 0;
         uint start = page * 10;
         for (uint i = 0; i + start < repo.refsList.length; i++) {
-            bytes32 refNameHash = hashString(repo.refsList[i + start]);
-            refNames[i] = repo.refsList[i + start];
-            commits[i] = repo.refs[refNameHash];
+            refNameHash = hashString(repo.refsList[i + start]);
+            refName = repo.refsList[i + start];
+            commit = repo.refs[refNameHash];
+            len += 32 + bytes(refName).length + 32 + bytes(commit).length;
         }
 
-        strings.slice[] memory joined = new strings.slice[](10);
-        for (i = 0; i < 10; i++) {
-            strings.slice[] memory parts = new strings.slice[](2);
-            parts[0] = refNames[i].toSlice();
-            parts[1] = commits[i].toSlice();
-            joined[i] = ":".toSlice().join(parts).toSlice();
+        bytes memory bs = new bytes(len);
+        uint written = 0;
+        for (i = 0; i + start < repo.refsList.length; i++) {
+            refNameHash = hashString(repo.refsList[i + start]);
+            refName = repo.refsList[i + start];
+            commit = repo.refs[refNameHash];
+
+            writeUint(bytes(refName).length, bs, written);
+            written += 32;
+            writeBytes(bytes(refName), bs, written);
+            written += bytes(refName).length;
+
+            writeUint(bytes(commit).length, bs, written);
+            written += 32;
+            writeBytes(bytes(commit), bs, written);
+            written += bytes(commit).length;
         }
 
-        return "/".toSlice().join(joined);
+        return bs;
+    }
+
+    function writeUint(uint x, bytes memory bs, uint offset)
+        private
+        pure
+    {
+        bytes32 b = bytes32(x);
+        for (uint i = 0; i < 32; i++) {
+            bs[i + offset] = b[i];
+        }
+    }
+
+    function writeBytes(bytes src, bytes dest, uint offset)
+        private
+        pure
+    {
+        for (uint i = 0; i < src.length; i++) {
+            dest[i + offset] = src[i];
+        }
     }
 
     function hashString(string s)
