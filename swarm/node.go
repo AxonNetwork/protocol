@@ -140,19 +140,37 @@ func (n *Node) announceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))
 	for range c {
 		err := n.RepoManager.ForEachRepo(func(repo RepoEntry) error {
-			err := n.ProvideRepo(ctx, repo.RepoID)
+			err := n.provideRepo(ctx, repo.RepoID)
 			if err != nil {
 				return err
 			}
 
 			return repo.ForEachObject(func(objectID []byte) error {
-				return n.ProvideObject(ctx, repo.RepoID, objectID)
+				return n.provideObject(ctx, repo.RepoID, objectID)
 			})
 		})
 		if err != nil && err != kbucket.ErrLookupFailure {
 			log.Errorf("[announce] %v", err)
 		}
 	}
+}
+
+// Announce to the swarm that this Node is tracking/replicating a given repository.
+func (n *Node) provideRepo(ctx context.Context, repoID string) error {
+	c, err := cidForString(repoID)
+	if err != nil {
+		return err
+	}
+	return n.DHT.Provide(ctx, c, true)
+}
+
+// Announce to the swarm that this Node can provide a given object from a given repository.
+func (n *Node) provideObject(ctx context.Context, repoID string, objectID []byte) error {
+	c, err := cidForObject(repoID, objectID)
+	if err != nil {
+		return err
+	}
+	return n.DHT.Provide(ctx, c, true)
 }
 
 // Adds a peer to the Node's address book and attempts to .Connect to it using the libp2p Host.
@@ -174,24 +192,6 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	}
 
 	return nil
-}
-
-// Announce to the swarm that this Node is tracking/replicating a given repository.
-func (n *Node) ProvideRepo(ctx context.Context, repoID string) error {
-	c, err := cidForString(repoID)
-	if err != nil {
-		return err
-	}
-	return n.DHT.Provide(ctx, c, true)
-}
-
-// Announce to the swarm that this Node can provide a given object from a given repository.
-func (n *Node) ProvideObject(ctx context.Context, repoID string, objectID []byte) error {
-	c, err := cidForObject(repoID, objectID)
-	if err != nil {
-		return err
-	}
-	return n.DHT.Provide(ctx, c, true)
 }
 
 // Attempts to find a peer providing the given object.  If a peer is found, the Node tries to
