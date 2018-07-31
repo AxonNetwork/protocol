@@ -159,19 +159,19 @@ func (c *RPCClient) GetRefs(repoID string, page int64) (map[string]Ref, int64, e
 	return refs, resp.NumRefs, nil
 }
 
-func (c *RPCClient) AddRef(repoID string, refName string, commitHash string) error {
+func (c *RPCClient) UpdateRef(repoID string, refName string, commitHash string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
 	}
 
-	err = c.writeMessageType(conn, MessageType_AddRef)
+	err = c.writeMessageType(conn, MessageType_UpdateRef)
 	if err != nil {
 		return err
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &AddRefRequest{
+	err = writeStructPacket(conn, &UpdateRefRequest{
 		RepoID:  repoID,
 		RefName: refName,
 		Commit:  commitHash,
@@ -181,12 +181,12 @@ func (c *RPCClient) AddRef(repoID string, refName string, commitHash string) err
 	}
 
 	// Read the response packet
-	resp := AddRefResponse{}
+	resp := UpdateRefResponse{}
 	err = readStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	} else if !resp.OK {
-		return errors.New("AddRefResponse.OK is false")
+		return errors.New("UpdateRefResponse.OK is false")
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ const (
 	MessageType_GetObject
 	MessageType_AddRepo
 	MessageType_GetRefs
-	MessageType_AddRef
+	MessageType_UpdateRef
 	MessageType_Pull
 )
 
@@ -49,7 +49,7 @@ type GetRefsResponse struct {
 	NumRefs int64
 }
 
-type AddRefRequest struct {
+type UpdateRefRequest struct {
 	RepoIDLen  int64 `struc:"sizeof=RepoID"`
 	RepoID     string
 	RefNameLen int64 `struc:"sizeof=RefName"`
@@ -58,7 +58,7 @@ type AddRefRequest struct {
 	Commit     string
 }
 
-type AddRefResponse struct {
+type UpdateRefResponse struct {
 	OK bool
 }
 

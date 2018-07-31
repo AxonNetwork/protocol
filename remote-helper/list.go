@@ -10,7 +10,7 @@ import (
 )
 
 func getRefs() ([]string, error) {
-	refs, err := client.GetRefs(repoID)
+	refs, err := client.GetAllRefs(repoID)
 	if err != nil {
 		return nil, err
 	}

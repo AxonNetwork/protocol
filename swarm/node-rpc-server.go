@@ -139,9 +139,9 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
-	case MessageType_AddRef:
-		log.Printf("[rpc stream] AddRef")
-		req := AddRefRequest{}
+	case MessageType_UpdateRef:
+		log.Printf("[rpc stream] UpdateRef")
+		req := UpdateRefRequest{}
 		err := readStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
@@ -153,7 +153,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
-		err = writeStructPacket(stream, &AddRefResponse{OK: true})
+		err = writeStructPacket(stream, &UpdateRefResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}

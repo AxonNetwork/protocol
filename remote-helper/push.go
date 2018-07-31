@@ -31,7 +31,7 @@ func push(src string, dst string) error {
 	if err != nil {
 		return err
 	}
-	_, err = client.AddRef(repoID, ref.Strings()[1], dst)
+	_, err = client.UpdateRef(repoID, ref.Strings()[1], dst)
 	if err != nil {
 		return err
 	}
