@@ -74,11 +74,11 @@ func initAccount(mnemonic string, password string) (accounts.Account, *hdwallet.
 	return account, wallet, nil
 }
 
-func (n *nodeETH) GetCallOpts(ctx context.Context) *bind.CallOpts {
+func (n *nodeETH) callOpts(ctx context.Context) *bind.CallOpts {
 	return &bind.CallOpts{Context: ctx}
 }
 
-func (n *nodeETH) GetTransactOpts(ctx context.Context) *bind.TransactOpts {
+func (n *nodeETH) transactOpts(ctx context.Context) *bind.TransactOpts {
 	return &bind.TransactOpts{
 		From:    n.auth.From,
 		Signer:  n.auth.Signer,
@@ -99,7 +99,7 @@ func (n *nodeETH) SetUsername(ctx context.Context, username string) (*types.Tran
 		// already set correctly
 		return nil, nil
 	}
-	return n.protocolContract.SetUsername(n.GetTransactOpts(ctx), username)
+	return n.protocolContract.SetUsername(n.transactOpts(ctx), username)
 }
 
 func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
@@ -107,25 +107,25 @@ func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.protocolContract.UsernamesByAddress(n.GetCallOpts(ctx), addr)
+	return n.protocolContract.UsernamesByAddress(n.callOpts(ctx), addr)
 }
 
 func (n *nodeETH) CreateRepository(ctx context.Context, repoID string) (*types.Transaction, error) {
-	exists, err := n.protocolContract.RepositoryExists(n.GetCallOpts(ctx), repoID)
+	exists, err := n.protocolContract.RepositoryExists(n.callOpts(ctx), repoID)
 	if err != nil {
 		return nil, err
 	} else if exists {
 		return nil, nil
 	}
-	return n.protocolContract.CreateRepository(n.GetTransactOpts(ctx), repoID)
+	return n.protocolContract.CreateRepository(n.transactOpts(ctx), repoID)
 }
 
 func (n *nodeETH) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*types.Transaction, error) {
-	return n.protocolContract.UpdateRef(n.GetTransactOpts(ctx), repoID, refName, commitHash)
+	return n.protocolContract.UpdateRef(n.transactOpts(ctx), repoID, refName, commitHash)
 }
 
 func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) {
-	num, err := n.protocolContract.NumRefs(n.GetCallOpts(ctx), repoID)
+	num, err := n.protocolContract.NumRefs(n.callOpts(ctx), repoID)
 	if err != nil {
 		return 0, err
 	}
@@ -133,7 +133,7 @@ func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) 
 }
 
 func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
-	refsBytes, err := n.protocolContract.GetRefs(n.GetCallOpts(ctx), repoID, big.NewInt(page))
+	refsBytes, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(page))
 	if err != nil {
 		return nil, err
 	}
