@@ -60,7 +60,9 @@ func main() {
 	}
 
 	err = speakGit(os.Stdin, os.Stdout)
-	check(err)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func speakGit(r io.Reader, w io.Writer) error {
@@ -137,12 +139,50 @@ func speakGit(r io.Reader, w io.Writer) error {
 		}
 	}
 	return nil
-
 }
 
-func check(err error) {
+func setupConfig() error {
+	cfg, err := repo.Config()
 	if err != nil {
-		log.Errorf("%+v", err)
-		panic("die")
+		return err
 	}
+
+	raw := cfg.Raw
+	changed := false
+	section := raw.Section("conscience")
+	if section.Option("username") != repoUser {
+		raw.SetOption("conscience", "", "username", repoUser)
+		changed = true
+	}
+	if section.Option("reponame") != repoName {
+		raw.SetOption("conscience", "", "reponame", repoName)
+		changed = true
+	}
+
+	filter := raw.Section("filter").Subsection("conscience")
+	if filter.Option("clean") != "conscience_encode" {
+		raw.SetOption("filter", "conscience", "clean", "conscience_encode")
+		changed = true
+	}
+	if filter.Option("smudge") != "conscience_decode" {
+		raw.SetOption("filter", "conscience", "smudge", "conscience_decode")
+		changed = true
+	}
+
+	if changed {
+		p := filepath.Join(GIT_DIR, "config")
+		f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
+		if err != nil {
+			return err
+		}
+		w := io.Writer(f)
+
+		enc := gitconfig.NewEncoder(w)
+		err = enc.Encode(raw)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
