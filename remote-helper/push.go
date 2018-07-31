@@ -8,15 +8,6 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-func addRepo() error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	err = client.AddRepo(cwd)
-	return nil
-}
-
 func push(src string, dst string) error {
 	force := strings.HasPrefix(src, "+")
 	if force {
