@@ -103,7 +103,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
-	_, err = eth.CheckAndSetUsername(ctx, cfg.User.Username)
+	_, err = eth.SetUsername(ctx, cfg.User.Username)
 	if err != nil {
 		return nil, err
 	}
@@ -246,24 +246,41 @@ func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
 		return err
 	}
 
-	refs, err := n.GetRefs(ctx, repoID)
-	if len(refs) > 0 {
-		// If refs exist, don't need to add HEAD
-		return nil
+	_, err = n.eth.CreateRepository(ctx, repoID)
+	if err != nil {
+		return err
 	}
+
 	head, err := n.RepoManager.GetHEAD(repo)
 	if err != nil {
 		return err
 	}
-	_, err = n.AddRef(ctx, repoID, head, "refs/heads/master")
+
+	err = n.UpdateRefEth(ctx, repoID, "refs/heads/master", head)
 	if err != nil {
 		return err
 	}
-	_, err = n.AddRef(ctx, repoID, "@refs/heads/master", "HEAD")
-	if err != nil {
-		return err
-	}
+
+	// refs, err := n.GetRefs(ctx, repoID)
+	// if err != nil {
+	// 	return err
+	// }
 	return nil
+}
+
+type Ref struct {
+	Name   string
+	Commit string
+}
+
+func (n *Node) UpdateRefEth(ctx context.Context, repoID string, refName string, commitHash string) error {
+	_, err := n.eth.UpdateRef(ctx, repoID, refName, commitHash)
+	return err
+}
+
+func (n *Node) GetRefsEth(ctx context.Context, repoID string) ([]Ref, error) {
+	refs, err := n.eth.GetRefs(ctx, repoID)
+	return refs, err
 }
 
 func (n *Node) AddRef(ctx context.Context, repoID string, target string, name string) (map[string]string, error) {
@@ -455,13 +472,4 @@ ForLoop:
 	}
 
 	return providers, nil
-}
-
-type Ref struct {
-	Name   string
-	Commit string
-}
-
-func (n *Node) GetRefsX(ctx context.Context, repoID string, page int64) ([]Ref, error) {
-	return n.eth.GetRefsX(ctx, repoID, page)
 }

@@ -92,16 +92,6 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 		case "config":
 			logConfig(n)
 
-		case "get-refs-x":
-			var x []swarm.Ref
-			x, err = n.GetRefsX(context.Background(), "testrepo", 0)
-			if err != nil {
-				break
-			}
-			for _, ref := range x {
-				log.Printf("%+v", ref)
-			}
-
 		case "add-repo":
 			if len(parts) < 2 {
 				err = fmt.Errorf("not enough args")
@@ -157,22 +147,24 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 			}
 			_, err = n.FindProviders(ctx, parts[1])
 
-		case "add-ref":
+		case "update-ref":
 			if len(parts) < 4 {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			_, err = n.AddRef(ctx, parts[1], parts[2], parts[3])
+			err = n.UpdateRefEth(ctx, parts[1], parts[2], parts[3])
 
 		case "get-refs":
 			if len(parts) < 2 {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			var refs map[string]string
-			refs, err = n.GetRefs(ctx, parts[1])
+			var refs []swarm.Ref
+			refs, err = n.GetRefsEth(ctx, parts[1])
 
-			log.Printf("refs: %v", refs)
+			for _, ref := range refs {
+				log.Printf("%+v", ref)
+			}
 
 		default:
 			err = fmt.Errorf("unknown command")

@@ -63,6 +63,16 @@ contract Protocol
         repositories[repoIDHash].pushers[usernameHash] = true;
     }
 
+    function repositoryExists(string repoID)
+        public
+        view
+        returns (bool)
+    {
+        require(bytes(repoID).length > 0);
+        bytes32 repoIDHash = hashString(repoID);
+        return repositories[repoIDHash].exists;
+    }
+
     function userHasPullAccess(string username, string repoID)
         public
         view
