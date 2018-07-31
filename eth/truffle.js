@@ -13,7 +13,7 @@ module.exports = {
       port: 8545,
       network_id: "*",
       gas: 4000000,
-      from: '0xCE1f819Af3447C59676bc03B119721AbCD40EFBE',
+      // from: '0xCE1f819Af3447C59676bc03B119721AbCD40EFBE',
     },
     mainnet: {
       network_id: 1,

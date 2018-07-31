@@ -6,17 +6,24 @@ import (
 
 	// log "github.com/sirupsen/logrus"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/tyler-smith/go-bip39"
 
 	"../config"
 	"./ethcontracts"
+	"./hdwallet"
 )
 
 type nodeETH struct {
 	ethClient        *ethclient.Client
 	protocolContract *ethcontracts.Protocol
+	auth             *bind.TransactOpts
+	account          accounts.Account
+	wallet           *hdwallet.Wallet
 }
 
 func initETH(ctx context.Context, cfg *config.Config) (*nodeETH, error) {
@@ -30,15 +37,76 @@ func initETH(ctx context.Context, cfg *config.Config) (*nodeETH, error) {
 		return nil, err
 	}
 
+	account, wallet, err := initAccount(
+		"candy maple cake sugar pudding cream honey rich smooth crumble sweet treat",
+		"")
+	if err != nil {
+		return nil, err
+	}
+
+	sk, err := wallet.PrivateKey(account)
+	if err != nil {
+		return nil, err
+	}
+
+	auth := bind.NewKeyedTransactor(sk)
+
 	return &nodeETH{
 		ethClient:        ethClient,
 		protocolContract: protocolContract,
+		auth:             auth,
+		account:          account,
+		wallet:           wallet,
 	}, nil
+}
+
+func initAccount(mnemonic string, password string) (accounts.Account, *hdwallet.Wallet, error) {
+	seed := bip39.NewSeed(mnemonic, password)
+	wallet, err := hdwallet.NewFromSeed(seed)
+	if err != nil {
+		return accounts.Account{}, nil, err
+	}
+
+	path := hdwallet.MustParseDerivationPath("m/44'/60'/0'/0/0")
+	account, err := wallet.Derive(path, false)
+	if err != nil {
+		return accounts.Account{}, nil, err
+	}
+
+	return account, wallet, nil
 }
 
 func (n *nodeETH) Close() error {
 	n.ethClient.Close()
 	return nil
+}
+
+func (n *nodeETH) CheckAndSetUsername(ctx context.Context, username string) (*types.Transaction, error) {
+	un, err := n.GetUsername(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if un == username {
+		// already set correctly
+		return nil, nil
+	}
+	tx, err := n.SetUsername(username)
+	return tx, err
+}
+
+func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
+	addr, err := n.wallet.Address(n.account)
+	if err != nil {
+		return "", err
+	}
+
+	username, err := n.protocolContract.UsernamesByAddress(&bind.CallOpts{Context: ctx}, addr)
+	return username, err
+}
+
+func (n *nodeETH) SetUsername(username string) (*types.Transaction, error) {
+	tx, err := n.protocolContract.SetUsername(n.auth, username)
+	return tx, err
 }
 
 func (n *nodeETH) GetRefsX(ctx context.Context, repoID string, page int64) ([]Ref, error) {

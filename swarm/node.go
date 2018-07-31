@@ -103,6 +103,11 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
+	_, err = eth.CheckAndSetUsername(ctx, cfg.User.Username)
+	if err != nil {
+		return nil, err
+	}
+
 	return n, nil
 }
 
