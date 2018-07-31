@@ -25,6 +25,7 @@ type NodeConfig struct {
 	RPCListenHost       string
 	EthereumHost        string
 	ProtocolContract    string
+	EthereumBIP39Seed   string
 	AnnounceInterval    Duration
 	FindProviderTimeout Duration
 	LocalRepos          []string
@@ -47,7 +48,8 @@ var DefaultConfig = Config{
 		RPCListenNetwork:    "tcp",
 		RPCListenHost:       "127.0.0.1:1338",
 		EthereumHost:        "http://127.0.0.1:8545",
-		ProtocolContract:    "0x345ca3e014aaf5dca488057592ee47305d9b3e10",
+		ProtocolContract:    "",
+		EthereumBIP39Seed:   "",
 		AnnounceInterval:    Duration(10 * time.Second),
 		FindProviderTimeout: Duration(10 * time.Second),
 		ReplicateRepos:      []string{},

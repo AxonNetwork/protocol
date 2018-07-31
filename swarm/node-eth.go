@@ -37,9 +37,7 @@ func initETH(ctx context.Context, cfg *config.Config) (*nodeETH, error) {
 		return nil, err
 	}
 
-	account, wallet, err := initAccount(
-		"candy maple cake sugar pudding cream honey rich smooth crumble sweet treat",
-		"")
+	account, wallet, err := initAccount(cfg.Node.EthereumBIP39Seed, "")
 	if err != nil {
 		return nil, err
 	}
