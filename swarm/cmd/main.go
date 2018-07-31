@@ -152,18 +152,28 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			err = n.UpdateRefEth(ctx, parts[1], parts[2], parts[3])
+			err = n.UpdateRef(ctx, parts[1], parts[2], parts[3])
 
 		case "get-refs":
-			if len(parts) < 2 {
+			if len(parts) < 3 {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			var refs []swarm.Ref
-			refs, err = n.GetRefsEth(ctx, parts[1])
+
+			var page int64
+			page, err = strconv.ParseInt(parts[2], 10, 64)
+			if err != nil {
+				break
+			}
+
+			var refs map[string]swarm.Ref
+			refs, err = n.GetRefs(ctx, parts[1], page)
+			if err != nil {
+				break
+			}
 
 			for _, ref := range refs {
-				log.Printf("%+v", ref)
+				log.Printf("ref: %v %v", ref.Name, ref.Commit)
 			}
 
 		default:

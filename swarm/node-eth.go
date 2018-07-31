@@ -2,7 +2,6 @@ package swarm
 
 import (
 	"context"
-	"math"
 	"math/big"
 
 	// log "github.com/sirupsen/logrus"
@@ -98,13 +97,11 @@ func (n *nodeETH) SetUsername(ctx context.Context, username string) (*types.Tran
 	un, err := n.GetUsername(ctx)
 	if err != nil {
 		return nil, err
-	}
-	if un == username {
+	} else if un == username {
 		// already set correctly
 		return nil, nil
 	}
-	tx, err := n.protocolContract.SetUsername(n.GetTransactOpts(ctx), username)
-	return tx, err
+	return n.protocolContract.SetUsername(n.GetTransactOpts(ctx), username)
 }
 
 func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
@@ -112,68 +109,54 @@ func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	username, err := n.protocolContract.UsernamesByAddress(n.GetCallOpts(ctx), addr)
-	return username, err
+	return n.protocolContract.UsernamesByAddress(n.GetCallOpts(ctx), addr)
 }
 
 func (n *nodeETH) CreateRepository(ctx context.Context, repoID string) (*types.Transaction, error) {
 	exists, err := n.protocolContract.RepositoryExists(n.GetCallOpts(ctx), repoID)
 	if err != nil {
 		return nil, err
-	}
-	if exists {
+	} else if exists {
 		return nil, nil
 	}
-	tx, err := n.protocolContract.CreateRepository(n.GetTransactOpts(ctx), repoID)
-	return tx, err
+	return n.protocolContract.CreateRepository(n.GetTransactOpts(ctx), repoID)
 }
 
 func (n *nodeETH) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*types.Transaction, error) {
-	tx, err := n.protocolContract.UpdateRef(n.GetTransactOpts(ctx), repoID, refName, commitHash)
-	return tx, err
+	return n.protocolContract.UpdateRef(n.GetTransactOpts(ctx), repoID, refName, commitHash)
 }
 
-func (n *nodeETH) GetRefs(ctx context.Context, repoID string) ([]Ref, error) {
-	refCount, err := n.protocolContract.NumRefs(n.GetCallOpts(ctx), repoID)
+func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) {
+	num, err := n.protocolContract.NumRefs(n.GetCallOpts(ctx), repoID)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	pageCount := int(math.Ceil(float64(refCount.Int64()) / 10))
-	refs := make([]Ref, 0)
-	for i := 0; i < pageCount; i++ {
-		refPage, err := n.GetRefsX(ctx, repoID, int64(i))
-		if err != nil {
-			return nil, err
-		}
-		refs = append(refs, refPage...)
-	}
-	return refs, nil
+	return num.Int64(), nil
 }
 
-func (n *nodeETH) GetRefsX(ctx context.Context, repoID string, page int64) ([]Ref, error) {
+func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
 	refsBytes, err := n.protocolContract.GetRefs(n.GetCallOpts(ctx), repoID, big.NewInt(page))
 	if err != nil {
 		return nil, err
 	}
 
-	refs := []Ref{}
+	refs := map[string]Ref{}
 
 	var read int64
 	for read < int64(len(refsBytes)) {
 		ref := Ref{}
 
-		nameLen := big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
+		ref.NameLen = big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
 		read += 32
-		ref.Name = string(refsBytes[read : read+nameLen])
-		read += nameLen
+		ref.Name = string(refsBytes[read : read+ref.NameLen])
+		read += ref.NameLen
 
-		commitLen := big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
+		ref.CommitLen = big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
 		read += 32
-		ref.Commit = string(refsBytes[read : read+commitLen])
-		read += commitLen
+		ref.Commit = string(refsBytes[read : read+ref.CommitLen])
+		read += ref.CommitLen
 
-		refs = append(refs, ref)
+		refs[ref.Name] = ref
 	}
 
 	return refs, nil

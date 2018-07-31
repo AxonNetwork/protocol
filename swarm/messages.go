@@ -38,27 +38,35 @@ type AddRepoResponse struct {
 }
 
 type GetRefsRequest struct {
-	RepoIDLen int `struc:"sizeof=RepoID"`
+	RepoIDLen int64 `struc:"sizeof=RepoID"`
 	RepoID    string
+	Page      int64
 }
 
 type GetRefsResponse struct {
 	RefsLen int `struc:"sizeof=Refs"`
-	Refs    []byte
+	Refs    []Ref
+	NumRefs int64
 }
 
 type AddRefRequest struct {
-	RepoIDLen int `struc:"sizeof=RepoID"`
-	RepoID    string
-	NameLen   int `struc:"sizeof=Name"`
-	Name      string
-	TargetLen int `struc:"sizeof=Target"`
-	Target    string
+	RepoIDLen  int64 `struc:"sizeof=RepoID"`
+	RepoID     string
+	RefNameLen int64 `struc:"sizeof=RefName"`
+	RefName    string
+	CommitLen  int64 `struc:"sizeof=Commit"`
+	Commit     string
 }
 
 type AddRefResponse struct {
-	RefsLen int `struc:"sizeof=Refs"`
-	Refs    []byte
+	OK bool
+}
+
+type Ref struct {
+	NameLen   int64 `struc:"sizeof=Name"`
+	Name      string
+	CommitLen int64 `struc:"sizeof=Commit"`
+	Commit    string
 }
 
 type PullRequest struct {

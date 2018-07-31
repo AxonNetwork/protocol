@@ -2,7 +2,6 @@ package swarm
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// @@TODO: make all RPCClient methods take a context
 type RPCClient struct {
 	conn          net.Conn
 	network, addr string
@@ -24,14 +24,17 @@ func NewRPCClient(network, addr string) (*RPCClient, error) {
 	return client, nil
 }
 
+func (c *RPCClient) writeMessageType(conn net.Conn, typ MessageType) error {
+	return writeUint64(conn, uint64(typ))
+}
+
 func (c *RPCClient) GetObject(repoID string, objectID []byte) (ObjectReader, error) {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Write the message type
-	err = writeUint64(conn, uint64(MessageType_GetObject))
+	err = c.writeMessageType(conn, MessageType_GetObject)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +72,7 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 		return err
 	}
 
-	// Write the message type
-	err = writeUint64(conn, uint64(MessageType_AddRepo))
+	err = c.writeMessageType(conn, MessageType_AddRepo)
 	if err != nil {
 		return err
 	}
@@ -86,85 +88,107 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 	err = readStructPacket(conn, &resp)
 	if err != nil {
 		return err
-	}
-
-	if !resp.Success {
-		return fmt.Errorf("Repo could not be added")
+	} else if !resp.Success {
+		return fmt.Errorf("repo could not be added")
 	}
 
 	return nil
 }
 
-func (c *RPCClient) GetRefs(repoID string) (map[string]string, error) {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return nil, err
+const (
+	REF_PAGE_SIZE = 10 // @@TODO: make configurable
+)
+
+func (c *RPCClient) GetAllRefs(repoID string) (map[string]Ref, error) {
+	var page int64
+	var numRefs int64
+	var err error
+
+	refMap := make(map[string]Ref)
+
+	for {
+		var refs map[string]Ref
+		refs, numRefs, err = c.GetRefs(repoID, page)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, ref := range refs {
+			refMap[ref.Name] = ref
+		}
+
+		if int64(page*REF_PAGE_SIZE) >= numRefs {
+			break
+		}
+
+		page++
 	}
 
-	// Write the message type
-	err = writeUint64(conn, uint64(MessageType_GetRefs))
+	return refMap, nil
+}
+
+func (c *RPCClient) GetRefs(repoID string, page int64) (map[string]Ref, int64, error) {
+	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	err = c.writeMessageType(conn, MessageType_GetRefs)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &GetRefsRequest{RepoID: repoID})
+	err = writeStructPacket(conn, &GetRefsRequest{RepoID: repoID, Page: page})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Read the response packet (i.e., the header for the subsequent object stream)
 	resp := GetRefsResponse{}
 	err = readStructPacket(conn, &resp)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	refs := map[string]string{}
-	err = json.Unmarshal(resp.Refs, &refs)
-	if err != nil {
-		return nil, err
+	refs := map[string]Ref{}
+	for _, ref := range resp.Refs {
+		refs[ref.Name] = ref
 	}
 
-	return refs, nil
+	return refs, resp.NumRefs, nil
 }
 
-func (c *RPCClient) AddRef(repoID string, target string, name string) (map[string]string, error) {
+func (c *RPCClient) AddRef(repoID string, refName string, commitHash string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Write the message type
-	err = writeUint64(conn, uint64(MessageType_AddRef))
+	err = c.writeMessageType(conn, MessageType_AddRef)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Write the request packet
 	err = writeStructPacket(conn, &AddRefRequest{
-		RepoID: repoID,
-		Target: target,
-		Name:   name,
+		RepoID:  repoID,
+		RefName: refName,
+		Commit:  commitHash,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Read the response packet (i.e., the header for the subsequent object stream)
+	// Read the response packet
 	resp := AddRefResponse{}
 	err = readStructPacket(conn, &resp)
 	if err != nil {
-		return nil, err
+		return err
+	} else if !resp.OK {
+		return errors.New("AddRefResponse.OK is false")
 	}
-
-	refs := map[string]string{}
-	err = json.Unmarshal(resp.Refs, &refs)
-	if err != nil {
-		return nil, err
-	}
-
-	return refs, nil
+	return nil
 }
 
 func (c *RPCClient) RequestPull(repoID string) error {
@@ -173,8 +197,7 @@ func (c *RPCClient) RequestPull(repoID string) error {
 		return err
 	}
 
-	// Write the message type
-	err = writeUint64(conn, uint64(MessageType_Pull))
+	err = c.writeMessageType(conn, MessageType_Pull)
 	if err != nil {
 		return err
 	}

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os/exec"
@@ -237,10 +236,12 @@ func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
 	if err != nil {
 		return err
 	}
+
 	repo, err := n.RepoManager.GetGitRepo(repoPath)
 	if err != nil {
 		return err
 	}
+
 	_, _, repoID, err := n.RepoManager.GetRepoInfo(repo)
 	if err != nil {
 		return err
@@ -256,56 +257,25 @@ func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
 		return err
 	}
 
-	err = n.UpdateRefEth(ctx, repoID, "refs/heads/master", head)
+	_, err = n.eth.UpdateRef(ctx, repoID, "refs/heads/master", head)
 	if err != nil {
 		return err
 	}
 
 	// refs, err := n.GetRefs(ctx, repoID)
 	// if err != nil {
-	// 	return err
+	//  return err
 	// }
 	return nil
 }
 
-type Ref struct {
-	Name   string
-	Commit string
+func (n *Node) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
+	return n.eth.GetRefs(ctx, repoID, page)
 }
 
-func (n *Node) UpdateRefEth(ctx context.Context, repoID string, refName string, commitHash string) error {
+func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) error {
 	_, err := n.eth.UpdateRef(ctx, repoID, refName, commitHash)
 	return err
-}
-
-func (n *Node) GetRefsEth(ctx context.Context, repoID string) ([]Ref, error) {
-	refs, err := n.eth.GetRefs(ctx, repoID)
-	return refs, err
-}
-
-func (n *Node) AddRef(ctx context.Context, repoID string, target string, name string) (map[string]string, error) {
-	refs, err := n.GetRefs(ctx, repoID)
-	if err != nil {
-		return nil, err
-	}
-	refs[name] = target
-	refStr, err := json.Marshal(refs)
-	err = n.DHT.PutValue(ctx, repoID, refStr)
-	return refs, err
-}
-
-func (n *Node) GetRefs(ctx context.Context, repoID string) (map[string]string, error) {
-	refsBin, err := n.DHT.GetValue(ctx, repoID)
-	if err != nil {
-		// refs don't exist
-		return map[string]string{}, nil
-	}
-	refs := map[string]string{}
-	err = json.Unmarshal(refsBin, &refs)
-	if err != nil {
-		return nil, err
-	}
-	return refs, nil
 }
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests

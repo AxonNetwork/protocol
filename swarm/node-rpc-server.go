@@ -2,7 +2,6 @@ package swarm
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net"
 
@@ -117,19 +116,25 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 
 		log.Printf("[rpc stream] get refs from %s", req.RepoID)
-		refs, err := n.GetRefs(context.Background(), req.RepoID)
 
-		if err != nil {
-			log.Printf("[rpc stream] couldn't find refs")
-			refs = map[string]string{}
-		}
-		refsBin, err := json.Marshal(refs)
+		numRefs, err := n.eth.GetNumRefs(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
-		err = writeStructPacket(stream, &GetRefsResponse{
-			Refs: refsBin,
-		})
+
+		refMap, err := n.eth.GetRefs(context.Background(), req.RepoID, req.Page)
+		if err != nil {
+			panic(err)
+		}
+
+		refs := make([]Ref, len(refMap))
+		i := 0
+		for _, ref := range refMap {
+			refs[i] = ref
+			i++
+		}
+
+		err = writeStructPacket(stream, &GetRefsResponse{Refs: refs, NumRefs: numRefs})
 		if err != nil {
 			panic(err)
 		}
@@ -142,20 +147,13 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
-		log.Printf("[rpc stream] add ref to %s: %s %s", req.RepoID, req.Target, req.Name)
-		refs, err := n.AddRef(context.Background(), req.RepoID, req.Target, req.Name)
-
-		if err != nil {
-			log.Printf("[rpc stream] couldn't add ref")
-			refs = map[string]string{}
-		}
-		refsBin, err := json.Marshal(refs)
+		log.Printf("[rpc stream] add ref to %s: %s %s", req.RepoID, req.RefName, req.Commit)
+		_, err = n.eth.UpdateRef(context.Background(), req.RepoID, req.RefName, req.Commit)
 		if err != nil {
 			panic(err)
 		}
-		err = writeStructPacket(stream, &AddRefResponse{
-			Refs: refsBin,
-		})
+
+		err = writeStructPacket(stream, &AddRefResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}
