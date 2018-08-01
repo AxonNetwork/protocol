@@ -82,7 +82,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	n.DHT.Validator = blankValidator{}
 
 	// Start a goroutine for announcing which repos and objects this Node can provide (happens every few seconds)
-	go n.announceContent(ctx)
+	go n.periodicallyAnnounceContent(ctx)
 
 	// Set the handler function for when we get a new incoming object stream
 	n.Host.SetStreamHandler(OBJECT_STREAM_PROTO, n.objectStreamHandler)
@@ -102,7 +102,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
-	_, err = eth.SetUsername(ctx, cfg.User.Username)
+	_, err = n.eth.SetUsername(ctx, cfg.User.Username)
 	if err != nil {
 		return nil, err
 	}
@@ -136,41 +136,76 @@ func (n *Node) Close() error {
 	return nil
 }
 
-func (n *Node) announceContent(ctx context.Context) {
+// Periodically announces our repos and objects to the network.
+func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))
 	for range c {
-		err := n.RepoManager.ForEachRepo(func(repo RepoEntry) error {
-			err := n.provideRepo(ctx, repo.RepoID)
+		err := n.RepoManager.ForEachRepo(func(repo *Repo) error {
+			repoID, err := repo.RepoID()
 			if err != nil {
 				return err
 			}
 
-			return repo.ForEachObject(func(objectID []byte) error {
-				return n.provideObject(ctx, repo.RepoID, objectID)
+			err = n.announceRepo(ctx, repoID)
+			if err != nil {
+				return err
+			}
+
+			return repo.ForEachObjectID(func(objectID []byte) error {
+				return n.announceObject(ctx, repoID, objectID)
 			})
 		})
-		if err != nil && err != kbucket.ErrLookupFailure {
+		if err != nil {
 			log.Errorf("[announce] %v", err)
 		}
 	}
 }
 
+// This method is called via the RPC connection when a user git-pushes new content to the network.
+// A push is actually a request to be pulled from, and in order for peers to pull from us, they need
+// to know that we have the content in question.
+func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
+	repo := n.RepoManager.Repo(repoID)
+	if repo == nil {
+		return errors.New("repo not found")
+	}
+
+	err := n.announceRepo(ctx, repoID)
+	if err != nil {
+		return err
+	}
+
+	return repo.ForEachObjectID(func(objectID []byte) error {
+		return n.announceObject(ctx, repoID, objectID)
+	})
+}
+
 // Announce to the swarm that this Node is tracking/replicating a given repository.
-func (n *Node) provideRepo(ctx context.Context, repoID string) error {
+func (n *Node) announceRepo(ctx context.Context, repoID string) error {
 	c, err := cidForString(repoID)
 	if err != nil {
 		return err
 	}
-	return n.DHT.Provide(ctx, c, true)
+
+	err = n.DHT.Provide(ctx, c, true)
+	if err != nil && err != kbucket.ErrLookupFailure {
+		return err
+	}
+	return nil
 }
 
 // Announce to the swarm that this Node can provide a given object from a given repository.
-func (n *Node) provideObject(ctx context.Context, repoID string, objectID []byte) error {
+func (n *Node) announceObject(ctx context.Context, repoID string, objectID []byte) error {
 	c, err := cidForObject(repoID, objectID)
 	if err != nil {
 		return err
 	}
-	return n.DHT.Provide(ctx, c, true)
+
+	err = n.DHT.Provide(ctx, c, true)
+	if err != nil && err != kbucket.ErrLookupFailure {
+		return err
+	}
+	return nil
 }
 
 // Adds a peer to the Node's address book and attempts to .Connect to it using the libp2p Host.
@@ -232,40 +267,31 @@ func (n *Node) openLocalObjectReader(repoID string, objectID []byte) (ObjectRead
 }
 
 func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
-	err := n.RepoManager.AddRepo(repoPath)
-	if err != nil {
-		return err
-	}
+	//    repo, err := n.RepoManager.AddRepo(repoPath)
+	//    if err != nil {
+	//        return err
+	//    }
+	//
+	//    repoID, err := repo.RepoID()
+	//    if err != nil {
+	//        return err
+	//    }
+	//
+	//    _, err = n.eth.CreateRepository(ctx, repoID)
+	//    if err != nil {
+	//        return err
+	//    }
+	//
+	//    head, err := repo.Head()
+	//    if err != nil {
+	//        return err
+	//    }
+	//
+	//    _, err = n.eth.UpdateRef(ctx, repoID, "refs/heads/master", head.Hash().String())
+	//    if err != nil {
+	//        return err
+	//    }
 
-	repo, err := n.RepoManager.GetGitRepo(repoPath)
-	if err != nil {
-		return err
-	}
-
-	_, _, repoID, err := n.RepoManager.GetRepoInfo(repo)
-	if err != nil {
-		return err
-	}
-
-	_, err = n.eth.CreateRepository(ctx, repoID)
-	if err != nil {
-		return err
-	}
-
-	head, err := n.RepoManager.GetHEAD(repo)
-	if err != nil {
-		return err
-	}
-
-	_, err = n.eth.UpdateRef(ctx, repoID, "refs/heads/master", head)
-	if err != nil {
-		return err
-	}
-
-	// refs, err := n.GetRefs(ctx, repoID)
-	// if err != nil {
-	//  return err
-	// }
 	return nil
 }
 

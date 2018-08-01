@@ -208,10 +208,10 @@ func logAddrs(n *swarm.Node) {
 func logRepos(n *swarm.Node) {
 	log.Printf("Known repos:")
 
-	n.RepoManager.ForEachRepo(func(repo swarm.RepoEntry) error {
-		log.Printf("  - %v/%v", repo.Username, repo.RepoID)
+	n.RepoManager.ForEachRepo(func(repo *swarm.Repo) error {
+		log.Printf("  - %v", repo.RepoID)
 
-		err := repo.ForEachObject(func(objectID []byte) error {
+		err := repo.ForEachObjectID(func(objectID []byte) error {
 			log.Printf("      - %v", hex.EncodeToString(objectID))
 			return nil
 		})

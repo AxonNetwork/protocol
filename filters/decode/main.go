@@ -120,18 +120,10 @@ func getRepoID() (string, error) {
 		return "", fmt.Errorf("missing conscience config in .git/config")
 	}
 
-	username := section.Option("username")
-	if username == "" {
+	repoID := section.Option("repoid")
+	if repoID == "" {
 		return "", fmt.Errorf("missing conscience config in .git/config")
 	}
-
-	repoName := section.Option("reponame")
-	if repoName == "" {
-		return "", fmt.Errorf("missing conscience config in .git/config")
-	}
-
-	repoID := fmt.Sprintf("%s/%s", username, repoName)
-
 	return repoID, nil
 }
 

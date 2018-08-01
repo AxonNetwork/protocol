@@ -93,16 +93,32 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc stream] add repo: %s", req.RepoPath)
 
-		success := true
-		err = n.RepoManager.AddRepo(req.RepoPath)
+		_, err = n.RepoManager.AddRepo(req.RepoPath)
 		if err != nil {
-			log.Printf("[rpc stream] couldn't add repo")
-			success = false
+			panic(err)
 		}
 
-		err = writeStructPacket(stream, &AddRepoResponse{
-			Success: success,
-		})
+		err = writeStructPacket(stream, &AddRepoResponse{OK: true})
+		if err != nil {
+			panic(err)
+		}
+
+	case MessageType_AnnounceRepoContent:
+		log.Printf("[rpc stream] AnnounceRepoContent")
+		req := AnnounceRepoContentRequest{}
+		err := readStructPacket(stream, &req)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Printf("[rpc stream] announce repo content: %s", req.RepoID)
+
+		err = n.AnnounceRepoContent(context.Background(), req.RepoID)
+		if err != nil {
+			panic(err)
+		}
+
+		err = writeStructPacket(stream, &AnnounceRepoContentResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}

@@ -17,28 +17,16 @@ import (
 )
 
 var (
-	GIT_DIR  string = os.Getenv("GIT_DIR")
-	client   *swarm.RPCClient
-	repo     *git.Repository
-	repoUser string
-	repoName string
-	repoID   string
+	GIT_DIR = os.Getenv("GIT_DIR")
+	client  *swarm.RPCClient
+	repo    *git.Repository
+	repoID  string
 )
 
 func main() {
 	var err error
 
-	remoteURL := os.Args[2]
-	remoteURLParts := strings.Split(
-		strings.Replace(remoteURL, "conscience://", "", -1),
-		"/",
-	)
-	if len(remoteURLParts) != 2 {
-		panic("malformed remote URL")
-	}
-
-	repoUser, repoName = remoteURLParts[0], remoteURLParts[1]
-	repoID = fmt.Sprintf("%s/%s", repoUser, repoName)
+	repoID = strings.Replace(os.Args[2], "conscience://", "", -1)
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
@@ -150,12 +138,9 @@ func setupConfig() error {
 	raw := cfg.Raw
 	changed := false
 	section := raw.Section("conscience")
-	if section.Option("username") != repoUser {
-		raw.SetOption("conscience", "", "username", repoUser)
-		changed = true
-	}
-	if section.Option("reponame") != repoName {
-		raw.SetOption("conscience", "", "reponame", repoName)
+
+	if section.Option("repoid") != repoID {
+		raw.SetOption("conscience", "", "repoid", repoID)
 		changed = true
 	}
 

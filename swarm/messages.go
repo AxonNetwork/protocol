@@ -10,6 +10,7 @@ const (
 	MessageType_Invalid MessageType = iota
 	MessageType_GetObject
 	MessageType_AddRepo
+	MessageType_AnnounceRepoContent
 	MessageType_GetRefs
 	MessageType_UpdateRef
 	MessageType_Pull
@@ -34,7 +35,16 @@ type AddRepoRequest struct {
 }
 
 type AddRepoResponse struct {
-	Success bool
+	OK bool
+}
+
+type AnnounceRepoContentRequest struct {
+	RepoIDLen int `struc:"sizeof=RepoID"`
+	RepoID    string
+}
+
+type AnnounceRepoContentResponse struct {
+	OK bool
 }
 
 type GetRefsRequest struct {

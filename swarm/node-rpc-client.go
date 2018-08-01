@@ -88,7 +88,36 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 	err = readStructPacket(conn, &resp)
 	if err != nil {
 		return err
-	} else if !resp.Success {
+	} else if !resp.OK {
+		return errors.New("repo could not be added")
+	}
+
+	return nil
+}
+
+func (c *RPCClient) AnnounceRepoContent(repoID string) error {
+	conn, err := net.Dial(c.network, c.addr)
+	if err != nil {
+		return err
+	}
+
+	err = c.writeMessageType(conn, MessageType_AnnounceRepoContent)
+	if err != nil {
+		return err
+	}
+
+	// Write the request packet
+	err = writeStructPacket(conn, &AnnounceRepoContentRequest{RepoID: repoID})
+	if err != nil {
+		return err
+	}
+
+	// Read the response packet (i.e., the header for the subsequent object stream)
+	resp := AnnounceRepoContentResponse{}
+	err = readStructPacket(conn, &resp)
+	if err != nil {
+		return err
+	} else if !resp.OK {
 		return fmt.Errorf("repo could not be added")
 	}
 
