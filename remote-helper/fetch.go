@@ -39,7 +39,7 @@ func fetchTree(hash gitplumbing.Hash) error {
 		return err
 	}
 
-	tIter, err := repo.TreeObject(hash)
+	tIter, err := Repo.TreeObject(hash)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -61,7 +61,7 @@ func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, erro
 	}
 	defer objectStream.Close()
 
-	obj := repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
+	obj := Repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
 	obj.SetType(objectStream.Type())
 
 	w, err := obj.Writer()
@@ -87,7 +87,7 @@ func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.EncodedObject, erro
 	}
 
 	// Write the object to disk
-	_, err = repo.Storer.SetEncodedObject(obj)
+	_, err = Repo.Storer.SetEncodedObject(obj)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

@@ -9,17 +9,17 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/src-d/go-git.v4"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"../config"
+	"../repo"
 	"../swarm"
 )
 
 var (
 	GIT_DIR = os.Getenv("GIT_DIR")
 	client  *swarm.RPCClient
-	repo    *git.Repository
+	Repo    *repo.Repo
 	repoID  string
 )
 
@@ -42,7 +42,7 @@ func main() {
 		panic("empty GIT_DIR")
 	}
 
-	repo, err = git.PlainOpen(filepath.Dir(GIT_DIR))
+	Repo, err = repo.Open(filepath.Dir(GIT_DIR))
 	if err != nil {
 		panic(err)
 	}
@@ -71,7 +71,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 			forPush := strings.Contains(text, "for-push")
 			// @TODO: find a better spot for this?
 			if !forPush {
-				err := setupConfig()
+				err := Repo.SetupConfig(repoID)
 				if err != nil {
 					return err
 				}
@@ -126,48 +126,5 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		}
 	}
-	return nil
-}
-
-func setupConfig() error {
-	cfg, err := repo.Config()
-	if err != nil {
-		return err
-	}
-
-	raw := cfg.Raw
-	changed := false
-	section := raw.Section("conscience")
-
-	if section.Option("repoid") != repoID {
-		raw.SetOption("conscience", "", "repoid", repoID)
-		changed = true
-	}
-
-	filter := raw.Section("filter").Subsection("conscience")
-	if filter.Option("clean") != "conscience_encode" {
-		raw.SetOption("filter", "conscience", "clean", "conscience_encode")
-		changed = true
-	}
-	if filter.Option("smudge") != "conscience_decode" {
-		raw.SetOption("filter", "conscience", "smudge", "conscience_decode")
-		changed = true
-	}
-
-	if changed {
-		p := filepath.Join(GIT_DIR, "config")
-		f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
-		if err != nil {
-			return err
-		}
-		w := io.Writer(f)
-
-		enc := gitconfig.NewEncoder(w)
-		err = enc.Encode(raw)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }

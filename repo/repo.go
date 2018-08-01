@@ -3,6 +3,7 @@ package repo
 import (
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -11,6 +12,7 @@ import (
 
 	"gopkg.in/src-d/go-git.v4"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+	gitconfig "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 
 	"../util"
@@ -180,4 +182,47 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 	} else {
 		return nil, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
 	}
+}
+
+func (r *Repo) SetupConfig(repoID string) error {
+	cfg, err := r.Config()
+	if err != nil {
+		return err
+	}
+
+	raw := cfg.Raw
+	changed := false
+	section := raw.Section("conscience")
+
+	if section.Option("repoid") != repoID {
+		raw.SetOption("conscience", "", "repoid", repoID)
+		changed = true
+	}
+
+	filter := raw.Section("filter").Subsection("conscience")
+	if filter.Option("clean") != "conscience_encode" {
+		raw.SetOption("filter", "conscience", "clean", "conscience_encode")
+		changed = true
+	}
+	if filter.Option("smudge") != "conscience_decode" {
+		raw.SetOption("filter", "conscience", "smudge", "conscience_decode")
+		changed = true
+	}
+
+	if changed {
+		p := filepath.Join(r.Path, ".git", "config")
+		f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
+		if err != nil {
+			return err
+		}
+		w := io.Writer(f)
+
+		enc := gitconfig.NewEncoder(w)
+		err = enc.Encode(raw)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

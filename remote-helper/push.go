@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -19,12 +17,12 @@ func push(refName string, commitHash string) error {
 		return err
 	}
 
-	ref, err := repo.Reference(gitplumbing.ReferenceName(refName), false)
+	ref, err := Repo.Reference(gitplumbing.ReferenceName(refName), false)
 	if err != nil {
 		return err
 	}
 
-	_, err = client.UpdateRef(repoID, ref.Strings()[1], commitHash)
+	err = client.UpdateRef(repoID, ref.Strings()[1], commitHash)
 	if err != nil {
 		return err
 	}

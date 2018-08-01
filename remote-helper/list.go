@@ -2,11 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-
-	gitconfig "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 )
 
 func getRefs() ([]string, error) {
