@@ -19,6 +19,7 @@ import (
 
 	swarm ".."
 	"../../config"
+	"../../repo"
 )
 
 func main() {
@@ -208,7 +209,7 @@ func logAddrs(n *swarm.Node) {
 func logRepos(n *swarm.Node) {
 	log.Printf("Known repos:")
 
-	n.RepoManager.ForEachRepo(func(repo *swarm.Repo) error {
+	n.RepoManager.ForEachRepo(func(repo *repo.Repo) error {
 		log.Printf("  - %v", repo.RepoID)
 
 		err := repo.ForEachObjectID(func(objectID []byte) error {

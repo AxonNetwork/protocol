@@ -26,6 +26,8 @@ import (
 	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
 
 	"../config"
+	"../repo"
+	"../util"
 )
 
 type Node struct {
@@ -44,8 +46,7 @@ const (
 )
 
 var (
-	ErrObjectNotFound = fmt.Errorf("object not found")
-	ErrProtocol       = fmt.Errorf("protocol error")
+	ErrProtocol = fmt.Errorf("protocol error")
 )
 
 func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
@@ -140,8 +141,8 @@ func (n *Node) Close() error {
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))
 	for range c {
-		err := n.RepoManager.ForEachRepo(func(repo *Repo) error {
-			repoID, err := repo.RepoID()
+		err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+			repoID, err := r.RepoID()
 			if err != nil {
 				return err
 			}
@@ -151,7 +152,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 				return err
 			}
 
-			return repo.ForEachObjectID(func(objectID []byte) error {
+			return r.ForEachObjectID(func(objectID []byte) error {
 				return n.announceObject(ctx, repoID, objectID)
 			})
 		})
@@ -229,12 +230,17 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	return nil
 }
 
-// Attempts to find a peer providing the given object.  If a peer is found, the Node tries to
-// download the object from that peer.
-func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (ObjectReader, error) {
+// Attempts to open a stream to the given object.  If we have it locally, the object is read from
+// the filesystem.  Otherwise, we look for a peer and stream it over a p2p connection.
+func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
+	r := n.RepoManager.Repo(repoID)
+	if r == nil {
+		return nil, errors.New("repo doesn't exist")
+	}
+
 	// If we detect that we already have the object locally, just open a regular file stream
-	if n.RepoManager.HasObject(repoID, objectID) {
-		return n.openLocalObjectReader(repoID, objectID)
+	if r.HasObject(repoID, objectID) {
+		return r.OpenObject(objectID)
 	}
 
 	c, err := cidForObject(repoID, objectID)
@@ -254,16 +260,12 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 
 	if provider.ID == n.Host.ID() {
 		// We have the object locally (perhaps in another clone of the same repository)
-		return n.openLocalObjectReader(repoID, objectID)
+		return r.OpenObject(objectID)
 
 	} else {
 		// We found a peer with the object
 		return n.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
 	}
-}
-
-func (n *Node) openLocalObjectReader(repoID string, objectID []byte) (ObjectReader, error) {
-	return n.RepoManager.OpenObject(repoID, objectID)
 }
 
 func (n *Node) AddRepo(ctx context.Context, repoPath string) error {

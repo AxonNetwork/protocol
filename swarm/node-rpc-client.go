@@ -8,6 +8,8 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+
+	"../util"
 )
 
 // @@TODO: make all RPCClient methods take a context
@@ -28,7 +30,7 @@ func (c *RPCClient) writeMessageType(conn net.Conn, typ MessageType) error {
 	return writeUint64(conn, uint64(typ))
 }
 
-func (c *RPCClient) GetObject(repoID string, objectID []byte) (ObjectReader, error) {
+func (c *RPCClient) GetObject(repoID string, objectID []byte) (*util.ObjectReader, error) {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return nil, err
@@ -53,14 +55,14 @@ func (c *RPCClient) GetObject(repoID string, objectID []byte) (ObjectReader, err
 	}
 
 	if !resp.HasObject {
-		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%v", repoID, hex.EncodeToString(objectID))
+		return nil, errors.New("object not found: " + repoID + ":" + hex.EncodeToString(objectID))
 	}
 
-	reader := &objectReader{
+	reader := &util.ObjectReader{
 		Reader:     &io.LimitedReader{conn, resp.ObjectLen},
 		Closer:     conn,
-		objectType: resp.ObjectType,
-		objectLen:  resp.ObjectLen,
+		ObjectType: resp.ObjectType,
+		ObjectLen:  resp.ObjectLen,
 	}
 
 	return reader, nil

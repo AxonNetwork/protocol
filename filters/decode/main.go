@@ -14,13 +14,19 @@ import (
 	"gopkg.in/src-d/go-git.v4"
 
 	"../../config"
+	"../../repo"
 	"../../swarm"
 )
 
 var GIT_DIR string = os.Getenv("GIT_DIR")
 
 func main() {
-	repoID, err := getRepoID()
+	r, err := repo.Open(filepath.Dir(GIT_DIR))
+	if err != nil {
+		panic(err)
+	}
+
+	repoID, err := r.RepoID()
 	if err != nil {
 		panic(err)
 	}
@@ -102,29 +108,6 @@ func main() {
 		panic(err)
 	case <-chDone:
 	}
-}
-
-func getRepoID() (string, error) {
-	repo, err := git.PlainOpen(filepath.Dir(GIT_DIR))
-	if err != nil {
-		return "", err
-	}
-
-	cfg, err := repo.Config()
-	if err != nil {
-		return "", err
-	}
-
-	section := cfg.Raw.Section("conscience")
-	if section == nil {
-		return "", fmt.Errorf("missing conscience config in .git/config")
-	}
-
-	repoID := section.Option("repoid")
-	if repoID == "" {
-		return "", fmt.Errorf("missing conscience config in .git/config")
-	}
-	return repoID, nil
 }
 
 func downloadChunk(client *swarm.RPCClient, repoID string, objectIDStr string) error {

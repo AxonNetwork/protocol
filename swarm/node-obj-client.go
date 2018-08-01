@@ -8,10 +8,12 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+
+	"../util"
 )
 
 // Opens an outgoing request to another Node for the given object.
-func (n *Node) openPeerObjectReader(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) (ObjectReader, error) {
+func (n *Node) openPeerObjectReader(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) (*util.ObjectReader, error) {
 	log.Printf("[stream] requesting object...")
 
 	// Open the stream
@@ -35,11 +37,11 @@ func (n *Node) openPeerObjectReader(ctx context.Context, peerID peer.ID, repoID 
 		return nil, errors.New("peer doesn't have object " + repoID + ":" + hex.EncodeToString(objectID))
 	}
 
-	or := objectReader{
+	or := &util.ObjectReader{
 		Reader:     stream,
 		Closer:     stream,
-		objectType: resp.ObjectType,
-		objectLen:  resp.ObjectLen,
+		ObjectType: resp.ObjectType,
+		ObjectLen:  resp.ObjectLen,
 	}
 	return or, nil
 }

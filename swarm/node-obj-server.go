@@ -33,7 +33,17 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	//    - [stream of object bytes...]
 	//    - <close connection>
 	//
-	objectStream, err := n.RepoManager.OpenObject(req.RepoID, req.ObjectID)
+	r := n.RepoManager.Repo(req.RepoID)
+	if r == nil {
+		err := writeStructPacket(stream, &GetObjectResponse{HasObject: false})
+		if err != nil {
+			log.Errorf("[stream] %v", err)
+			return
+		}
+		return
+	}
+
+	objectStream, err := r.OpenObject(req.ObjectID)
 	if err != nil {
 		log.Printf("[stream] we don't have %v %v (err: %v)", req.RepoID, hex.EncodeToString(req.ObjectID), err)
 
