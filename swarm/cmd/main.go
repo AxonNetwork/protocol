@@ -98,8 +98,12 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			// _, err = n.RepoManager.AddRepo(parts[1])
-			err = n.AddRepo(ctx, parts[1])
+
+			var r *repo.Repo
+			r, err = n.RepoManager.AddRepo(parts[1])
+			if err != nil {
+				break
+			}
 
 		case "add-peer":
 			if len(parts) < 2 {
@@ -209,10 +213,15 @@ func logAddrs(n *swarm.Node) {
 func logRepos(n *swarm.Node) {
 	log.Printf("Known repos:")
 
-	n.RepoManager.ForEachRepo(func(repo *repo.Repo) error {
-		log.Printf("  - %v", repo.RepoID)
+	n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+		repoID, err := r.RepoID()
+		if err != nil {
+			return err
+		}
 
-		err := repo.ForEachObjectID(func(objectID []byte) error {
+		log.Printf("  - %v", repoID)
+
+		err := r.ForEachObjectID(func(objectID []byte) error {
 			log.Printf("      - %v", hex.EncodeToString(objectID))
 			return nil
 		})
