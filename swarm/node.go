@@ -160,7 +160,8 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 
 // This method is called via the RPC connection when a user git-pushes new content to the network.
 // A push is actually a request to be pulled from, and in order for peers to pull from us, they need
-// to know that we have the content in question.
+// to know that we have the content in question.  The content is new, and therefore hasn't been
+// announced before; hence, the reason for this.
 func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	repo := n.RepoManager.Repo(repoID)
 	if repo == nil {
@@ -177,7 +178,7 @@ func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	})
 }
 
-// Announce to the swarm that this Node is tracking/replicating a given repository.
+// Announce to the swarm that this Node can provide objects from the given repository.
 func (n *Node) announceRepo(ctx context.Context, repoID string) error {
 	c, err := cidForString(repoID)
 	if err != nil {
