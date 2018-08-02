@@ -99,8 +99,7 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				break
 			}
 
-			var r *repo.Repo
-			r, err = n.RepoManager.AddRepo(parts[1])
+			_, err = n.RepoManager.AddRepo(parts[1])
 			if err != nil {
 				break
 			}
@@ -221,7 +220,7 @@ func logRepos(n *swarm.Node) {
 
 		log.Printf("  - %v", repoID)
 
-		err := r.ForEachObjectID(func(objectID []byte) error {
+		err = r.ForEachObjectID(func(objectID []byte) error {
 			log.Printf("      - %v", hex.EncodeToString(objectID))
 			return nil
 		})
