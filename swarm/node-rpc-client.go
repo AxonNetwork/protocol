@@ -54,8 +54,12 @@ func (c *RPCClient) GetObject(repoID string, objectID []byte) (*util.ObjectReade
 		return nil, err
 	}
 
+	if resp.Unauthorized {
+		return nil, errors.Wrapf(ErrUnauthorized, "%v:%v", repoID, hex.EncodeToString(objectID))
+	}
+
 	if !resp.HasObject {
-		return nil, errors.New("object not found: " + repoID + ":" + hex.EncodeToString(objectID))
+		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%v", repoID, hex.EncodeToString(objectID))
 	}
 
 	reader := &util.ObjectReader{

@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/src-d/go-git.v4"
-
 	"../../config"
 	"../../repo"
 	"../../swarm"
@@ -61,7 +59,7 @@ func main() {
 			ch := make(chan string)
 			chch <- ch
 
-			_, err = os.Stat(filepath.Join(GIT_DIR, swarm.CONSCIENCE_DATA_SUBDIR, objectIDStr))
+			_, err = os.Stat(filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR, objectIDStr))
 			if err != nil {
 				// file doesn't exist
 
@@ -86,7 +84,7 @@ func main() {
 		for ch := range chch {
 			objectIDStr := <-ch
 
-			f, err := os.Open(filepath.Join(GIT_DIR, swarm.CONSCIENCE_DATA_SUBDIR, objectIDStr))
+			f, err := os.Open(filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR, objectIDStr))
 			if err != nil {
 				chErr <- err
 				return

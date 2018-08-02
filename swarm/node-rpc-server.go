@@ -59,7 +59,14 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		objectReader, err := n.GetObjectReader(context.Background(), req.RepoID, req.ObjectID)
 		// @@TODO: maybe don't assume err == 404
 		if err != nil {
-			err = writeStructPacket(stream, &GetObjectResponse{HasObject: false})
+			switch err {
+			case ErrUnauthorized:
+				err = writeStructPacket(stream, &GetObjectResponse{Unauthorized: true})
+			case ErrObjectNotFound:
+				err = writeStructPacket(stream, &GetObjectResponse{HasObject: false})
+			default:
+				err = writeStructPacket(stream, &GetObjectResponse{HasObject: false})
+			}
 			if err != nil {
 				panic(err)
 			}
@@ -67,9 +74,10 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 
 		err = writeStructPacket(stream, &GetObjectResponse{
-			HasObject:  true,
-			ObjectType: objectReader.Type(),
-			ObjectLen:  objectReader.Len(),
+			Unauthorized: false,
+			HasObject:    true,
+			ObjectType:   objectReader.Type(),
+			ObjectLen:    objectReader.Len(),
 		})
 		if err != nil {
 			panic(err)

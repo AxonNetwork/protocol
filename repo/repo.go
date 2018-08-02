@@ -71,6 +71,14 @@ func (r *Repo) RepoID() (string, error) {
 	return repoID, nil
 }
 
+func (r *Repo) HeadHash() (string, error) {
+	head, err := r.Head()
+	if err != nil {
+		return "", err
+	}
+	return head.Hash().String(), nil
+}
+
 func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
 	// First crawl the Git objects
 	oIter, err := r.Repository.Objects()

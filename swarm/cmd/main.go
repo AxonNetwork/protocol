@@ -98,8 +98,8 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				err = fmt.Errorf("not enough args")
 				break
 			}
+			// _, err = n.RepoManager.AddRepo(parts[1])
 			err = n.AddRepo(ctx, parts[1])
-			// err = n.RepoManager.AddRepo(parts[1])
 
 		case "add-peer":
 			if len(parts) < 2 {

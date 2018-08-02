@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"math/big"
 
 	// log "github.com/sirupsen/logrus"
@@ -21,6 +22,7 @@ import (
 type nodeETH struct {
 	ethClient        *ethclient.Client
 	protocolContract *ethcontracts.Protocol
+	prv              *ecdsa.PrivateKey
 	auth             *bind.TransactOpts
 	account          accounts.Account
 	wallet           *hdwallet.Wallet
@@ -42,16 +44,17 @@ func initETH(ctx context.Context, cfg *config.Config) (*nodeETH, error) {
 		return nil, err
 	}
 
-	sk, err := wallet.PrivateKey(account)
+	prv, err := wallet.PrivateKey(account)
 	if err != nil {
 		return nil, err
 	}
 
-	auth := bind.NewKeyedTransactor(sk)
+	auth := bind.NewKeyedTransactor(prv)
 
 	return &nodeETH{
 		ethClient:        ethClient,
 		protocolContract: protocolContract,
+		prv:              prv,
 		auth:             auth,
 		account:          account,
 		wallet:           wallet,
@@ -158,4 +161,9 @@ func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[s
 	}
 
 	return refs, nil
+}
+
+func (n *nodeETH) AddressHasPullAccess(ctx context.Context, user common.Address, repoID string) (bool, error) {
+	hasAccess, err := n.protocolContract.AddressHasPullAccess(n.callOpts(ctx), user, repoID)
+	return hasAccess, err
 }

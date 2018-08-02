@@ -73,6 +73,16 @@ contract Protocol
         return repositories[repoIDHash].exists;
     }
 
+    function addressHasPullAccess(address user, string repoID)
+        public
+        view
+        returns (bool)
+    {
+        string username = usernamesByAddress[user];
+        bool hasAccess = userHasPullAccess(username, repoID); 
+        return hasAccess;
+    }
+
     function userHasPullAccess(string username, string repoID)
         public
         view

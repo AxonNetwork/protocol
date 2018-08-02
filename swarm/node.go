@@ -45,10 +45,6 @@ const (
 	PULL_PROTO          = "/conscience/pull/1.0.0"
 )
 
-var (
-	ErrProtocol = fmt.Errorf("protocol error")
-)
-
 func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	if cfg == nil {
 		cfg = &config.DefaultConfig
@@ -234,12 +230,13 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 // the filesystem.  Otherwise, we look for a peer and stream it over a p2p connection.
 func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
 	r := n.RepoManager.Repo(repoID)
-	if r == nil {
-		return nil, errors.New("repo doesn't exist")
-	}
+	// if r == nil {
+	// 	log.Printf("repo doesn't exist")
+	// 	return nil, errors.New("repo doesn't exist")
+	// }
 
 	// If we detect that we already have the object locally, just open a regular file stream
-	if r.HasObject(repoID, objectID) {
+	if r != nil && r.HasObject(repoID, objectID) {
 		return r.OpenObject(objectID)
 	}
 
@@ -269,32 +266,24 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 }
 
 func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
-	//    repo, err := n.RepoManager.AddRepo(repoPath)
-	//    if err != nil {
-	//        return err
-	//    }
-	//
-	//    repoID, err := repo.RepoID()
-	//    if err != nil {
-	//        return err
-	//    }
-	//
-	//    _, err = n.eth.CreateRepository(ctx, repoID)
-	//    if err != nil {
-	//        return err
-	//    }
-	//
-	//    head, err := repo.Head()
-	//    if err != nil {
-	//        return err
-	//    }
-	//
-	//    _, err = n.eth.UpdateRef(ctx, repoID, "refs/heads/master", head.Hash().String())
-	//    if err != nil {
-	//        return err
-	//    }
-
-	return nil
+	repo, err := n.RepoManager.AddRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	repoID, err := repo.RepoID()
+	if err != nil {
+		return err
+	}
+	head, err := repo.HeadHash()
+	if err != nil {
+		return err
+	}
+	err = n.UpdateRef(ctx, repoID, "refs/heads/master", head)
+	if err != nil {
+		return err
+	}
+	_, err = n.eth.CreateRepository(ctx, repoID)
+	return err
 }
 
 func (n *Node) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {

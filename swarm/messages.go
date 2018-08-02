@@ -23,10 +23,20 @@ type GetObjectRequest struct {
 	ObjectID    []byte
 }
 
+type GetObjectRequestSigned struct {
+	RepoIDLen    int `struc:"sizeof=RepoID"`
+	RepoID       string
+	ObjectIDLen  int `struc:"sizeof=ObjectID"`
+	ObjectID     []byte
+	SignatureLen int `struc:"sizeof=Signature"`
+	Signature    []byte
+}
+
 type GetObjectResponse struct {
-	HasObject  bool
-	ObjectType gitplumbing.ObjectType
-	ObjectLen  int64
+	Unauthorized bool
+	HasObject    bool
+	ObjectType   gitplumbing.ObjectType
+	ObjectLen    int64
 }
 
 type AddRepoRequest struct {

@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 
+	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
@@ -12,6 +13,7 @@ func push(refName string, commitHash string) error {
 		refName = refName[1:]
 	}
 
+	log.Printf("Why is this being called?")
 	err := client.AnnounceRepoContent(repoID)
 	if err != nil {
 		return err

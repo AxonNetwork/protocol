@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
@@ -22,8 +23,14 @@ func (n *Node) openPeerObjectReader(ctx context.Context, peerID peer.ID, repoID 
 		return nil, err
 	}
 
+	hash := crypto.Keccak256(objectID)
+	sig, err := crypto.Sign(hash[:], n.eth.prv)
+	if err != nil {
+		return nil, err
+	}
+
 	// Write the request packet to the stream
-	err = writeStructPacket(stream, &GetObjectRequest{RepoID: repoID, ObjectID: objectID})
+	err = writeStructPacket(stream, &GetObjectRequestSigned{RepoID: repoID, ObjectID: objectID, Signature: sig})
 	if err != nil {
 		return nil, err
 	}
@@ -33,8 +40,10 @@ func (n *Node) openPeerObjectReader(ctx context.Context, peerID peer.ID, repoID 
 	err = readStructPacket(stream, &resp)
 	if err != nil {
 		return nil, err
+	} else if resp.Unauthorized {
+		return nil, errors.Wrapf(ErrUnauthorized, "%v:%v", repoID, hex.EncodeToString(objectID))
 	} else if !resp.HasObject {
-		return nil, errors.New("peer doesn't have object " + repoID + ":" + hex.EncodeToString(objectID))
+		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%v", repoID, hex.EncodeToString(objectID))
 	}
 
 	or := &util.ObjectReader{
