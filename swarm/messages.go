@@ -9,6 +9,7 @@ type MessageType uint64
 const (
 	MessageType_Invalid MessageType = iota
 	MessageType_GetObject
+	MessageType_CreateRepo
 	MessageType_AddRepo
 	MessageType_AnnounceRepoContent
 	MessageType_GetRefs
@@ -37,6 +38,15 @@ type GetObjectResponse struct {
 	HasObject    bool
 	ObjectType   gitplumbing.ObjectType
 	ObjectLen    int64
+}
+
+type CreateRepoRequest struct {
+	RepoIDLen int `struc:"sizeof=RepoID"`
+	RepoID    string
+}
+
+type CreateRepoResponse struct {
+	OK bool
 }
 
 type AddRepoRequest struct {

@@ -72,6 +72,35 @@ func (c *RPCClient) GetObject(repoID string, objectID []byte) (*util.ObjectReade
 	return reader, nil
 }
 
+func (c *RPCClient) CreateRepo(repoID string) error {
+	conn, err := net.Dial(c.network, c.addr)
+	if err != nil {
+		return err
+	}
+
+	err = c.writeMessageType(conn, MessageType_CreateRepo)
+	if err != nil {
+		return err
+	}
+
+	// Write the request packet
+	err = writeStructPacket(conn, &CreateRepoRequest{RepoID: repoID})
+	if err != nil {
+		return err
+	}
+
+	// Read the response packet (i.e., the header for the subsequent object stream)
+	resp := CreateRepoResponse{}
+	err = readStructPacket(conn, &resp)
+	if err != nil {
+		return err
+	} else if !resp.OK {
+		return errors.New("repo could not be added")
+	}
+
+	return nil
+}
+
 func (c *RPCClient) AddRepo(repoPath string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {

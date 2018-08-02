@@ -3,7 +3,9 @@ package main
 import (
 	"os"
 
+	"../../config"
 	"../../repo"
+	"../../swarm"
 )
 
 func main() {
@@ -24,6 +26,21 @@ func main() {
 	}
 
 	err = r.SetupConfig(repoID)
+	if err != nil {
+		panic(err)
+	}
+
+	cfg, err := config.ReadConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	if err != nil {
+		panic(err)
+	}
+
+	err = client.CreateRepo(repoID)
 	if err != nil {
 		panic(err)
 	}

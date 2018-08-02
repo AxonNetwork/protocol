@@ -91,6 +91,26 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic("written < objectLen")
 		}
 
+	case MessageType_CreateRepo:
+		log.Printf("[rpc stream] CreateRepo")
+		req := CreateRepoRequest{}
+		err := readStructPacket(stream, &req)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Printf("[rpc stream] create repo: %s", req.RepoID)
+
+		_, err = n.eth.CreateRepository(context.Background(), req.RepoID)
+		if err != nil {
+			panic(err)
+		}
+
+		err = writeStructPacket(stream, &CreateRepoResponse{OK: true})
+		if err != nil {
+			panic(err)
+		}
+
 	case MessageType_AddRepo:
 		log.Printf("[rpc stream] AddRepo")
 		req := AddRepoRequest{}
