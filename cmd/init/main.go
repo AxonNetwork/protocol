@@ -28,18 +28,18 @@ func main() {
 		panic(err)
 	}
 
-	_, err = n.eth.CreateRepository(ctx, repoID)
-	if err != nil {
-		return err
-	}
+	// _, err = n.eth.CreateRepository(ctx, repoID)
+	// if err != nil {
+	// 	return err
+	// }
 
-	head, err := repo.Head()
-	if err != nil {
-		return err
-	}
+	// head, err := repo.Head()
+	// if err != nil {
+	// 	return err
+	// }
 
-	_, err = n.eth.UpdateRef(ctx, repoID, "refs/heads/master", head.Hash().String())
-	if err != nil {
-		return err
-	}
+	// _, err = n.eth.UpdateRef(ctx, repoID, "refs/heads/master", head.Hash().String())
+	// if err != nil {
+	// 	return err
+	// }
 }
