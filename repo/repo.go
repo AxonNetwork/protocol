@@ -11,8 +11,9 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"gopkg.in/src-d/go-git.v4"
+	gitconfig "gopkg.in/src-d/go-git.v4/config"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-	gitconfig "gopkg.in/src-d/go-git.v4/plumbing/format/config"
+	gitconfigformat "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 
 	"../util"
@@ -225,10 +226,53 @@ func (r *Repo) SetupConfig(repoID string) error {
 		}
 		w := io.Writer(f)
 
-		enc := gitconfig.NewEncoder(w)
+		enc := gitconfigformat.NewEncoder(w)
 		err = enc.Encode(raw)
 		if err != nil {
 			return err
+		}
+	}
+
+	// Check the remotes
+	{
+		remotes, err := r.Remotes()
+		if err != nil {
+			return err
+		}
+
+		found := false
+		hasOrigin := false
+		for _, remote := range remotes {
+			log.Printf("remote <%v> URLs: %v", remote.Config().Name, remote.Config().URLs)
+
+			if remote.Config().Name == "origin" {
+				hasOrigin = true
+			}
+
+			for _, url := range remote.Config().URLs {
+				if url == "conscience://"+repoID {
+					found = true
+					break
+				}
+			}
+		}
+
+		if !found {
+			remoteName := "origin"
+			if hasOrigin {
+				// @@TODO: what if this remote name already exists too?
+				remoteName = repoID
+			}
+
+			_, err = r.CreateRemote(&gitconfig.RemoteConfig{
+				Name:  remoteName,
+				URLs:  []string{"conscience://" + repoID},
+				Fetch: []gitconfig.RefSpec{gitconfig.RefSpec("+refs/heads/*:refs/remotes/" + remoteName + "/*")},
+			})
+
+			if err != nil {
+				return err
+			}
 		}
 	}
 
