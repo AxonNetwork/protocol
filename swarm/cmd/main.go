@@ -181,10 +181,7 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 			}
 
 			var refs map[string]swarm.Ref
-			refs, err = n.Eth.GetRefs(ctx, parts[1], page)
-			if err != nil {
-				break
-			}
+			refs = n.Eth.GetRefs(ctx, parts[1], page)
 
 			for _, ref := range refs {
 				log.Printf("ref: %v %v", ref.Name, ref.Commit)

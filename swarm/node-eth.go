@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 
 	"../config"
@@ -110,21 +111,23 @@ func (n *nodeETH) WatchTX(ctx context.Context, tx *types.Transaction) chan *TXRe
 	hash := tx.Hash()
 	go func() {
 		for {
-			receipt, err := n.ethClient.TransactionReceipt(ctx, hash)
-			if err != nil && err != ethereum.NotFound {
-				ch <- &TXResult{
-					nil,
-					err,
+			select {
+			case <-ctx.Done():
+				ch <- &TXResult{nil, errors.New("deadline expired before transaction was mined")}
+				return
+
+			default:
+				receipt, err := n.ethClient.TransactionReceipt(ctx, hash)
+				if err != nil && err != ethereum.NotFound {
+					ch <- &TXResult{nil, err}
+					return
 				}
-			}
-			if receipt != nil {
-				ch <- &TXResult{
-					receipt,
-					nil,
+				if receipt != nil {
+					ch <- &TXResult{receipt, nil}
+					return
 				}
-				break
+				time.Sleep(time.Millisecond * POLL_INTERVAL)
 			}
-			time.Sleep(time.Millisecond * POLL_INTERVAL)
 		}
 	}()
 	return ch
@@ -171,13 +174,12 @@ func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) 
 	return num.Int64(), nil
 }
 
-func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
+func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) map[string]Ref {
+	refs := map[string]Ref{}
 	refsBytes, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(page))
 	if err != nil {
-		return nil, err
+		return refs
 	}
-
-	refs := map[string]Ref{}
 
 	var read int64
 	for read < int64(len(refsBytes)) {
@@ -196,7 +198,7 @@ func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[s
 		refs[ref.Name] = ref
 	}
 
-	return refs, nil
+	return refs
 }
 
 func (n *nodeETH) AddressHasPullAccess(ctx context.Context, user common.Address, repoID string) (bool, error) {
