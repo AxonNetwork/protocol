@@ -1,11 +1,11 @@
 package main
 
 import (
-	"os"
-
 	"../../config"
 	"../../repo"
 	"../../swarm"
+	log "github.com/sirupsen/logrus"
+	"os"
 )
 
 func main() {
