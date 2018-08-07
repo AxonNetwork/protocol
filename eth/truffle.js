@@ -1,4 +1,13 @@
-// var HDWalletProvider = require('truffle-hdwallet-provider')
+var HDWalletProvider = require('truffle-hdwallet-provider')
+
+// defaults
+var conf = {
+  mnemonic: "",
+  host: ""
+}
+var appCfg = require('rc')('conscience', conf);
+var mnemonic = appCfg.node.EthereumBIP39Seed
+var host = appCfg.node.EthereumHost
 
 module.exports = {
   rpc: {
@@ -39,9 +48,12 @@ module.exports = {
       gas: 4000000,
     },
     rinkeby: {
-      host: "localhost",
       port: 8545,
       network_id: 4,
+      provider: function() {
+          return new HDWalletProvider(mnemonic, host)
+      },
+      gas: 4000000,
     },
   },
   migrations_directory: './migrations'
