@@ -89,6 +89,8 @@ func (c *RPCClient) CreateRepo(repoID string) error {
 		return err
 	}
 
+	log.Printf("Create Repo TX Sent")
+
 	// Read the response packet (i.e., the header for the subsequent object stream)
 	resp := CreateRepoResponse{}
 	err = readStructPacket(conn, &resp)
@@ -243,6 +245,8 @@ func (c *RPCClient) UpdateRef(repoID string, refName string, commitHash string) 
 	if err != nil {
 		return err
 	}
+
+	log.Printf("Update Ref TX Sent")
 
 	// Read the response packet
 	resp := UpdateRefResponse{}

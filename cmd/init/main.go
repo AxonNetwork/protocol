@@ -40,6 +40,7 @@ func main() {
 		panic(err)
 	}
 
+	log.Printf("Creating Repo On-chain")
 	err = client.CreateRepo(repoID)
 	if err != nil {
 		panic(err)

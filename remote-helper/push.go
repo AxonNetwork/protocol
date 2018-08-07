@@ -24,6 +24,7 @@ func push(refName string, commitHash string) error {
 		return err
 	}
 
+	log.Printf("Updating Ref On-chain")
 	err = client.UpdateRef(repoID, ref.Strings()[1], commitHash)
 	if err != nil {
 		return err
