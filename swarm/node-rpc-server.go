@@ -101,17 +101,19 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc stream] create repo: %s", req.RepoID)
 
-		tx, err := n.Eth.CreateRepository(context.Background(), req.RepoID)
+		tx, err := n.Eth.EnsureRepository(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
 
-		log.Printf("[rpc stream] create repo tx sent: %s", tx.Hash().Hex())
-		txResult := <-n.Eth.WatchTX(context.Background(), tx)
-		if txResult.Err != nil {
-			panic(err)
+		if tx != nil {
+			log.Printf("[rpc stream] create repo tx sent: %s", tx.Hash().Hex())
+			txResult := <-tx.Await(context.Background())
+			if txResult.Err != nil {
+				panic(err)
+			}
+			log.Printf("[rpc stream] create repo tx resolved: %s", tx.Hash().Hex())
 		}
-		log.Printf("[rpc stream] create repo tx resolved: %s", tx.Hash().Hex())
 
 		err = writeStructPacket(stream, &CreateRepoResponse{OK: true})
 		if err != nil {
@@ -201,11 +203,11 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 		log.Printf("[rpc stream] update ref tx sent: %s", tx.Hash().Hex())
-		txResult := <-n.Eth.WatchTX(context.Background(), tx)
+		txResult := <-tx.Await(context.Background())
 		if txResult.Err != nil {
 			panic(err)
 		}
-		log.Printf("[rpc stream] update ref tx resolved; %s", tx.Hash().Hex())
+		log.Printf("[rpc stream] update ref tx resolved: %s", tx.Hash().Hex())
 
 		err = writeStructPacket(stream, &UpdateRefResponse{OK: true})
 		if err != nil {

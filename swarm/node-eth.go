@@ -101,29 +101,35 @@ func (n *nodeETH) Close() error {
 	return nil
 }
 
-type TXResult struct {
+type Transaction struct {
+	*types.Transaction
+	c interface {
+		TransactionReceipt(context.Context, common.Hash) (*types.Receipt, error)
+	}
+}
+
+type TxResult struct {
 	Receipt *types.Receipt
 	Err     error
 }
 
-func (n *nodeETH) WatchTX(ctx context.Context, tx *types.Transaction) chan *TXResult {
-	ch := make(chan *TXResult)
+func (tx Transaction) Await(ctx context.Context) chan TxResult {
+	ch := make(chan TxResult)
 	hash := tx.Hash()
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				ch <- &TXResult{nil, errors.New("deadline expired before transaction was mined")}
+				ch <- TxResult{nil, errors.New("deadline expired before transaction was mined")}
 				return
 
 			default:
-				receipt, err := n.ethClient.TransactionReceipt(ctx, hash)
+				receipt, err := tx.c.TransactionReceipt(ctx, hash)
 				if err != nil && err != ethereum.NotFound {
-					ch <- &TXResult{nil, err}
+					ch <- TxResult{nil, err}
 					return
-				}
-				if receipt != nil {
-					ch <- &TXResult{receipt, nil}
+				} else if receipt != nil {
+					ch <- TxResult{receipt, nil}
 					return
 				}
 				time.Sleep(time.Millisecond * POLL_INTERVAL)
@@ -131,17 +137,6 @@ func (n *nodeETH) WatchTX(ctx context.Context, tx *types.Transaction) chan *TXRe
 		}
 	}()
 	return ch
-}
-
-func (n *nodeETH) SetUsername(ctx context.Context, username string) (*types.Transaction, error) {
-	un, err := n.GetUsername(ctx)
-	if err != nil {
-		return nil, err
-	} else if len(un) > 0 {
-		// already set correctly
-		return nil, nil
-	}
-	return n.protocolContract.SetUsername(n.transactOpts(ctx), username)
 }
 
 func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
@@ -152,18 +147,51 @@ func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
 	return n.protocolContract.UsernamesByAddress(n.callOpts(ctx), addr)
 }
 
-func (n *nodeETH) CreateRepository(ctx context.Context, repoID string) (*types.Transaction, error) {
+func (n *nodeETH) EnsureUsername(ctx context.Context, username string) (*Transaction, error) {
+	un, err := n.GetUsername(ctx)
+	if err != nil {
+		return nil, err
+	} else if len(un) > 0 && un != username {
+		// already set correctly
+		return nil, errors.New("username has already been set to something else")
+	} else if un == username {
+		return nil, nil
+	}
+	return n.SetUsername(ctx, username)
+}
+
+func (n *nodeETH) SetUsername(ctx context.Context, username string) (*Transaction, error) {
+	tx, err := n.protocolContract.SetUsername(n.transactOpts(ctx), username)
+	if err != nil {
+		return nil, err
+	}
+	return &Transaction{tx, n.ethClient}, nil
+}
+
+func (n *nodeETH) EnsureRepository(ctx context.Context, repoID string) (*Transaction, error) {
 	exists, err := n.protocolContract.RepositoryExists(n.callOpts(ctx), repoID)
 	if err != nil {
 		return nil, err
 	} else if exists {
 		return nil, nil
 	}
-	return n.protocolContract.CreateRepository(n.transactOpts(ctx), repoID)
+	return n.CreateRepository(ctx, repoID)
 }
 
-func (n *nodeETH) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*types.Transaction, error) {
-	return n.protocolContract.UpdateRef(n.transactOpts(ctx), repoID, refName, commitHash)
+func (n *nodeETH) CreateRepository(ctx context.Context, repoID string) (*Transaction, error) {
+	tx, err := n.protocolContract.CreateRepository(n.transactOpts(ctx), repoID)
+	if err != nil {
+		return nil, err
+	}
+	return &Transaction{tx, n.ethClient}, nil
+}
+
+func (n *nodeETH) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*Transaction, error) {
+	tx, err := n.protocolContract.UpdateRef(n.transactOpts(ctx), repoID, refName, commitHash)
+	if err != nil {
+		return nil, err
+	}
+	return &Transaction{tx, n.ethClient}, nil
 }
 
 func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) {

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
@@ -162,7 +163,7 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				break
 			}
 			log.Printf("update ref tx sent: %v", tx.Hash().Hex())
-			txResult := <-n.Eth.WatchTX(ctx, tx)
+			txResult := <-tx.Await(ctx)
 			if txResult.Err != nil {
 				log.Errorln(err)
 			}
@@ -194,19 +195,24 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 			} else {
 				username = parts[1]
 			}
-			tx, err := n.Eth.SetUsername(ctx, username)
+
+			var tx *swarm.Transaction
+			tx, err = n.Eth.EnsureUsername(ctx, username)
 			if err != nil {
-				log.Errorln(err)
 				break
-			}
-			if tx == nil && err == nil {
+			} else if tx == nil && err == nil {
 				log.Printf("username already set")
 				break
 			}
+
 			log.Printf("set username tx sent: %v", tx.Hash().Hex())
-			txResult := <-n.Eth.WatchTX(ctx, tx)
+			txResult := <-tx.Await(ctx)
 			if txResult.Err != nil {
-				log.Errorln(err)
+				err = txResult.Err
+				break
+			} else if txResult.Receipt.Status == 0 {
+				err = errors.New("SetUsername transaction failed")
+				break
 			}
 			log.Printf("set username tx resolved: %v", tx.Hash().Hex())
 
