@@ -1,11 +1,13 @@
 package main
 
 import (
+	"os"
+
 	"../../config"
 	"../../repo"
 	"../../swarm"
+
 	log "github.com/sirupsen/logrus"
-	"os"
 )
 
 func main() {
@@ -36,6 +38,11 @@ func main() {
 	}
 
 	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	if err != nil {
+		panic(err)
+	}
+
+	err = client.AddRepo(cwd)
 	if err != nil {
 		panic(err)
 	}
