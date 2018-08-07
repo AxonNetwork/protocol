@@ -105,25 +105,29 @@ type TXResult struct {
 	Err     error
 }
 
-func (n *nodeETH) WatchTX(ctx context.Context, ch chan *TXResult, tx *types.Transaction) {
+func (n *nodeETH) WatchTX(ctx context.Context, tx *types.Transaction) chan *TXResult {
+	ch := make(chan *TXResult)
 	hash := tx.Hash()
-	for {
-		receipt, err := n.ethClient.TransactionReceipt(ctx, hash)
-		if err != nil && err != ethereum.NotFound {
-			ch <- &TXResult{
-				nil,
-				err,
+	go func() {
+		for {
+			receipt, err := n.ethClient.TransactionReceipt(ctx, hash)
+			if err != nil && err != ethereum.NotFound {
+				ch <- &TXResult{
+					nil,
+					err,
+				}
 			}
-		}
-		if receipt != nil {
-			ch <- &TXResult{
-				receipt,
-				nil,
+			if receipt != nil {
+				ch <- &TXResult{
+					receipt,
+					nil,
+				}
+				break
 			}
-			break
+			time.Sleep(time.Millisecond * POLL_INTERVAL)
 		}
-		time.Sleep(time.Millisecond * POLL_INTERVAL)
-	}
+	}()
+	return ch
 }
 
 func (n *nodeETH) SetUsername(ctx context.Context, username string) (*types.Transaction, error) {

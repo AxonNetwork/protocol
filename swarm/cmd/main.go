@@ -197,8 +197,7 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				break
 			}
 			log.Printf("tx sent: %v", tx.Hash().Hex())
-			ch := make(chan *swarm.TXResult)
-			go n.Eth.WatchTX(ctx, ch, tx)
+			ch := n.Eth.WatchTX(ctx, tx)
 			txResult := <-ch
 			if txResult.Err != nil {
 				log.Errorln(err)
