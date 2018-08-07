@@ -156,7 +156,17 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				err = fmt.Errorf("not enough args")
 				break
 			}
-			err = n.UpdateRef(ctx, parts[1], parts[2], parts[3])
+			tx, err := n.Eth.UpdateRef(ctx, parts[1], parts[2], parts[3])
+			if err != nil {
+				log.Errorln(err)
+				break
+			}
+			log.Printf("update ref tx sent: %v", tx.Hash().Hex())
+			txResult := <-n.Eth.WatchTX(ctx, tx)
+			if txResult.Err != nil {
+				log.Errorln(err)
+			}
+			log.Printf("update ref tx resolved: %v", tx.Hash().Hex())
 
 		case "get-refs":
 			if len(parts) < 3 {
@@ -171,7 +181,7 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 			}
 
 			var refs map[string]swarm.Ref
-			refs, err = n.GetRefs(ctx, parts[1], page)
+			refs, err = n.Eth.GetRefs(ctx, parts[1], page)
 			if err != nil {
 				break
 			}
@@ -196,14 +206,12 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				log.Printf("username already set")
 				break
 			}
-			log.Printf("tx sent: %v", tx.Hash().Hex())
-			ch := n.Eth.WatchTX(ctx, tx)
-			txResult := <-ch
+			log.Printf("set username tx sent: %v", tx.Hash().Hex())
+			txResult := <-n.Eth.WatchTX(ctx, tx)
 			if txResult.Err != nil {
 				log.Errorln(err)
 			}
-			log.Printf("tx resolved: %v", tx.Hash().Hex())
-			log.Printf("username changed to %v", username)
+			log.Printf("set username tx resolved: %v", tx.Hash().Hex())
 
 		default:
 			err = fmt.Errorf("unknown command")

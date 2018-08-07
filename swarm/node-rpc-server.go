@@ -107,8 +107,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 
 		log.Printf("[rpc stream] create repo tx sent: %s", tx.Hash().Hex())
-		ch := n.Eth.WatchTX(context.Background(), tx)
-		txResult := <-ch
+		txResult := <-n.Eth.WatchTX(context.Background(), tx)
 		if txResult.Err != nil {
 			panic(err)
 		}
@@ -205,8 +204,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 		log.Printf("[rpc stream] update ref tx sent: %s", tx.Hash().Hex())
-		ch := n.Eth.WatchTX(context.Background(), tx)
-		txResult := <-ch
+		txResult := <-n.Eth.WatchTX(context.Background(), tx)
 		if txResult.Err != nil {
 			panic(err)
 		}
