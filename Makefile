@@ -1,6 +1,8 @@
 all: build
 
 deps:
+	go get github.com/whyrusleeping/gx
+	go get github.com/whyrusleeping/gx-go
 	gx install
 	go get github.com/sirupsen/logrus
 	go get github.com/BurntSushi/toml
