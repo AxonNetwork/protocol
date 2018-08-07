@@ -33,7 +33,7 @@ import (
 type Node struct {
 	Host        host.Host
 	DHT         *dht.IpfsDHT
-	eth         *nodeETH
+	Eth         *nodeETH
 	rpc         net.Listener
 	RepoManager *RepoManager
 	Config      config.Config
@@ -68,7 +68,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	n := &Node{
 		Host:        h,
 		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
-		eth:         eth,
+		Eth:         eth,
 		RepoManager: NewRepoManager(),
 		Config:      *cfg,
 		rpc:         nil,
@@ -99,11 +99,6 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
-	_, err = n.eth.SetUsername(ctx, cfg.User.Username)
-	if err != nil {
-		return nil, err
-	}
-
 	return n, nil
 }
 
@@ -120,7 +115,7 @@ func (n *Node) Close() error {
 		return err
 	}
 
-	err = n.eth.Close()
+	err = n.Eth.Close()
 	if err != nil {
 		return err
 	}
@@ -283,16 +278,16 @@ func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
 	if err != nil {
 		return err
 	}
-	_, err = n.eth.CreateRepository(ctx, repoID)
+	_, err = n.Eth.CreateRepository(ctx, repoID)
 	return err
 }
 
 func (n *Node) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
-	return n.eth.GetRefs(ctx, repoID, page)
+	return n.Eth.GetRefs(ctx, repoID, page)
 }
 
 func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) error {
-	_, err := n.eth.UpdateRef(ctx, repoID, refName, commitHash)
+	_, err := n.Eth.UpdateRef(ctx, repoID, refName, commitHash)
 	return err
 }
 

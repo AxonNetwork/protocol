@@ -101,7 +101,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc stream] create repo: %s", req.RepoID)
 
-		_, err = n.eth.CreateRepository(context.Background(), req.RepoID)
+		_, err = n.Eth.CreateRepository(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
@@ -161,12 +161,12 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc stream] get refs from %s", req.RepoID)
 
-		numRefs, err := n.eth.GetNumRefs(context.Background(), req.RepoID)
+		numRefs, err := n.Eth.GetNumRefs(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
 
-		refMap, err := n.eth.GetRefs(context.Background(), req.RepoID, req.Page)
+		refMap, err := n.Eth.GetRefs(context.Background(), req.RepoID, req.Page)
 		if err != nil {
 			panic(err)
 		}
@@ -192,7 +192,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 
 		log.Printf("[rpc stream] add ref to %s: %s %s", req.RepoID, req.RefName, req.Commit)
-		_, err = n.eth.UpdateRef(context.Background(), req.RepoID, req.RefName, req.Commit)
+		_, err = n.Eth.UpdateRef(context.Background(), req.RepoID, req.RefName, req.Commit)
 		if err != nil {
 			panic(err)
 		}

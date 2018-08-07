@@ -34,7 +34,7 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 	addr := crypto.PubkeyToAddress(*pubkey)
 	ctx := context.Background()
 
-	hasAccess, err := n.eth.AddressHasPullAccess(ctx, addr, req.RepoID)
+	hasAccess, err := n.Eth.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
 		return

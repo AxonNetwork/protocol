@@ -24,7 +24,7 @@ func (n *Node) openPeerObjectReader(ctx context.Context, peerID peer.ID, repoID 
 	}
 
 	hash := crypto.Keccak256(objectID)
-	sig, err := crypto.Sign(hash[:], n.eth.prv)
+	sig, err := crypto.Sign(hash[:], n.Eth.prv)
 	if err != nil {
 		return nil, err
 	}

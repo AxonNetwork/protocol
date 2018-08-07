@@ -180,6 +180,32 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 				log.Printf("ref: %v %v", ref.Name, ref.Commit)
 			}
 
+		case "set-username":
+			var username string
+			if len(parts) == 1 {
+				username = n.Config.User.Username
+			} else {
+				username = parts[1]
+			}
+			tx, err := n.Eth.SetUsername(ctx, username)
+			if err != nil {
+				log.Errorln(err)
+				break
+			}
+			if tx == nil && err == nil {
+				log.Printf("username already set")
+				break
+			}
+			log.Printf("tx sent: %v", tx.Hash().Hex())
+			ch := make(chan *swarm.TXResult)
+			go n.Eth.WatchTX(ctx, ch, tx)
+			txResult := <-ch
+			if txResult.Err != nil {
+				log.Errorln(err)
+			}
+			log.Printf("tx resolved: %v", tx.Hash().Hex())
+			log.Printf("username changed to %v", username)
+
 		default:
 			err = fmt.Errorf("unknown command")
 		}

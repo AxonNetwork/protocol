@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"math/big"
+	"time"
 
 	// log "github.com/sirupsen/logrus"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,6 +19,10 @@ import (
 	"../config"
 	"./ethcontracts"
 	"./hdwallet"
+)
+
+const (
+	POLL_INTERVAL = 1000
 )
 
 type nodeETH struct {
@@ -94,11 +100,37 @@ func (n *nodeETH) Close() error {
 	return nil
 }
 
+type TXResult struct {
+	Receipt *types.Receipt
+	Err     error
+}
+
+func (n *nodeETH) WatchTX(ctx context.Context, ch chan *TXResult, tx *types.Transaction) {
+	hash := tx.Hash()
+	for {
+		receipt, err := n.ethClient.TransactionReceipt(ctx, hash)
+		if err != nil && err != ethereum.NotFound {
+			ch <- &TXResult{
+				nil,
+				err,
+			}
+		}
+		if receipt != nil {
+			ch <- &TXResult{
+				receipt,
+				nil,
+			}
+			break
+		}
+		time.Sleep(time.Millisecond * POLL_INTERVAL)
+	}
+}
+
 func (n *nodeETH) SetUsername(ctx context.Context, username string) (*types.Transaction, error) {
 	un, err := n.GetUsername(ctx)
 	if err != nil {
 		return nil, err
-	} else if un == username {
+	} else if len(un) > 0 {
 		// already set correctly
 		return nil, nil
 	}
