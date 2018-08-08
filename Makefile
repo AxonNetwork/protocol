@@ -54,5 +54,6 @@ build/conscience-init: cmd/init/*.go
 	mv main ../../build/conscience-init
 
 
-install: build
+install:
 	cp build/* /usr/local/bin/
+
