@@ -3,23 +3,17 @@ package main
 import (
 	"os"
 
-	"../../config"
-	"../../repo"
-	"../../swarm"
+	"../config"
+	"../repo"
+	"../swarm"
 
 	"gopkg.in/src-d/go-git.v4"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		panic("usage: conscience-init <repo id>")
-	}
-
-	repoID := os.Args[1]
-
+func initRepo(repoID string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	r, err := repo.Open(cwd)
@@ -27,31 +21,32 @@ func main() {
 		r, err = repo.Init(cwd)
 	}
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = r.SetupConfig(repoID)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = client.AddRepo(cwd)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	err = client.CreateRepo(repoID)
 	if err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }

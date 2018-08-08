@@ -15,7 +15,7 @@ deps:
 	go get github.com/btcsuite/btcutil
 	go get gopkg.in/src-d/go-git.v4
 
-build: deps build/conscience-node build/git-remote-conscience build/conscience_encode build/conscience_decode build/conscience_diff build/conscience-init
+build: deps build/conscience-node build/git-remote-conscience build/conscience_encode build/conscience_decode build/conscience_diff build/conscience-cmd
 
 build/conscience-node: swarm/**/*.go
 	mkdir -p build
@@ -47,11 +47,11 @@ build/conscience_diff: filters/diff/*.go
 	go build -o main *.go; \
 	mv main ../../build/conscience_diff
 
-build/conscience-init: cmd/init/*.go
+build/conscience-cmd: cmd/*.go
 	mkdir -p build
-	cd cmd/init; \
+	cd cmd; \
 	go build -o main *.go; \
-	mv main ../../build/conscience-init
+	mv main ../build/conscience
 
 
 install:
