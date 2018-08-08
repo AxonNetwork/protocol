@@ -24,6 +24,14 @@ module.exports = {
       gas: 4000000,
       // from: '0xCE1f819Af3447C59676bc03B119721AbCD40EFBE',
     },
+    localgeth: {
+      network_id: 23332,
+      provider: function() {
+          return new HDWalletProvider(mnemonic, host)
+      },
+      gas: 4000000,
+      gasPrice: 50000000000,
+    },
     mainnet: {
       network_id: 1,
       provider: function() {
