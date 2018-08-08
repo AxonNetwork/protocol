@@ -226,6 +226,10 @@ func (c *RPCClient) GetRefs(repoID string, page int64) (map[string]Ref, int64, e
 }
 
 func (c *RPCClient) UpdateRef(repoID string, refName string, commitHash string) error {
+	if len(commitHash) != 40 {
+		return errors.New("commit hash is not 40 hex characters")
+	}
+
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
