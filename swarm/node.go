@@ -261,27 +261,6 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 	}
 }
 
-func (n *Node) AddRepo(ctx context.Context, repoPath string) error {
-	repo, err := n.RepoManager.AddRepo(repoPath)
-	if err != nil {
-		return err
-	}
-	repoID, err := repo.RepoID()
-	if err != nil {
-		return err
-	}
-	head, err := repo.HeadHash()
-	if err != nil {
-		return err
-	}
-	_, err = n.Eth.UpdateRef(ctx, repoID, "refs/heads/master", head)
-	if err != nil {
-		return err
-	}
-	_, err = n.Eth.CreateRepository(ctx, repoID)
-	return err
-}
-
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
 func (n *Node) requestReplication(ctx context.Context, repoID string) error {
