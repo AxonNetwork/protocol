@@ -7,7 +7,7 @@ import (
 	"../../repo"
 	"../../swarm"
 
-	log "github.com/sirupsen/logrus"
+	"gopkg.in/src-d/go-git.v4"
 )
 
 func main() {
@@ -23,6 +23,9 @@ func main() {
 	}
 
 	r, err := repo.Open(cwd)
+	if err == git.ErrRepositoryNotExists {
+		r, err = repo.Init(cwd)
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -47,24 +50,8 @@ func main() {
 		panic(err)
 	}
 
-	log.Printf("Creating Repo On-chain")
 	err = client.CreateRepo(repoID)
 	if err != nil {
 		panic(err)
 	}
-
-	// _, err = n.eth.CreateRepository(ctx, repoID)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// head, err := repo.Head()
-	// if err != nil {
-	// 	return err
-	// }
-
-	// _, err = n.eth.UpdateRef(ctx, repoID, "refs/heads/master", head.Hash().String())
-	// if err != nil {
-	// 	return err
-	// }
 }

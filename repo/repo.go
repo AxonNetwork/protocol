@@ -42,6 +42,22 @@ var (
 	ErrBadChecksum    = fmt.Errorf("object error: bad checksum")
 )
 
+func Init(path string) (*Repo, error) {
+	gitRepo, err := git.PlainInit(path, false)
+	if err != nil {
+		return nil, err
+	}
+	_, err = os.Create(filepath.Join(path, ".git", "config"))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Repo{
+		Repository: gitRepo,
+		Path:       path,
+	}, nil
+}
+
 func Open(path string) (*Repo, error) {
 	gitRepo, err := git.PlainOpen(path)
 	if err != nil {
