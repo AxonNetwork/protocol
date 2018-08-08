@@ -79,7 +79,7 @@ contract Protocol
         returns (bool)
     {
         string username = usernamesByAddress[user];
-        bool hasAccess = userHasPullAccess(username, repoID); 
+        bool hasAccess = userHasPullAccess(username, repoID);
         return hasAccess;
     }
 
@@ -111,9 +111,10 @@ contract Protocol
         public
     {
         require(userHasPushAccess(usernamesByAddress[msg.sender], repoID));
+        require(bytes(commitHash).length == 40);
 
-        bytes32 repoIDHash = hashString(repoID);
-        Repo storage repo = repositories[repoIDHash];
+        Repo storage repo = repositories[hashString(repoID)];
+        require(repo.exists);
 
         bytes32 refNameHash = hashString(refName);
         if (bytes(repo.refs[refNameHash]).length == 0) {
@@ -131,13 +132,23 @@ contract Protocol
         return repositories[repoIDHash].refsList.length;
     }
 
+    function getRef(string repoID, string refName)
+        public
+        view
+        returns (string)
+    {
+        Repo storage repo = repositories[hashString(repoID)];
+        require(repo.exists);
+
+        return repo.refs[hashString(refName)];
+    }
+
     function getRefs(string repoID, uint page)
         public
         view
         returns (bytes)
     {
-        bytes32 repoIDHash = hashString(repoID);
-        Repo storage repo = repositories[repoIDHash];
+        Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists);
 
         string refName;

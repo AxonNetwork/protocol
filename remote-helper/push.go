@@ -7,10 +7,10 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-func push(refName string, commitHash string) error {
-	force := strings.HasPrefix(refName, "+")
+func push(srcRefName string, destRefName string) error {
+	force := strings.HasPrefix(srcRefName, "+")
 	if force {
-		refName = refName[1:]
+		srcRefName = srcRefName[1:]
 	}
 
 	log.Printf("Why is this being called?")
@@ -19,13 +19,15 @@ func push(refName string, commitHash string) error {
 		return err
 	}
 
-	ref, err := Repo.Reference(gitplumbing.ReferenceName(refName), false)
+	srcRef, err := Repo.Reference(gitplumbing.ReferenceName(srcRefName), false)
 	if err != nil {
 		return err
 	}
 
+	commitHash := srcRef.Hash().String()
+
 	log.Printf("Updating Ref On-chain")
-	err = client.UpdateRef(repoID, ref.Strings()[1], commitHash)
+	err = client.UpdateRef(repoID, destRefName, commitHash)
 	if err != nil {
 		return err
 	}
