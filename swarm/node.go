@@ -128,6 +128,47 @@ func (n *Node) Close() error {
 	return nil
 }
 
+type NodeState struct {
+	User       string
+	EthAccount string
+	Addrs      []string
+	Peers      map[string][]string
+	Repos      map[string]repo.RepoInfo
+}
+
+func (n *Node) GetNodeState() (*NodeState, error) {
+	user := n.Config.User.Username
+	ethAccount := n.Eth.account.Address.Hex()
+
+	addrs := make([]string, 0)
+	for _, addr := range n.Host.Addrs() {
+		addrs = append(addrs, fmt.Sprintf("%v/ipfs/%v", addr.String(), n.Host.ID().Pretty()))
+	}
+
+	peers := make(map[string][]string)
+	for _, peerID := range n.Host.Peerstore().Peers() {
+		pid := peerID.Pretty()
+		peers[pid] = make([]string, 0)
+		for _, addr := range n.Host.Peerstore().Addrs(peerID) {
+			peers[pid] = append(peers[pid], addr.String())
+		}
+	}
+
+	repos, err := n.RepoManager.GetReposInfo()
+	if err != nil {
+		log.Printf(err.Error())
+		return nil, err
+	}
+
+	return &NodeState{
+		user,
+		ethAccount,
+		addrs,
+		peers,
+		repos,
+	}, nil
+}
+
 // Periodically announces our repos and objects to the network.
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))

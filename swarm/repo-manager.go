@@ -46,3 +46,16 @@ func (rm *RepoManager) ForEachRepo(fn func(*repo.Repo) error) error {
 	}
 	return nil
 }
+
+func (rm *RepoManager) GetReposInfo() (map[string]repo.RepoInfo, error) {
+	repos := make(map[string]repo.RepoInfo)
+	err := rm.ForEachRepo(func(r *repo.Repo) error {
+		info, err := r.GetInfo()
+		if err != nil {
+			return err
+		}
+		repos[info.RepoID] = info
+		return nil
+	})
+	return repos, err
+}

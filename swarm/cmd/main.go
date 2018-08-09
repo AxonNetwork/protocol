@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	tm "github.com/buger/goterm"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
@@ -82,6 +83,9 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 		var err error
 
 		switch parts[0] {
+		case "state":
+			logState(n)
+
 		case "addrs":
 			logAddrs(n)
 
@@ -226,6 +230,43 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 
 		fmt.Printf("> ")
 	}
+}
+
+func logState(n *swarm.Node) {
+	tm.Clear()
+	tm.MoveCursor(1, 1)
+	box := tm.NewBox(50|tm.PCT, 3, 0)
+	_, err := box.Write([]byte("Conscience"))
+	if err != nil {
+		panic(err)
+	}
+	tm.Println(box.String())
+	state, err := n.GetNodeState()
+	if err != nil {
+		tm.Println("There has been some error")
+		tm.Println(err.Error())
+		tm.Flush()
+		return
+	}
+	tm.Printf("%v %v\n", tm.Bold("Username:"), state.User)
+	tm.Printf("%v %v\n", tm.Bold("Ethereum Address:"), state.EthAccount)
+	tm.Printf("\n%v\n", tm.Bold("Node ('addrs' for more info):"))
+	tm.Println(state.Addrs[1])
+	tm.Printf("\n%v ('peers' for more info):\n", tm.Bold("Peers"))
+	if len(state.Peers) < 2 {
+		tm.Printf("  No peers at the moment\n")
+	}
+	for peer, addrs := range state.Peers {
+		if len(addrs) > 1 {
+			tm.Printf("  -%s/ipfs/%s\n", addrs[1], peer)
+		}
+	}
+	tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
+	for repo, _ := range state.Repos {
+		tm.Printf("  - %s\n", repo)
+	}
+
+	tm.Flush()
 }
 
 func logPeers(n *swarm.Node) {
