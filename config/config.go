@@ -21,6 +21,7 @@ type UserConfig struct {
 type NodeConfig struct {
 	P2PListenAddr       string
 	P2PListenPort       int
+	BootstrapPeers      []string
 	RPCListenNetwork    string
 	RPCListenHost       string
 	EthereumHost        string
@@ -29,8 +30,8 @@ type NodeConfig struct {
 	AnnounceInterval    Duration
 	FindProviderTimeout Duration
 	LocalRepos          []string
+	ReplicationRoot     string
 	ReplicateRepos      []string
-	BootstrapPeers      []string
 }
 
 type RPCClientConfig struct {
@@ -52,6 +53,7 @@ var DefaultConfig = Config{
 		EthereumBIP39Seed:   "",
 		AnnounceInterval:    Duration(10 * time.Second),
 		FindProviderTimeout: Duration(10 * time.Second),
+		ReplicationRoot:     "/tmp/repos", // @@TODO: probably a better choice for this
 		ReplicateRepos:      []string{},
 		BootstrapPeers:      []string{},
 	},

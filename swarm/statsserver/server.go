@@ -17,8 +17,6 @@ type server struct {
 	node   *swarm.Node
 }
 
-// var tmpl = template.Must(template.ParseFiles("templates/index.html"))
-
 func Start(listenaddr string, node *swarm.Node) {
 	s := &server{
 		router: http.NewServeMux(),

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -173,15 +174,30 @@ func (n *Node) GetNodeState() (*NodeState, error) {
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))
 	for range c {
+		alreadyAnnounced := map[string]bool{}
+
+		// Announce the repos we're willing to replicate (whether or not we have any objects from them yet)
+		for _, repoID := range n.Config.Node.ReplicateRepos {
+			err := n.announceRepo(ctx, repoID)
+			if err != nil {
+				log.Errorf("[announce] %v", err)
+				continue
+			}
+			alreadyAnnounced[repoID] = true
+		}
+
+		// Announce the repos we have locally
 		err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
 			if err != nil {
 				return err
 			}
 
-			err = n.announceRepo(ctx, repoID)
-			if err != nil {
-				return err
+			if _, already := alreadyAnnounced[repoID]; !already {
+				err = n.announceRepo(ctx, repoID)
+				if err != nil {
+					return err
+				}
 			}
 
 			return r.ForEachObjectID(func(objectID []byte) error {
@@ -408,15 +424,16 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 	}
 	log.Printf("[pull] repoID: %v", req.RepoID)
 
-	found := false
+	// Ensure that the repo has been whitelisted for replication.
+	whitelisted := false
 	for _, repo := range n.Config.Node.ReplicateRepos {
 		if repo == req.RepoID {
-			found = true
+			whitelisted = true
 			break
 		}
 	}
 
-	if !found {
+	if !whitelisted {
 		err = writeStructPacket(stream, &PullResponse{OK: false})
 		if err != nil {
 			log.Errorf("[pull] error: %v", err)
@@ -424,15 +441,33 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 		return
 	}
 
-	repo := n.RepoManager.Repo(req.RepoID)
-	if repo == nil {
-		log.Errorf("[pull] error: repo not found")
-		return
+	// Check if the repo physically exists on disk.  If not, initialize it in the ReplicationRoot.
+	r := n.RepoManager.Repo(req.RepoID)
+	if r == nil {
+		path := filepath.Join(n.Config.Node.ReplicationRoot, req.RepoID)
+
+		r, err = repo.Init(path)
+		if err != nil {
+			log.Errorf("[pull] error: %v", err)
+			return
+		}
+
+		err = r.SetupConfig(req.RepoID)
+		if err != nil {
+			log.Errorf("[pull] error: %v", err)
+			return
+		}
+
+		_, err = n.RepoManager.AddRepo(path)
+		if err != nil {
+			log.Errorf("[pull] error: %v", err)
+			return
+		}
 	}
 
 	// Start a git-pull process
 	cmd := exec.Command("git", "pull", "origin", "master")
-	cmd.Dir = repo.Path
+	cmd.Dir = r.Path
 	buf := &bytes.Buffer{}
 	cmd.Stdout = buf
 	err = cmd.Run()
