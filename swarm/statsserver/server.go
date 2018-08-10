@@ -47,11 +47,12 @@ func (s *server) handleIndex() http.HandlerFunc {
 		}
 
 		type State struct {
-			Username   string
-			EthAddress string
-			Addrs      []string
-			Peers      []Peer
-			Repos      []repo.RepoInfo
+			Username       string
+			EthAddress     string
+			Addrs          []string
+			Peers          []Peer
+			Repos          []repo.RepoInfo
+			ReplicateRepos []string
 		}
 
 		var state State
@@ -69,6 +70,8 @@ func (s *server) handleIndex() http.HandlerFunc {
 		for _, repo := range nodeState.Repos {
 			state.Repos = append(state.Repos, repo)
 		}
+
+		state.ReplicateRepos = s.node.Config.Node.ReplicateRepos
 
 		tpl, err := template.New("indexpage").Parse(`
 			<html>
@@ -103,6 +106,14 @@ func (s *server) handleIndex() http.HandlerFunc {
 									{{ end }}
 								</ul>
 							</li>
+						{{ end }}
+					</ul>
+				</div>
+				<div>
+					Replicating repos:
+					<ul>
+						{{ range .ReplicateRepos }}
+							<li>{{ . }}</li>
 						{{ end }}
 					</ul>
 				</div>

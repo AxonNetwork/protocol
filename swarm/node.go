@@ -302,6 +302,34 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 	}
 }
 
+func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
+	found := false
+	for _, repo := range n.Config.Node.ReplicateRepos {
+		if repo == repoID {
+			found = true
+			break
+		}
+	}
+
+	if shouldReplicate {
+		if !found {
+			n.Config.Node.ReplicateRepos = append(n.Config.Node.ReplicateRepos, repoID)
+		}
+
+	} else {
+		if found {
+			remaining := []string{}
+			for _, repo := range n.Config.Node.ReplicateRepos {
+				if repo != repoID {
+					remaining = append(remaining, repo)
+				}
+			}
+			n.Config.Node.ReplicateRepos = remaining
+		}
+	}
+	return nil
+}
+
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
 func (n *Node) requestReplication(ctx context.Context, repoID string) error {

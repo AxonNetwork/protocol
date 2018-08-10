@@ -115,6 +115,22 @@ var replCommands = map[string]struct {
 		},
 	},
 
+	"replicate-repo": {
+		"change the node's policy on replicating the given repo",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough args")
+			}
+			repoID := args[0]
+			shouldReplicate, err := strconv.ParseBool(args[1])
+			if err != nil {
+				return err
+			}
+			err = n.SetReplicationPolicy(repoID, shouldReplicate)
+			return err
+		},
+	},
+
 	"add-repo": {
 		"add a repo to the list of local repos this node is tracking and serving",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
