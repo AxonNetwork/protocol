@@ -15,8 +15,6 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	"gx/ipfs/QmPnFwZ2JXKnXgMw8CdBPxn7FWh6LLdjUjxV1fKHuJnkr8/go-multihash"
-	"gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
 	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
 	swarm ".."
@@ -69,166 +67,178 @@ func main() {
 	inputLoop(ctx, n)
 }
 
-func inputLoop(ctx context.Context, n *swarm.Node) {
-	fmt.Printf("> ")
+var replCommands = map[string]struct {
+	HelpText string
+	Handler  func(ctx context.Context, args []string, n *swarm.Node) error
+}{
+	"state": {
+		"show an overview of the current state of the node",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			logState(n)
+			return nil
+		},
+	},
 
+	"addrs": {
+		"list the p2p addresses this node is using to communicate with its swarm",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			logAddrs(n)
+			return nil
+		},
+	},
+
+	"repos": {
+		"list the local repositories this node is currently tracking and serving",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			logRepos(n)
+			return nil
+		},
+	},
+
+	"peers": {
+		"list the peers this node is currently connected to",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			logPeers(n)
+			return nil
+		},
+	},
+
+	"config": {
+		"display the node's configuration",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			logConfig(n)
+			return nil
+		},
+	},
+
+	"add-repo": {
+		"add a repo to the list of local repos this node is tracking and serving",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 1 {
+				return fmt.Errorf("not enough args")
+			}
+			_, err := n.RepoManager.AddRepo(args[0])
+			return err
+		},
+	},
+
+	"add-peer": {
+		"connect to a new peer",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 1 {
+				return fmt.Errorf("not enough args")
+			}
+			return n.AddPeer(ctx, args[0])
+		},
+	},
+
+	"update-ref": {
+		"update a git ref for the given repository",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 3 {
+				return fmt.Errorf("not enough args")
+			}
+			tx, err := n.Eth.UpdateRef(ctx, args[0], args[1], args[2])
+			if err != nil {
+				return err
+			}
+			log.Printf("update ref tx sent: %v", tx.Hash().Hex())
+			txResult := <-tx.Await(ctx)
+			if txResult.Err != nil {
+				return txResult.Err
+			}
+			log.Printf("update ref tx resolved: %v", tx.Hash().Hex())
+			return nil
+		},
+	},
+
+	"get-refs": {
+		"show the list of git refs for the current repository",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough args")
+			}
+
+			page, err := strconv.ParseInt(args[1], 10, 64)
+			if err != nil {
+				return err
+			}
+
+			refs := n.Eth.GetRefs(ctx, args[0], page)
+			for _, ref := range refs {
+				log.Printf("ref: %v %v", ref.Name, ref.Commit)
+			}
+			return nil
+		},
+	},
+
+	"set-username": {
+		"set your username",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			var username string
+			if len(args) == 0 {
+				username = n.Config.User.Username
+			} else {
+				username = args[0]
+			}
+
+			tx, err := n.Eth.EnsureUsername(ctx, username)
+			if err != nil {
+				return err
+			} else if tx == nil && err == nil {
+				return fmt.Errorf("username already set")
+			}
+
+			log.Printf("set username tx sent: %v", tx.Hash().Hex())
+			txResult := <-tx.Await(ctx)
+			if txResult.Err != nil {
+				return txResult.Err
+			} else if txResult.Receipt.Status == 0 {
+				return errors.New("SetUsername transaction failed")
+			}
+			log.Printf("set username tx resolved: %v", tx.Hash().Hex())
+			return nil
+		},
+	},
+}
+
+func inputLoop(ctx context.Context, n *swarm.Node) {
 	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
+	for {
+		fmt.Printf("> ")
+
+		if !scanner.Scan() {
+			break
+		}
+
 		line := scanner.Text()
 		parts := strings.Split(line, " ")
 		for i := range parts {
 			parts[i] = strings.TrimSpace(parts[i])
 		}
 
-		var err error
-
-		switch parts[0] {
-		case "state":
-			logState(n)
-
-		case "addrs":
-			logAddrs(n)
-
-		case "repos":
-			logRepos(n)
-
-		case "peers":
-			logPeers(n)
-
-		case "config":
-			logConfig(n)
-
-		case "add-repo":
-			if len(parts) < 2 {
-				err = fmt.Errorf("not enough args")
-				break
+		if len(parts) < 1 {
+			log.Errorln("enter a command")
+			continue
+		} else if parts[0] == "help" {
+			log.Println("___ Commands _________")
+			log.Println()
+			for cmd, info := range replCommands {
+				log.Printf("%v\t\t- %v", cmd, info.HelpText)
 			}
-
-			_, err = n.RepoManager.AddRepo(parts[1])
-			if err != nil {
-				break
-			}
-
-		case "add-peer":
-			if len(parts) < 2 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-			err = n.AddPeer(ctx, parts[1])
-
-		case "get":
-			if len(parts) < 2 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-			key := parts[1]
-			val, err := n.DHT.GetValue(ctx, key)
-			if err != nil {
-				log.Printf("%v: nil", key)
-			} else {
-				log.Printf("%v: %v", key, string(val))
-			}
-
-		case "set":
-			if len(parts) < 3 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-			err = n.DHT.PutValue(ctx, parts[1], []byte(parts[2]))
-
-		case "provide":
-			if len(parts) < 2 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-			var c *cid.Cid
-			pref := cid.NewPrefixV1(cid.Raw, multihash.SHA2_256)
-			c, err = pref.Sum([]byte(parts[1]))
-			if err != nil {
-				break
-			}
-			err = n.DHT.Provide(ctx, c, true)
-
-		case "find-providers":
-			if len(parts) < 2 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-			_, err = n.FindProviders(ctx, parts[1])
-
-		case "update-ref":
-			if len(parts) < 4 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-			tx, err := n.Eth.UpdateRef(ctx, parts[1], parts[2], parts[3])
-			if err != nil {
-				log.Errorln(err)
-				break
-			}
-			log.Printf("update ref tx sent: %v", tx.Hash().Hex())
-			txResult := <-tx.Await(ctx)
-			if txResult.Err != nil {
-				log.Errorln(err)
-			}
-			log.Printf("update ref tx resolved: %v", tx.Hash().Hex())
-
-		case "get-refs":
-			if len(parts) < 3 {
-				err = fmt.Errorf("not enough args")
-				break
-			}
-
-			var page int64
-			page, err = strconv.ParseInt(parts[2], 10, 64)
-			if err != nil {
-				break
-			}
-
-			var refs map[string]swarm.Ref
-			refs = n.Eth.GetRefs(ctx, parts[1], page)
-
-			for _, ref := range refs {
-				log.Printf("ref: %v %v", ref.Name, ref.Commit)
-			}
-
-		case "set-username":
-			var username string
-			if len(parts) == 1 {
-				username = n.Config.User.Username
-			} else {
-				username = parts[1]
-			}
-
-			var tx *swarm.Transaction
-			tx, err = n.Eth.EnsureUsername(ctx, username)
-			if err != nil {
-				break
-			} else if tx == nil && err == nil {
-				log.Printf("username already set")
-				break
-			}
-
-			log.Printf("set username tx sent: %v", tx.Hash().Hex())
-			txResult := <-tx.Await(ctx)
-			if txResult.Err != nil {
-				err = txResult.Err
-				break
-			} else if txResult.Receipt.Status == 0 {
-				err = errors.New("SetUsername transaction failed")
-				break
-			}
-			log.Printf("set username tx resolved: %v", tx.Hash().Hex())
-
-		default:
-			err = fmt.Errorf("unknown command")
+			continue
 		}
 
+		cmd, exists := replCommands[parts[0]]
+		if !exists {
+			log.Errorln("unknown command")
+			continue
+		}
+
+		err := cmd.Handler(ctx, parts[1:], n)
 		if err != nil {
 			log.Errorln(err)
 		}
-
-		fmt.Printf("> ")
 	}
 }
 
@@ -262,7 +272,7 @@ func logState(n *swarm.Node) {
 		}
 	}
 	tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
-	for repo, _ := range state.Repos {
+	for repo := range state.Repos {
 		tm.Printf("  - %s\n", repo)
 	}
 
