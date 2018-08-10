@@ -25,6 +25,7 @@ CMD /geth --networkid 23332 \
           --mine --minerthreads 1 \
           --nodiscover \
           --rpc --rpcport=8545 --rpcaddr=0.0.0.0 --rpccorsdomain "*" \
+          --rpcvhosts=* \
           --etherbase abef44954d64269443125e86ce92b1d99c959017 \
           --unlock 0xabef44954d64269443125e86ce92b1d99c959017 \
           --password /opt/ethdata/node-password.txt \
