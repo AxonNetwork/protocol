@@ -20,6 +20,7 @@ import (
 	swarm ".."
 	"../../config"
 	"../../repo"
+	"../statsserver"
 )
 
 func main() {
@@ -54,6 +55,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	// Start the node stats HTTP server
+	go statsserver.Start(":8081", n)
 
 	// Catch ctrl+c so that we can gracefully shut down the Node
 	c := make(chan os.Signal, 1)
@@ -203,6 +207,9 @@ var replCommands = map[string]struct {
 }
 
 func inputLoop(ctx context.Context, n *swarm.Node) {
+	fmt.Println("Type \"help\" for a list of commands.")
+	fmt.Println()
+
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Printf("> ")

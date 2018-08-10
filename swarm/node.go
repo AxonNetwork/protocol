@@ -268,8 +268,8 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
 	r := n.RepoManager.Repo(repoID)
 	// if r == nil {
-	// 	log.Printf("repo doesn't exist")
-	// 	return nil, errors.New("repo doesn't exist")
+	//  log.Printf("repo doesn't exist")
+	//  return nil, errors.New("repo doesn't exist")
 	// }
 
 	// If we detect that we already have the object locally, just open a regular file stream
@@ -427,43 +427,4 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 		log.Errorf("[pull] error: %v", err)
 		return
 	}
-}
-
-//
-// Everything below here is fairly unimportant.
-//
-
-func (n *Node) FindProviders(ctx context.Context, contentID string) ([]pstore.PeerInfo, error) {
-	c, err := cidForString(contentID)
-	if err != nil {
-		return nil, err
-	}
-
-	timeout, cancel := context.WithTimeout(ctx, time.Second*5)
-	defer cancel()
-
-	chProviders := n.DHT.FindProvidersAsync(timeout, c, 8)
-
-	providers := []pstore.PeerInfo{}
-ForLoop:
-	for {
-		select {
-		case provider, ok := <-chProviders:
-			if !ok {
-				break ForLoop
-			}
-
-			if provider.ID == "" {
-				log.Printf("got nil provider for %v")
-			} else {
-				log.Printf("got provider: %+v", provider)
-				providers = append(providers, provider)
-			}
-
-		case <-timeout.Done():
-			break ForLoop
-		}
-	}
-
-	return providers, nil
 }
