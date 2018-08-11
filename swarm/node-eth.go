@@ -168,18 +168,18 @@ func (n *nodeETH) SetUsername(ctx context.Context, username string) (*Transactio
 	return &Transaction{tx, n.ethClient}, nil
 }
 
-func (n *nodeETH) EnsureRepository(ctx context.Context, repoID string) (*Transaction, error) {
-	exists, err := n.protocolContract.RepositoryExists(n.callOpts(ctx), repoID)
+func (n *nodeETH) EnsureRepo(ctx context.Context, repoID string) (*Transaction, error) {
+	exists, err := n.protocolContract.RepoExists(n.callOpts(ctx), repoID)
 	if err != nil {
 		return nil, err
 	} else if exists {
 		return nil, nil
 	}
-	return n.CreateRepository(ctx, repoID)
+	return n.CreateRepo(ctx, repoID)
 }
 
-func (n *nodeETH) CreateRepository(ctx context.Context, repoID string) (*Transaction, error) {
-	tx, err := n.protocolContract.CreateRepository(n.transactOpts(ctx), repoID)
+func (n *nodeETH) CreateRepo(ctx context.Context, repoID string) (*Transaction, error) {
+	tx, err := n.protocolContract.CreateRepo(n.transactOpts(ctx), repoID)
 	if err != nil {
 		return nil, err
 	}

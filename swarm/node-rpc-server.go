@@ -101,7 +101,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc stream] create repo: %s", req.RepoID)
 
-		tx, err := n.Eth.EnsureRepository(context.Background(), req.RepoID)
+		tx, err := n.Eth.EnsureRepo(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
