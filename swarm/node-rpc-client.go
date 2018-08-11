@@ -30,6 +30,34 @@ func (c *RPCClient) writeMessageType(conn net.Conn, typ MessageType) error {
 	return writeUint64(conn, uint64(typ))
 }
 
+func (c *RPCClient) SetUsername(username string) error {
+	conn, err := net.Dial(c.network, c.addr)
+	if err != nil {
+		return err
+	}
+
+	err = c.writeMessageType(conn, MessageType_SetUsername)
+	if err != nil {
+		return err
+	}
+
+	// Write the request packet
+	err = writeStructPacket(conn, &SetUsernameRequest{Username: username})
+	if err != nil {
+		return err
+	}
+
+	// Read the response packet (i.e., the header for the subsequent object stream)
+	resp := SetUsernameResponse{}
+	err = readStructPacket(conn, &resp)
+	if err != nil {
+		return err
+	} else if resp.Error != "" {
+		return errors.New(resp.Error)
+	}
+	return nil
+}
+
 func (c *RPCClient) GetObject(repoID string, objectID []byte) (*util.ObjectReader, error) {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
@@ -120,7 +148,7 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 		return err
 	}
 
-	// Read the response packet (i.e., the header for the subsequent object stream)
+	// Read the response packet
 	resp := AddRepoResponse{}
 	err = readStructPacket(conn, &resp)
 	if err != nil {
@@ -128,7 +156,32 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 	} else if !resp.OK {
 		return errors.New("repo could not be added")
 	}
+	return nil
+}
 
+func (c *RPCClient) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
+	conn, err := net.Dial(c.network, c.addr)
+	if err != nil {
+		return err
+	}
+
+	err = c.writeMessageType(conn, MessageType_SetReplicationPolicy)
+	if err != nil {
+		return err
+	}
+
+	err = writeStructPacket(conn, &SetReplicationPolicyRequest{RepoID: repoID, ShouldReplicate: shouldReplicate})
+	if err != nil {
+		return err
+	}
+
+	resp := SetReplicationPolicyResponse{}
+	err = readStructPacket(conn, &resp)
+	if err != nil {
+		return err
+	} else if resp.Error != "" {
+		return errors.New(resp.Error)
+	}
 	return nil
 }
 

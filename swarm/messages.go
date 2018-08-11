@@ -8,14 +8,26 @@ type MessageType uint64
 
 const (
 	MessageType_Invalid MessageType = iota
+	MessageType_SetUsername
 	MessageType_GetObject
 	MessageType_CreateRepo
 	MessageType_AddRepo
+	MessageType_SetReplicationPolicy
 	MessageType_AnnounceRepoContent
 	MessageType_GetRefs
 	MessageType_UpdateRef
 	MessageType_Pull
 )
+
+type SetUsernameRequest struct {
+	UsernameLen int `struc:"sizeof=Username"`
+	Username    string
+}
+
+type SetUsernameResponse struct {
+	ErrorLen int `struc:"sizeof=Error"`
+	Error    string
+}
 
 type GetObjectRequest struct {
 	RepoIDLen   int `struc:"sizeof=RepoID"`
@@ -56,6 +68,17 @@ type AddRepoRequest struct {
 
 type AddRepoResponse struct {
 	OK bool
+}
+
+type SetReplicationPolicyRequest struct {
+	RepoIDLen       int `struc:"sizeof=RepoID"`
+	RepoID          string
+	ShouldReplicate bool
+}
+
+type SetReplicationPolicyResponse struct {
+	ErrorLen int `struc:"sizeof=Error"`
+	Error    string
 }
 
 type AnnounceRepoContentRequest struct {
