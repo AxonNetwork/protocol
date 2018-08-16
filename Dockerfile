@@ -18,8 +18,14 @@ RUN go get github.com/lunixbochs/struc
 RUN go get github.com/btcsuite/btcd
 RUN go get github.com/btcsuite/btcutil
 RUN go get gopkg.in/src-d/go-git.v4
+RUN go get github.com/buger/goterm
 
 RUN go build -o /usr/local/bin/node main.go
+
+EXPOSE 1337
+
+COPY consciencerc /consciencerc
+RUN cp /consciencerc $HOME/.consciencerc
 
 CMD ["/usr/local/bin/node"]
 
