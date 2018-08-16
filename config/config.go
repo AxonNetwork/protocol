@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"time"
 
@@ -9,9 +10,11 @@ import (
 )
 
 type Config struct {
-	User      UserConfig
-	Node      NodeConfig
-	RPCClient RPCClientConfig
+	User      UserConfig      `toml:"user"`
+	Node      NodeConfig      `toml:"node"`
+	RPCClient RPCClientConfig `toml:"rpcclient"`
+
+	configPath string
 }
 
 type UserConfig struct {
@@ -76,14 +79,36 @@ func ReadConfig() (*Config, error) {
 
 func ReadConfigAtPath(configPath string) (*Config, error) {
 	cfg := DefaultConfig
+
 	_, err := toml.DecodeFile(configPath, &cfg)
-	if err != nil {
-		// no-op, assume file wasn't there
+	// If the file can't be found, we ignore the error.  Otherwise, return it.
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
 	}
+
+	cfg.configPath = configPath
 	return &cfg, nil
 }
 
+func (c *Config) Save() error {
+	f, err := os.Create(c.configPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	err = toml.NewEncoder(f).Encode(c)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 type Duration time.Duration
+
+func (d Duration) MarshalText() ([]byte, error) {
+	return []byte(time.Duration(d).String()), nil
+}
 
 func (d *Duration) UnmarshalText(text []byte) error {
 	dur, err := time.ParseDuration(string(text))

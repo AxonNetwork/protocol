@@ -70,7 +70,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		Host:        h,
 		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
 		Eth:         eth,
-		RepoManager: NewRepoManager(),
+		RepoManager: NewRepoManager(cfg),
 		Config:      *cfg,
 		rpc:         nil,
 		chShutdown:  make(chan struct{}),
@@ -319,31 +319,14 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
-	found := false
-	for _, repo := range n.Config.Node.ReplicateRepos {
-		if repo == repoID {
-			found = true
-			break
-		}
-	}
-
 	if shouldReplicate {
-		if !found {
-			n.Config.Node.ReplicateRepos = append(n.Config.Node.ReplicateRepos, repoID)
-		}
-
+		n.Config.Node.ReplicateRepos = util.StringSetAdd(n.Config.Node.ReplicateRepos, repoID)
 	} else {
-		if found {
-			remaining := []string{}
-			for _, repo := range n.Config.Node.ReplicateRepos {
-				if repo != repoID {
-					remaining = append(remaining, repo)
-				}
-			}
-			n.Config.Node.ReplicateRepos = remaining
-		}
+		n.Config.Node.ReplicateRepos = util.StringSetRemove(n.Config.Node.ReplicateRepos, repoID)
 	}
-	return nil
+
+	err := n.Config.Save()
+	return err
 }
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
