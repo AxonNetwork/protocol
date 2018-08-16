@@ -68,7 +68,10 @@ func main() {
 		os.Exit(1)
 	}()
 
-	inputLoop(ctx, n)
+	go inputLoop(ctx, n)
+
+	ch := make(chan bool)
+	<-ch
 }
 
 var replCommands = map[string]struct {
@@ -78,7 +81,40 @@ var replCommands = map[string]struct {
 	"state": {
 		"show an overview of the current state of the node",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			logState(n)
+			tm.Clear()
+			tm.MoveCursor(1, 1)
+			box := tm.NewBox(50|tm.PCT, 3, 0)
+			_, err := box.Write([]byte("Conscience"))
+			if err != nil {
+				panic(err)
+			}
+			tm.Println(box.String())
+			state, err := n.GetNodeState()
+			if err != nil {
+				tm.Println("There has been some error")
+				tm.Println(err.Error())
+				tm.Flush()
+				return err
+			}
+			tm.Printf("%v %v\n", tm.Bold("Username:"), state.User)
+			tm.Printf("%v %v\n", tm.Bold("Ethereum Address:"), state.EthAccount)
+			tm.Printf("\n%v\n", tm.Bold("Node ('addrs' for more info):"))
+			tm.Println(state.Addrs[1])
+			tm.Printf("\n%v ('peers' for more info):\n", tm.Bold("Peers"))
+			if len(state.Peers) < 2 {
+				tm.Printf("  No peers at the moment\n")
+			}
+			for peer, addrs := range state.Peers {
+				if len(addrs) > 1 {
+					tm.Printf("  -%s/ipfs/%s\n", addrs[1], peer)
+				}
+			}
+			tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
+			for repo := range state.Repos {
+				tm.Printf("  - %s\n", repo)
+			}
+
+			tm.Flush()
 			return nil
 		},
 	},
@@ -86,7 +122,9 @@ var replCommands = map[string]struct {
 	"addrs": {
 		"list the p2p addresses this node is using to communicate with its swarm",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			logAddrs(n)
+			for _, addr := range n.Host.Addrs() {
+				log.Println(addr.String() + "/ipfs/" + n.Host.ID().Pretty())
+			}
 			return nil
 		},
 	},
@@ -94,15 +132,36 @@ var replCommands = map[string]struct {
 	"repos": {
 		"list the local repositories this node is currently tracking and serving",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			logRepos(n)
-			return nil
+			log.Printf("Known repos:")
+
+			return n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+				repoID, err := r.RepoID()
+				if err != nil {
+					return err
+				}
+
+				log.Printf("  - %v", repoID)
+
+				err = r.ForEachObjectID(func(objectID []byte) error {
+					log.Printf("      - %v", hex.EncodeToString(objectID))
+					return nil
+				})
+				return err
+			})
 		},
 	},
 
 	"peers": {
 		"list the peers this node is currently connected to",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			logPeers(n)
+			log.Printf("total connected peers: %v", len(n.Host.Network().Conns()))
+
+			for _, peerID := range n.Host.Peerstore().Peers() {
+				log.Printf("  - %v (%v)", peerID.String(), peer.IDB58Encode(peerID))
+				for _, addr := range n.Host.Peerstore().Addrs(peerID) {
+					log.Printf("      - %v", addr)
+				}
+			}
 			return nil
 		},
 	},
@@ -110,7 +169,28 @@ var replCommands = map[string]struct {
 	"config": {
 		"display the node's configuration",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			logConfig(n)
+			log.Printf("Config:")
+
+			var doLog func(interface{})
+			doLog = func(x interface{}) {
+				s := reflect.ValueOf(x) //.Elem()
+				configType := s.Type()
+
+				for i := 0; i < s.NumField(); i++ {
+					f := s.Field(i)
+					if f.Kind() == reflect.Struct {
+						log.Println()
+						log.Printf("____ %v ________", configType.Field(i).Name)
+						doLog(f.Interface())
+					} else {
+						if f.CanInterface() {
+							log.Printf("%v = %v", configType.Field(i).Name, f.Interface())
+						}
+					}
+				}
+			}
+
+			doLog(n.Config)
 			return nil
 		},
 	},
@@ -263,100 +343,4 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 			log.Errorln(err)
 		}
 	}
-}
-
-func logState(n *swarm.Node) {
-	tm.Clear()
-	tm.MoveCursor(1, 1)
-	box := tm.NewBox(50|tm.PCT, 3, 0)
-	_, err := box.Write([]byte("Conscience"))
-	if err != nil {
-		panic(err)
-	}
-	tm.Println(box.String())
-	state, err := n.GetNodeState()
-	if err != nil {
-		tm.Println("There has been some error")
-		tm.Println(err.Error())
-		tm.Flush()
-		return
-	}
-	tm.Printf("%v %v\n", tm.Bold("Username:"), state.User)
-	tm.Printf("%v %v\n", tm.Bold("Ethereum Address:"), state.EthAccount)
-	tm.Printf("\n%v\n", tm.Bold("Node ('addrs' for more info):"))
-	tm.Println(state.Addrs[1])
-	tm.Printf("\n%v ('peers' for more info):\n", tm.Bold("Peers"))
-	if len(state.Peers) < 2 {
-		tm.Printf("  No peers at the moment\n")
-	}
-	for peer, addrs := range state.Peers {
-		if len(addrs) > 1 {
-			tm.Printf("  -%s/ipfs/%s\n", addrs[1], peer)
-		}
-	}
-	tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
-	for repo := range state.Repos {
-		tm.Printf("  - %s\n", repo)
-	}
-
-	tm.Flush()
-}
-
-func logPeers(n *swarm.Node) {
-	log.Printf("total connected peers: %v", len(n.Host.Network().Conns()))
-
-	for _, peerID := range n.Host.Peerstore().Peers() {
-		log.Printf("  - %v (%v)", peerID.String(), peer.IDB58Encode(peerID))
-		for _, addr := range n.Host.Peerstore().Addrs(peerID) {
-			log.Printf("      - %v", addr)
-		}
-	}
-}
-
-func logAddrs(n *swarm.Node) {
-	for _, addr := range n.Host.Addrs() {
-		log.Println(addr.String() + "/ipfs/" + n.Host.ID().Pretty())
-	}
-}
-
-func logRepos(n *swarm.Node) {
-	log.Printf("Known repos:")
-
-	n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
-		repoID, err := r.RepoID()
-		if err != nil {
-			return err
-		}
-
-		log.Printf("  - %v", repoID)
-
-		err = r.ForEachObjectID(func(objectID []byte) error {
-			log.Printf("      - %v", hex.EncodeToString(objectID))
-			return nil
-		})
-		return err
-	})
-}
-
-func logConfig(n *swarm.Node) {
-	log.Printf("Config:")
-
-	var doLog func(interface{})
-	doLog = func(x interface{}) {
-		s := reflect.ValueOf(x) //.Elem()
-		configType := s.Type()
-
-		for i := 0; i < s.NumField(); i++ {
-			f := s.Field(i)
-			if f.Kind() == reflect.Struct {
-				log.Println()
-				log.Printf("____ %v ________", configType.Field(i).Name)
-				doLog(f.Interface())
-			} else {
-				log.Printf("%v = %v", configType.Field(i).Name, f.Interface())
-			}
-		}
-	}
-
-	doLog(n.Config)
 }
