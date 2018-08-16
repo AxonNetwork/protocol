@@ -31,26 +31,26 @@ func Start(listenaddr string, node *swarm.Node) {
 }
 
 func (s *server) handleIndex() http.HandlerFunc {
+	type Peer struct {
+		PrettyName string
+		Name       string
+		Addrs      []string
+	}
+
+	type State struct {
+		Username       string
+		EthAddress     string
+		Addrs          []string
+		Peers          []Peer
+		Repos          []repo.RepoInfo
+		ReplicateRepos []string
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		nodeState, err := s.node.GetNodeState()
 		if err != nil {
 			die500(w, err)
 			return
-		}
-
-		type Peer struct {
-			PrettyName string
-			Name       string
-			Addrs      []string
-		}
-
-		type State struct {
-			Username       string
-			EthAddress     string
-			Addrs          []string
-			Peers          []Peer
-			Repos          []repo.RepoInfo
-			ReplicateRepos []string
 		}
 
 		var state State
