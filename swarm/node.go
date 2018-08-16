@@ -319,14 +319,14 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
-	if shouldReplicate {
-		n.Config.Node.ReplicateRepos = util.StringSetAdd(n.Config.Node.ReplicateRepos, repoID)
-	} else {
-		n.Config.Node.ReplicateRepos = util.StringSetRemove(n.Config.Node.ReplicateRepos, repoID)
-	}
-
-	err := n.Config.Save()
-	return err
+	return n.Config.Update(func() error {
+		if shouldReplicate {
+			n.Config.Node.ReplicateRepos = util.StringSetAdd(n.Config.Node.ReplicateRepos, repoID)
+		} else {
+			n.Config.Node.ReplicateRepos = util.StringSetRemove(n.Config.Node.ReplicateRepos, repoID)
+		}
+		return nil
+	})
 }
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests

@@ -31,9 +31,10 @@ func (rm *RepoManager) AddRepo(repoPath string) (*repo.Repo, error) {
 
 	rm.repos[repoID] = r
 
-	rm.config.Node.LocalRepos = util.StringSetAdd(rm.config.Node.LocalRepos, repoPath)
-
-	err = rm.config.Save()
+	err = rm.config.Update(func() error {
+		rm.config.Node.LocalRepos = util.StringSetAdd(rm.config.Node.LocalRepos, repoPath)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -53,12 +54,10 @@ func (rm *RepoManager) UntrackRepo(repoPath string) error {
 
 	delete(rm.repos, repoID)
 
-	rm.config.Node.LocalRepos = util.StringSetRemove(rm.config.Node.LocalRepos, repoPath)
-	err = rm.config.Save()
-	if err != nil {
-		return err
-	}
-	return nil
+	return rm.config.Update(func() error {
+		rm.config.Node.LocalRepos = util.StringSetRemove(rm.config.Node.LocalRepos, repoPath)
+		return nil
+	})
 }
 
 func (rm *RepoManager) Repo(repoID string) *repo.Repo {

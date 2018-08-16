@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -15,6 +16,7 @@ type Config struct {
 	RPCClient RPCClientConfig `toml:"rpcclient"`
 
 	configPath string
+	mu         sync.Mutex
 }
 
 type UserConfig struct {
@@ -90,7 +92,19 @@ func ReadConfigAtPath(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
-func (c *Config) Save() error {
+func (c *Config) Update(fn func() error) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	err := fn()
+	if err != nil {
+		return err
+	}
+
+	return c.save()
+}
+
+func (c *Config) save() error {
 	f, err := os.Create(c.configPath)
 	if err != nil {
 		return err
