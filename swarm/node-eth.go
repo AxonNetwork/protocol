@@ -202,11 +202,11 @@ func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) 
 	return num.Int64(), nil
 }
 
-func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) map[string]Ref {
+func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
 	refs := map[string]Ref{}
 	refsBytes, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(page))
 	if err != nil {
-		return refs
+		return nil, err
 	}
 
 	var read int64
@@ -226,7 +226,7 @@ func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) map[st
 		refs[ref.Name] = ref
 	}
 
-	return refs
+	return refs, nil
 }
 
 func (n *nodeETH) AddressHasPullAccess(ctx context.Context, user common.Address, repoID string) (bool, error) {

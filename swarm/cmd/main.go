@@ -264,7 +264,11 @@ var replCommands = map[string]struct {
 				return err
 			}
 
-			refs := n.Eth.GetRefs(ctx, args[0], page)
+			refs, err := n.Eth.GetRefs(ctx, args[0], page)
+			if err != nil {
+				return err
+			}
+
 			for _, ref := range refs {
 				log.Printf("ref: %v %v", ref.Name, ref.Commit)
 			}

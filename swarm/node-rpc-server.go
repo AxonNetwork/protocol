@@ -231,7 +231,10 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
-		refMap := n.Eth.GetRefs(context.Background(), req.RepoID, req.Page)
+		refMap, err := n.Eth.GetRefs(context.Background(), req.RepoID, req.Page)
+		if err != nil {
+			panic(err)
+		}
 
 		refs := make([]Ref, len(refMap))
 		i := 0
