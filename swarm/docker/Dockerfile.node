@@ -2,6 +2,9 @@ FROM golang:1.10.3-stretch
 
 RUN go get -u github.com/whyrusleeping/gx
 RUN go get -u github.com/whyrusleeping/gx-go
+COPY package.json $GOPATH/src/github.com/Conscience/protocol/package.json
+WORKDIR $GOPATH/src/github.com/Conscience/protocol
+RUN gx install
 
 RUN go get github.com/sirupsen/logrus
 RUN go get github.com/BurntSushi/toml
@@ -14,15 +17,13 @@ RUN go get github.com/btcsuite/btcd
 RUN go get github.com/btcsuite/btcutil
 RUN go get gopkg.in/src-d/go-git.v4
 RUN go get github.com/buger/goterm
-
-COPY package.json $GOPATH/src/github.com/Conscience/protocol/package.json
-WORKDIR $GOPATH/src/github.com/Conscience/protocol
-
-RUN gx install
+RUN go get github.com/aclements/go-rabin/rabin
+RUN go get github.com/dustin/go-humanize
+RUN go get github.com/logrusorgru/aurora
 
 COPY . $GOPATH/src/github.com/Conscience/protocol
-WORKDIR $GOPATH/src/github.com/Conscience/protocol/swarm/cmd
-RUN go build -o /usr/local/bin/node main.go
+WORKDIR $GOPATH/src/github.com/Conscience/protocol
+RUN make && make install
 
 EXPOSE 1337
 EXPOSE 8081
@@ -30,4 +31,4 @@ EXPOSE 8081
 COPY consciencerc /consciencerc
 RUN cp /consciencerc $HOME/.consciencerc
 
-CMD ["/usr/local/bin/node"]
+CMD ["/usr/local/bin/conscience-node"]
