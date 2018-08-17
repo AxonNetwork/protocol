@@ -25,10 +25,41 @@ func Start(listenaddr string, node *swarm.Node) {
 
 	s.router.HandleFunc("/", s.handleIndex())
 	s.router.HandleFunc("/set-replication-policy", s.handleAddReplicatedRepo())
+	s.router.HandleFunc("/remove-peer", s.handleRemovePeer())
 
 	err := http.ListenAndServe(listenaddr, s.router)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func (s *server) handleRemovePeer() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseForm()
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		peerIDStr := r.Form.Get("peerid")
+		if peerIDStr == "" {
+			die500(w, err)
+			return
+		}
+
+		peerID, err := peer.IDB58Decode(peerIDStr)
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		err = s.node.RemovePeer(peerID)
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
 
@@ -82,6 +113,10 @@ func (s *server) handleIndex() http.HandlerFunc {
 		state.EthAddress = nodeState.EthAccount
 		state.Addrs = nodeState.Addrs
 		for _, peerID := range s.node.Host.Peerstore().Peers() {
+			if peerID == s.node.Host.ID() {
+				continue
+			}
+
 			p := Peer{PrettyName: peerID.String(), Name: peer.IDB58Encode(peerID)}
 			for _, addr := range s.node.Host.Peerstore().Addrs(peerID) {
 				p.Addrs = append(p.Addrs, addr.String())
@@ -128,6 +163,10 @@ func (s *server) handleIndex() http.HandlerFunc {
 					label {
 						font-weight: bold;
 					}
+
+					section.section-peers ul li form {
+						display: inline;
+					}
 				</style>
 			</head>
 			<body>
@@ -149,15 +188,24 @@ func (s *server) handleIndex() http.HandlerFunc {
 					</div>
 				</section>
 
-				<section>
+				<section class="section-peers">
 					<label>Peers:</label>
 					<ul>
 						{{ range .Peers }}
 							<li>
-								<div>{{ .PrettyName }} ({{ .Name }})</div>
+								<div>
+									{{ .PrettyName }} ({{ .Name }})
+									<form method="post" action="/remove-peer">
+										<input type="hidden" name="peerid" value="{{ .Name }}" />
+										<input type="submit" value="Disconnect" />
+									</form>
+								</div>
+
 								<ul>
 									{{ range .Addrs }}
-										<li>{{ . }}</li>
+										<li>
+											{{ . }}
+										</li>
 									{{ end }}
 								</ul>
 							</li>

@@ -279,6 +279,17 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	return nil
 }
 
+func (n *Node) RemovePeer(peerID peer.ID) error {
+	if len(n.Host.Network().ConnsToPeer(peerID)) > 0 {
+		err := n.Host.Network().ClosePeer(peerID)
+		if err != nil {
+			return err
+		}
+	}
+	n.Host.Peerstore().ClearAddrs(peerID)
+	return nil
+}
+
 // Attempts to open a stream to the given object.  If we have it locally, the object is read from
 // the filesystem.  Otherwise, we look for a peer and stream it over a p2p connection.
 func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
