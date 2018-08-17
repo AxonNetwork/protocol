@@ -143,11 +143,15 @@ func (n *Node) GetNodeState() (*NodeState, error) {
 
 	addrs := make([]string, 0)
 	for _, addr := range n.Host.Addrs() {
-		addrs = append(addrs, fmt.Sprintf("%v/ipfs/%v", addr.String(), n.Host.ID().Pretty()))
+		addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), n.Host.ID().Pretty()))
 	}
 
 	peers := make(map[string][]string)
 	for _, peerID := range n.Host.Peerstore().Peers() {
+		if peerID == n.Host.ID() {
+			continue
+		}
+
 		pid := peerID.Pretty()
 		peers[pid] = make([]string, 0)
 		for _, addr := range n.Host.Peerstore().Addrs(peerID) {
@@ -314,19 +318,37 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
 	defer cancel()
 
-	provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
-	if !found {
-		return nil, errors.New("can't find peer with object " + repoID + ":" + hex.EncodeToString(objectID))
-	}
+	var objectReader *util.ObjectReader
 
-	if provider.ID == n.Host.ID() {
-		// We have the object locally (perhaps in another clone of the same repository)
-		return r.OpenObject(objectID)
+	err = retry(func() (bool, error) {
+		provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
+		if !found {
+			return false, errors.New("can't find peer with object " + repoID + ":" + hex.EncodeToString(objectID))
+		}
 
-	} else {
-		// We found a peer with the object
-		return n.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
+		if provider.ID == n.Host.ID() {
+			// We have the object locally (perhaps in another clone of the same repository)
+			objectReader, err = r.OpenObject(objectID)
+			if err != nil {
+				return false, err
+			}
+
+		} else {
+			// We found a peer with the object
+			objectReader, err = n.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
+			if err != nil {
+				return true, err
+			}
+		}
+	})
+}
+
+func retry(fn func() (bool, error)) error {
+	retry, err := fn()
+	for retry {
+		retry, err = fn()
 	}
+	return err
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
