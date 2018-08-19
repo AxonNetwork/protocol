@@ -1,0 +1,40 @@
+[
+  {
+    "name": "${container_name}",
+    "image": "${image_url}",
+    "cpu": 256,
+    "memory": 256,
+    "entryPoint": [],
+    "environment": [{ "name" : "${name}", "value" : "${value}" }],
+    "networkMode": "awsvpc",
+    "portMappings": [
+      {
+        "hostPort": ${container_p2p_port},
+        "containerPort": ${container_p2p_port},
+        "protocol": "tcp"
+      },
+      {
+        "hostPort": ${container_http_port},
+        "containerPort": ${container_http_port},
+        "protocol": "tcp"
+      }
+    ],
+    "volumesFrom": [],
+    "links": [],
+    "mountPoints": [
+      {
+        "sourceVolume": "efs",
+        "containerPath": "/mnt",
+        "readOnly": false
+      }
+    ],
+    "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+            "awslogs-group": "${log_group_name}",
+            "awslogs-region": "${log_group_region}"
+        }
+    },
+    "essential": true
+  }
+]

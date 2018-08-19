@@ -9,12 +9,13 @@ RPCListenHost       = "/tmp/conscience.sock"
 EthereumHost        = "http://geth.conscience.network:80"
 ProtocolContract    = "0x554c0ba9c07fe70402bd43a35f6e89b7d09f2593"
 EthereumBIP39Seed   = "olive lady install income ill bullet acquire siren circle sport skate gain panic elevator mountain"
-AnnounceInterval    = "5s"
+ContentAnnounceInterval    = "15s"
+ContentRequestInterval = "15s"
 FindProviderTimeout = "10s"
 LocalRepos          = [
     ""
 ]
-ReplicationRoot     = "/tmp/repos"
+ReplicationRoot     = "/mnt"
 ReplicateRepos      = [
     "testing",
 ]

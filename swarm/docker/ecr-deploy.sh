@@ -1,3 +1,3 @@
 #!/bin/sh
 
-aws ecs update-service --service conscience-node --cluster conscience-node --force-new-deployment
+aws ecs update-service --service swarm-node-conscience-node --cluster swarm-node --force-new-deployment

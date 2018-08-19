@@ -1,11 +1,14 @@
 FROM golang:1.10.3-stretch
 
+# Install gx packages prior to doing anything else so that
+# we almost never have to repeat this build step
 RUN go get -u github.com/whyrusleeping/gx
 RUN go get -u github.com/whyrusleeping/gx-go
 COPY package.json $GOPATH/src/github.com/Conscience/protocol/package.json
 WORKDIR $GOPATH/src/github.com/Conscience/protocol
 RUN gx install
 
+# Install regular packages
 RUN go get github.com/sirupsen/logrus
 RUN go get github.com/BurntSushi/toml
 RUN go get github.com/mitchellh/go-homedir
@@ -21,13 +24,16 @@ RUN go get github.com/aclements/go-rabin/rabin
 RUN go get github.com/dustin/go-humanize
 RUN go get github.com/logrusorgru/aurora
 
+# Build all of the binaries with the Makefile
 COPY . $GOPATH/src/github.com/Conscience/protocol
 WORKDIR $GOPATH/src/github.com/Conscience/protocol
 RUN make && make install
 
+# Expose ports
 EXPOSE 1337
 EXPOSE 8081
 
+# Copy config files
 COPY consciencerc /consciencerc
 RUN cp /consciencerc $HOME/.consciencerc
 
