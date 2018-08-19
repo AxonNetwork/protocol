@@ -20,11 +20,14 @@ import (
 	swarm ".."
 	"../../config"
 	"../../repo"
+	"../logger"
 	"../statsserver"
 )
 
 func main() {
 	ctx := context.Background()
+
+	logger.InstallHook()
 
 	// Read the config file in the user's homedir
 	cfg, err := config.ReadConfig()
@@ -181,7 +184,9 @@ var replCommands = map[string]struct {
 					if f.Kind() == reflect.Struct {
 						log.Println()
 						log.Printf("____ %v ________", configType.Field(i).Name)
-						doLog(f.Interface())
+						if f.CanInterface() {
+							doLog(f.Interface())
+						}
 					} else {
 						if f.CanInterface() {
 							log.Printf("%v = %v", configType.Field(i).Name, f.Interface())

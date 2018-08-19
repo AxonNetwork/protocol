@@ -10,6 +10,7 @@ import (
 
 	swarm ".."
 	"../../repo"
+	"../logger"
 )
 
 type server struct {
@@ -98,6 +99,7 @@ func (s *server) handleIndex() http.HandlerFunc {
 		Peers          []Peer
 		Repos          []repo.RepoInfo
 		ReplicateRepos []string
+		Logs           []string
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +130,15 @@ func (s *server) handleIndex() http.HandlerFunc {
 		}
 
 		state.ReplicateRepos = s.node.Config.Node.ReplicateRepos
+
+		for _, log := range logger.GetLogs() {
+			logstr, err := log.String()
+			if err != nil {
+				state.Logs = append(state.Logs, "error stringifying this log")
+			} else {
+				state.Logs = append(state.Logs, logstr)
+			}
+		}
 
 		tpl, err := template.New("indexpage").Parse(`
 			<html>
@@ -227,6 +238,15 @@ func (s *server) handleIndex() http.HandlerFunc {
 						<div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
 						<div><input type="submit" value="Set" /></div>
 					</form>
+				</section>
+
+				<section class="section-logs">
+					<label>Logs:</label>
+					<ul>
+						{{ range .Logs }}
+							<li>{{ . }}</li>
+						{{ end }}
+					</ul>
 				</section>
 			</body>
 			</html>
