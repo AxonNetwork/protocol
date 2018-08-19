@@ -79,8 +79,8 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	// Set a pass-through validator
 	n.DHT.Validator = blankValidator{}
 
-	// Start a goroutine for announcing which repos and objects this Node can provide (happens every few seconds)
-	go n.periodicallyAnnounceContent(ctx)
+	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide (happens every few seconds)
+	go n.periodicallyRequestContent(ctx)  // Start a goroutine for requesting repos we are replicating
 
 	// Set the handler function for when we get a new incoming object stream
 	n.Host.SetStreamHandler(OBJECT_STREAM_PROTO, n.objectStreamHandler)
@@ -174,9 +174,31 @@ func (n *Node) GetNodeState() (*NodeState, error) {
 	}, nil
 }
 
+func (n *Node) periodicallyRequestContent(ctx context.Context) {
+	c := time.Tick(time.Duration(n.Config.Node.ContentRequestInterval))
+	for range c {
+		err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+			repoID, err := r.RepoID()
+			if err != nil {
+				log.Errorf("[content request] error getting repoID (%v): %v", r.Path, err)
+			}
+
+			err = n.pullrepo(repoID)
+			if err != nil {
+				log.Errorf("[content request] error pulling repo (%v): %v", repoID, err)
+			}
+			return nil
+		})
+		if err != nil {
+			log.Errorf("[content request] %v", err)
+			continue
+		}
+	}
+}
+
 // Periodically announces our repos and objects to the network.
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
-	c := time.Tick(time.Duration(n.Config.Node.AnnounceInterval))
+	c := time.Tick(time.Duration(n.Config.Node.ContentAnnounceInterval))
 	for range c {
 		alreadyAnnounced := map[string]bool{}
 
@@ -184,7 +206,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 		for _, repoID := range n.Config.Node.ReplicateRepos {
 			err := n.announceRepo(ctx, repoID)
 			if err != nil {
-				log.Errorf("[announce] %v", err)
+				log.Errorf("[content announce] %v", err)
 				continue
 			}
 			alreadyAnnounced[repoID] = true
@@ -209,7 +231,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 			})
 		})
 		if err != nil {
-			log.Errorf("[announce] %v", err)
+			log.Errorf("[content announce] %v", err)
 		}
 	}
 }
@@ -340,15 +362,9 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 				return true, err
 			}
 		}
+		return false, nil
 	})
-}
-
-func retry(fn func() (bool, error)) error {
-	retry, err := fn()
-	for retry {
-		retry, err = fn()
-	}
-	return err
+	return objectReader, err
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
@@ -418,13 +434,13 @@ func (n *Node) requestPull(ctx context.Context, peerID peer.ID, repoID string) e
 		return err
 	}
 
-	if resp.OK {
+	if resp.Error == "" {
 		log.Printf("[pull] request accepted by peer %v", peerID.String())
+		return nil
 	} else {
-		log.Printf("[pull] request rejected by peer %v", peerID.String())
+		log.Printf("[pull] request rejected by peer %v (error: %v)", peerID.String(), resp.Error)
+		return errors.New(resp.Error)
 	}
-
-	return nil
 }
 
 // Handles an incoming request to replicate (pull changes from) a given repository.
@@ -450,34 +466,51 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 	}
 
 	if !whitelisted {
-		err = writeStructPacket(stream, &PullResponse{OK: false})
+		err = writeStructPacket(stream, &PullResponse{Error: "not a whitelisted repo"})
 		if err != nil {
 			log.Errorf("[pull] error: %v", err)
 		}
 		return
 	}
 
-	// Check if the repo physically exists on disk.  If not, initialize it in the ReplicationRoot.
-	r := n.RepoManager.Repo(req.RepoID)
-	if r == nil {
-		path := filepath.Join(n.Config.Node.ReplicationRoot, req.RepoID)
+	err = n.pullrepo(req.RepoID)
+	if err != nil {
+		log.Errorf("[pull] error: %v", err)
 
-		r, err = repo.Init(path)
+		err = writeStructPacket(stream, &PullResponse{Error: err.Error()})
 		if err != nil {
 			log.Errorf("[pull] error: %v", err)
 			return
 		}
+		return
+	}
 
-		err = r.SetupConfig(req.RepoID)
+	err = writeStructPacket(stream, &PullResponse{Error: ""})
+	if err != nil {
+		log.Errorf("[pull] error: %v", err)
+		return
+	}
+}
+
+func (n *Node) pullrepo(repoID string) error {
+	// Check if the repo physically exists on disk.  If not, initialize it in the ReplicationRoot.
+	r := n.RepoManager.Repo(repoID)
+	if r == nil {
+		path := filepath.Join(n.Config.Node.ReplicationRoot, repoID)
+
+		r, err := repo.Init(path)
 		if err != nil {
-			log.Errorf("[pull] error: %v", err)
-			return
+			return err
+		}
+
+		err = r.SetupConfig(repoID)
+		if err != nil {
+			return err
 		}
 
 		_, err = n.RepoManager.AddRepo(path)
 		if err != nil {
-			log.Errorf("[pull] error: %v", err)
-			return
+			return err
 		}
 	}
 
@@ -486,10 +519,9 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 	cmd.Dir = r.Path
 	buf := &bytes.Buffer{}
 	cmd.Stdout = buf
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
-		log.Errorf("[pull] error: %v", err)
-		return
+		return err
 	}
 
 	scan := bufio.NewScanner(buf)
@@ -497,13 +529,7 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 		log.Printf("[pull] git: %v", scan.Text())
 	}
 	if err = scan.Err(); err != nil {
-		log.Errorf("[pull] error: %v", err)
-		return
+		return err
 	}
-
-	err = writeStructPacket(stream, &PullResponse{OK: true})
-	if err != nil {
-		log.Errorf("[pull] error: %v", err)
-		return
-	}
+	return nil
 }

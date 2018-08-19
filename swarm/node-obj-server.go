@@ -24,7 +24,6 @@ func (n *Node) objectStreamHandler(stream netp2p.Stream) {
 		return
 	}
 
-	log.Printf("read struct packet")
 	hash := crypto.Keccak256(req.ObjectID)
 	pubkey, err := crypto.SigToPub(hash, req.Signature)
 	if err != nil {

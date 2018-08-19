@@ -24,19 +24,20 @@ type UserConfig struct {
 }
 
 type NodeConfig struct {
-	P2PListenAddr       string
-	P2PListenPort       int
-	BootstrapPeers      []string
-	RPCListenNetwork    string
-	RPCListenHost       string
-	EthereumHost        string
-	ProtocolContract    string
-	EthereumBIP39Seed   string
-	AnnounceInterval    Duration
-	FindProviderTimeout Duration
-	LocalRepos          []string
-	ReplicationRoot     string
-	ReplicateRepos      []string
+	P2PListenAddr           string
+	P2PListenPort           int
+	BootstrapPeers          []string
+	RPCListenNetwork        string
+	RPCListenHost           string
+	EthereumHost            string
+	ProtocolContract        string
+	EthereumBIP39Seed       string
+	ContentAnnounceInterval Duration
+	ContentRequestInterval  Duration
+	FindProviderTimeout     Duration
+	LocalRepos              []string
+	ReplicationRoot         string
+	ReplicateRepos          []string
 }
 
 type RPCClientConfig struct {
@@ -49,18 +50,19 @@ var DefaultConfig = Config{
 		Username: "nobody",
 	},
 	Node: NodeConfig{
-		P2PListenAddr:       "0.0.0.0",
-		P2PListenPort:       1337,
-		RPCListenNetwork:    "tcp",
-		RPCListenHost:       "127.0.0.1:1338",
-		EthereumHost:        "http://127.0.0.1:8545",
-		ProtocolContract:    "",
-		EthereumBIP39Seed:   "",
-		AnnounceInterval:    Duration(10 * time.Second),
-		FindProviderTimeout: Duration(10 * time.Second),
-		ReplicationRoot:     "/tmp/repos", // @@TODO: probably a better choice for this
-		ReplicateRepos:      []string{},
-		BootstrapPeers:      []string{},
+		P2PListenAddr:           "0.0.0.0",
+		P2PListenPort:           1337,
+		RPCListenNetwork:        "tcp",
+		RPCListenHost:           "127.0.0.1:1338",
+		EthereumHost:            "http://127.0.0.1:8545",
+		ProtocolContract:        "",
+		EthereumBIP39Seed:       "",
+		ContentAnnounceInterval: Duration(15 * time.Second),
+		ContentRequestInterval:  Duration(15 * time.Second),
+		FindProviderTimeout:     Duration(10 * time.Second),
+		ReplicationRoot:         "/tmp/repos", // @@TODO: probably a better choice for this
+		ReplicateRepos:          []string{},
+		BootstrapPeers:          []string{},
 	},
 	RPCClient: RPCClientConfig{
 		Network: "tcp",

@@ -342,6 +342,11 @@ func (c *RPCClient) RequestPull(repoID string) error {
 		return err
 	}
 
-	log.Printf("[rpc stream] RequestPull: ok = %v", resp.OK)
-	return nil
+	if resp.Error == "" {
+		log.Printf("[rpc stream] RequestPull: ok")
+		return nil
+	} else {
+		log.Errorf("[rpc stream] RequestPull: error = %v", resp.Error)
+		return errors.New(resp.Error)
+	}
 }

@@ -94,3 +94,11 @@ func readStructPacket(r io.Reader, obj interface{}) error {
 	}
 	return nil
 }
+
+func retry(fn func() (bool, error)) error {
+	retry, err := fn()
+	for retry {
+		retry, err = fn()
+	}
+	return err
+}

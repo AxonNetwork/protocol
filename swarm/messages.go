@@ -130,5 +130,6 @@ type PullRequest struct {
 }
 
 type PullResponse struct {
-	OK bool
+	ErrorLen int64 `struc:"sizeof=Error"`
+	Error    string
 }

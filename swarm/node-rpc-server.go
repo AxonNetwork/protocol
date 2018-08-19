@@ -281,11 +281,13 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 
 		err = n.requestReplication(context.Background(), req.RepoID)
+		errStr := ""
 		if err != nil {
-			panic(err)
+			log.Errorf("[rpc] MessageType_Pull error: %v", err)
+			errStr = err.Error()
 		}
 
-		err = writeStructPacket(stream, &PullResponse{OK: true})
+		err = writeStructPacket(stream, &PullResponse{Error: errStr})
 		if err != nil {
 			panic(err)
 		}
