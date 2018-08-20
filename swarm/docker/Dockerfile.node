@@ -34,7 +34,6 @@ EXPOSE 1337
 EXPOSE 8081
 
 # Copy config files
-COPY swarm/docker/consciencerc /consciencerc
-RUN cp /consciencerc $HOME/.consciencerc
+# COPY swarm/docker/consciencerc /mnt/.consciencerc
 
-CMD ["/usr/local/bin/conscience-node"]
+CMD ["/usr/local/bin/conscience-node", "--config", "/mnt/.consciencerc"]

@@ -43,6 +43,7 @@ func NewRepoManager(config *config.Config) *RepoManager {
 
 func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, error) {
 	if r, known := rm.repos[repoID]; known {
+		// @@TODO: test whether it physically exists on-disk?  and if not, recreate it?
 		return r, nil
 	}
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	tm "github.com/buger/goterm"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/urfave/cli"
 
 	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
@@ -25,33 +27,36 @@ import (
 )
 
 func main() {
+	app := cli.NewApp()
+
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "config",
+			Value: filepath.Join(os.Getenv("HOME"), ".consciencerc"),
+			Usage: "location of config file",
+		},
+	}
+
+	app.Action = func(c *cli.Context) error {
+		configPath := c.String("config")
+		return run(configPath)
+	}
+
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(configPath string) error {
 	ctx := context.Background()
 
 	logger.InstallHook()
 
-	// Read the config file in the user's homedir
-	cfg, err := config.ReadConfig()
+	// Read the config file
+	cfg, err := config.ReadConfigAtPath(configPath)
 	if err != nil {
-		panic(err)
-	}
-
-	// Allow overriding the P2P listen port from the command line
-	if len(os.Args) >= 2 {
-		listenPort, err := strconv.ParseUint(os.Args[1], 10, 64)
-		if err != nil {
-			panic("usage: swarm [p2p port] [rpc port]")
-		}
-		cfg.Node.P2PListenPort = int(listenPort)
-	}
-
-	// Allow overriding the RPC listen port from the command line
-	if len(os.Args) >= 3 {
-		listenPort, err := strconv.ParseUint(os.Args[2], 10, 64)
-		if err != nil {
-			panic("usage: swarm [p2p port] [rpc port]")
-		}
-		cfg.Node.RPCListenNetwork = "tcp"
-		cfg.Node.RPCListenHost = fmt.Sprintf("127.0.0.1:%v", listenPort)
+		return err
 	}
 
 	n, err := swarm.NewNode(ctx, cfg)
@@ -75,6 +80,8 @@ func main() {
 
 	ch := make(chan bool)
 	<-ch
+
+	return nil
 }
 
 var replCommands = map[string]struct {
@@ -181,11 +188,11 @@ var replCommands = map[string]struct {
 
 				for i := 0; i < s.NumField(); i++ {
 					f := s.Field(i)
-					if f.Kind() == reflect.Struct {
+					if f.Kind() == reflect.Ptr {
 						log.Println()
 						log.Printf("____ %v ________", configType.Field(i).Name)
 						if f.CanInterface() {
-							doLog(f.Interface())
+							doLog(reflect.Indirect(f).Interface())
 						}
 					} else {
 						if f.CanInterface() {
@@ -299,12 +306,14 @@ var replCommands = map[string]struct {
 			}
 
 			log.Printf("set username tx sent: %v", tx.Hash().Hex())
+
 			txResult := <-tx.Await(ctx)
 			if txResult.Err != nil {
 				return txResult.Err
 			} else if txResult.Receipt.Status == 0 {
 				return errors.New("SetUsername transaction failed")
 			}
+
 			log.Printf("set username tx resolved: %v", tx.Hash().Hex())
 			return nil
 		},
