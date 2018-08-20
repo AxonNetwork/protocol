@@ -12,13 +12,9 @@ EthereumBIP39Seed   = "olive lady install income ill bullet acquire siren circle
 ContentAnnounceInterval    = "15s"
 ContentRequestInterval = "15s"
 FindProviderTimeout = "10s"
-LocalRepos          = [
-    ""
-]
+LocalRepos          = []
 ReplicationRoot     = "/mnt"
-ReplicateRepos      = [
-    "testing",
-]
+ReplicateRepos      = []
 BootstrapPeers      = []
 
 [rpcclient]
