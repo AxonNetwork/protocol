@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
+
+	"../config"
+	"../swarm/noderpc"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -67,10 +71,59 @@ func main() {
 				return setReplicationPolicy(repoID, shouldReplicate)
 			},
 		},
+		{
+			Name:      "repos",
+			UsageText: "conscience repos",
+			Usage:     "returns a list of conscience repositories",
+			ArgsUsage: "[args usage]",
+			Action: func(c *cli.Context) error {
+				repos, err := getRepos()
+				if err != nil {
+					return err
+				}
+				for _, repo := range repos {
+					fmt.Fprintf(c.App.Writer, "%s %s\n", repo.RepoID, repo.Path)
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:      "get-refs",
+			UsageText: "conscience get-refs <repo ID>",
+			Usage:     "return all on-chain refs for the given repo",
+			ArgsUsage: "[args usage]",
+			Action: func(c *cli.Context) error {
+				if len(c.Args()) < 1 {
+					return ErrNotEnoughArgs
+				}
+
+				repoID := c.Args().Get(0)
+
+				refs, err := getAllRefs(repoID)
+				if err != nil {
+					return err
+				}
+				for _, ref := range refs {
+					fmt.Fprintf(c.App.Writer, "%s %s\n", ref.Commit, ref.Name)
+				}
+
+				return nil
+			},
+		},
 	}
 
 	err := app.Run(os.Args)
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func getClient() (*noderpc.Client, error) {
+	cfg, err := config.ReadConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 }

@@ -3,9 +3,7 @@ package main
 import (
 	"os"
 
-	"../config"
 	"../repo"
-	"../swarm/noderpc"
 
 	"gopkg.in/src-d/go-git.v4"
 )
@@ -29,12 +27,7 @@ func initRepo(repoID string) error {
 		return err
 	}
 
-	cfg, err := config.ReadConfig()
-	if err != nil {
-		return err
-	}
-
-	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := getClient()
 	if err != nil {
 		return err
 	}
@@ -52,12 +45,7 @@ func initRepo(repoID string) error {
 }
 
 func setUsername(username string) error {
-	cfg, err := config.ReadConfig()
-	if err != nil {
-		return err
-	}
-
-	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := getClient()
 	if err != nil {
 		return err
 	}
@@ -70,12 +58,7 @@ func setUsername(username string) error {
 }
 
 func setReplicationPolicy(repoID string, shouldReplicate bool) error {
-	cfg, err := config.ReadConfig()
-	if err != nil {
-		return err
-	}
-
-	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := getClient()
 	if err != nil {
 		return err
 	}

@@ -160,6 +160,27 @@ func (c *Client) AddRepo(repoPath string) error {
 	return nil
 }
 
+func (c *Client) GetRepos() ([]Repo, error) {
+	conn, err := net.Dial(c.network, c.addr)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.writeMessageType(conn, MessageType_GetRepos)
+	if err != nil {
+		return nil, err
+	}
+
+	// Read the response packet
+	resp := GetReposResponse{}
+	err = ReadStructPacket(conn, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Repos, nil
+}
+
 func (c *Client) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {

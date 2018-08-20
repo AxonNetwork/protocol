@@ -6,6 +6,8 @@ import (
 	"net"
 	"time"
 
+	"../../repo"
+
 	log "github.com/sirupsen/logrus"
 
 	swarm ".."
@@ -185,6 +187,28 @@ func (s *Server) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 
 		err = WriteStructPacket(stream, &AddRepoResponse{OK: true})
+		if err != nil {
+			panic(err)
+		}
+
+	case MessageType_GetRepos:
+		log.Printf("[rpc] GetRepos")
+
+		repos := make([]Repo, 0)
+
+		err := s.node.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+			repoID, err := r.RepoID()
+			if err != nil {
+				return err
+			}
+			repos = append(repos, Repo{RepoID: repoID, Path: r.Path})
+			return nil
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		err = WriteStructPacket(stream, &GetReposResponse{Repos: repos})
 		if err != nil {
 			panic(err)
 		}

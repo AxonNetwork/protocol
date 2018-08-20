@@ -12,6 +12,7 @@ const (
 	MessageType_GetObject
 	MessageType_RegisterRepoID
 	MessageType_AddRepo
+	MessageType_GetRepos
 	MessageType_SetReplicationPolicy
 	MessageType_AnnounceRepoContent
 	MessageType_GetRefs
@@ -70,6 +71,11 @@ type AddRepoResponse struct {
 	OK bool
 }
 
+type GetReposResponse struct {
+	ReposLen int `struc:"sizeof=Repos"`
+	Repos    []Repo
+}
+
 type SetReplicationPolicyRequest struct {
 	RepoIDLen       int `struc:"sizeof=RepoID"`
 	RepoID          string
@@ -113,6 +119,13 @@ type UpdateRefRequest struct {
 
 type UpdateRefResponse struct {
 	OK bool
+}
+
+type Repo struct {
+	RepoIDLen int64 `struc:"sizeof=RepoID"`
+	RepoID    string
+	PathLen   int64 `struc:"sizeof=Path"`
+	Path      string
 }
 
 type Ref struct {
