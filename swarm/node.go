@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -177,21 +176,35 @@ func (n *Node) GetNodeState() (*NodeState, error) {
 func (n *Node) periodicallyRequestContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.ContentRequestInterval))
 	for range c {
-		err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
-			repoID, err := r.RepoID()
-			if err != nil {
-				log.Errorf("[content request] error getting repoID (%v): %v", r.Path, err)
-			}
+		log.Infof("[content request] starting content request")
 
-			err = n.pullrepo(repoID)
+		// Request all repos we have locally (@@TODO: do we actually want to do this?)
+		// err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+		//     repoID, err := r.RepoID()
+		//     if err != nil {
+		//         log.Errorf("[content request] error getting repoID (%v): %v", r.Path, err)
+		//         return nil
+		//     }
+
+		//     log.Infof("[content request] requesting repo '%v'", repoID)
+
+		//     err = n.pullrepo(repoID)
+		//     if err != nil {
+		//         log.Errorf("[content request] error pulling repo (%v): %v", repoID, err)
+		//     }
+		//     return nil
+		// })
+		// if err != nil {
+		//     log.Errorf("[content request] %v", err)
+		//     continue
+		// }
+
+		for _, repoID := range n.Config.Node.ReplicateRepos {
+			log.Infof("[content request] requesting repo '%v'", repoID)
+			err := n.pullrepo(repoID)
 			if err != nil {
 				log.Errorf("[content request] error pulling repo (%v): %v", repoID, err)
 			}
-			return nil
-		})
-		if err != nil {
-			log.Errorf("[content request] %v", err)
-			continue
 		}
 	}
 }
@@ -200,17 +213,22 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.ContentAnnounceInterval))
 	for range c {
-		alreadyAnnounced := map[string]bool{}
+		log.Infof("[content announce] starting content announce")
+
+		// alreadyAnnounced := map[string]bool{}
 
 		// Announce the repos we're willing to replicate (whether or not we have any objects from them yet)
-		for _, repoID := range n.Config.Node.ReplicateRepos {
-			err := n.announceRepo(ctx, repoID)
-			if err != nil {
-				log.Errorf("[content announce] %v", err)
-				continue
-			}
-			alreadyAnnounced[repoID] = true
-		}
+		// @@TODO: explain why we're announcing something we don't have yet
+		// for _, repoID := range n.Config.Node.ReplicateRepos {
+		// 	log.Infof("[content announce] announcing repo '%v'", repoID)
+
+		// 	err := n.announceRepo(ctx, repoID)
+		// 	if err != nil {
+		// 		log.Errorf("[content announce] %v", err)
+		// 		continue
+		// 	}
+		// 	alreadyAnnounced[repoID] = true
+		// }
 
 		// Announce the repos we have locally
 		err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
@@ -219,12 +237,12 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 				return err
 			}
 
-			if _, already := alreadyAnnounced[repoID]; !already {
-				err = n.announceRepo(ctx, repoID)
-				if err != nil {
-					return err
-				}
+			// if _, already := alreadyAnnounced[repoID]; !already {
+			err = n.announceRepo(ctx, repoID)
+			if err != nil {
+				return err
 			}
+			// }
 
 			return r.ForEachObjectID(func(objectID []byte) error {
 				return n.announceObject(ctx, repoID, objectID)
@@ -493,25 +511,9 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 }
 
 func (n *Node) pullrepo(repoID string) error {
-	// Check if the repo physically exists on disk.  If not, initialize it in the ReplicationRoot.
-	r := n.RepoManager.Repo(repoID)
-	if r == nil {
-		path := filepath.Join(n.Config.Node.ReplicationRoot, repoID)
-
-		r, err := repo.Init(path)
-		if err != nil {
-			return err
-		}
-
-		err = r.SetupConfig(repoID)
-		if err != nil {
-			return err
-		}
-
-		_, err = n.RepoManager.AddRepo(path)
-		if err != nil {
-			return err
-		}
+	r, err := n.RepoManager.EnsureLocalCheckoutExists(repoID)
+	if err != nil {
+		return err
 	}
 
 	// Start a git-pull process
@@ -519,7 +521,7 @@ func (n *Node) pullrepo(repoID string) error {
 	cmd.Dir = r.Path
 	buf := &bytes.Buffer{}
 	cmd.Stdout = buf
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return err
 	}

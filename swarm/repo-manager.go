@@ -1,6 +1,10 @@
 package swarm
 
 import (
+	"path/filepath"
+
+	log "github.com/sirupsen/logrus"
+
 	"../config"
 	"../repo"
 	"../util"
@@ -12,13 +16,78 @@ type RepoManager struct {
 }
 
 func NewRepoManager(config *config.Config) *RepoManager {
-	return &RepoManager{
+	rm := &RepoManager{
 		repos:  make(map[string]*repo.Repo),
 		config: config,
 	}
+
+	for _, path := range rm.config.Node.LocalRepos {
+		log.Infof("[repo manager] tracking local repo: %v", path)
+		_, err := rm.openRepo(path)
+		if err != nil {
+			log.Errorf("[repo manager] %v", err)
+			continue
+		}
+	}
+
+	// for _, repoID := range rm.config.Node.ReplicateRepos {
+	//     _, err := rm.EnsureLocalCheckoutExists(repoID)
+	//     if err != nil {
+	//         log.Errorf("[repo manager] %v", err)
+	//         continue
+	//     }
+	// }
+
+	return rm
 }
 
-func (rm *RepoManager) AddRepo(repoPath string) (*repo.Repo, error) {
+func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, error) {
+	if r, known := rm.repos[repoID]; known {
+		return r, nil
+	}
+
+	defaultPath := filepath.Join(rm.config.Node.ReplicationRoot, repoID)
+
+	r, err := repo.EnsureExists(defaultPath)
+	if err != nil {
+		return nil, err
+	}
+
+	rm.repos[repoID] = r
+
+	err = r.SetupConfig(repoID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = rm.config.Update(func() error {
+		rm.config.Node.LocalRepos = util.StringSetAdd(rm.config.Node.LocalRepos, defaultPath)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+func (rm *RepoManager) TrackRepo(repoPath string) (*repo.Repo, error) {
+	r, err := rm.openRepo(repoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	err = rm.config.Update(func() error {
+		rm.config.Node.LocalRepos = util.StringSetAdd(rm.config.Node.LocalRepos, repoPath)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
 	r, err := repo.Open(repoPath)
 	if err != nil {
 		return nil, err
@@ -29,15 +98,12 @@ func (rm *RepoManager) AddRepo(repoPath string) (*repo.Repo, error) {
 		return nil, err
 	}
 
+	if _, exists := rm.repos[repoID]; exists {
+		log.Warnf("[repo manager] already opened repo with ID '%v'", repoID)
+	}
+
 	rm.repos[repoID] = r
 
-	err = rm.config.Update(func() error {
-		rm.config.Node.LocalRepos = util.StringSetAdd(rm.config.Node.LocalRepos, repoPath)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
 	return r, nil
 }
 

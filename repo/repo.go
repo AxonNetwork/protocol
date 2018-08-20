@@ -37,10 +37,20 @@ const (
 )
 
 var (
-	ErrRepoNotFound   = fmt.Errorf("repo not found")
+	ErrRepoNotFound   = git.ErrRepositoryNotExists
 	ErrObjectNotFound = fmt.Errorf("object not found")
 	ErrBadChecksum    = fmt.Errorf("object error: bad checksum")
 )
+
+func EnsureExists(path string) (*Repo, error) {
+	r, err := Open(path)
+	if err == nil {
+		return r, nil
+	} else if err != ErrRepoNotFound {
+		return nil, err
+	}
+	return Init(path)
+}
 
 func Init(path string) (*Repo, error) {
 	gitRepo, err := git.PlainInit(path, false)

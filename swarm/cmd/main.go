@@ -222,7 +222,7 @@ var replCommands = map[string]struct {
 			if len(args) < 1 {
 				return fmt.Errorf("not enough args")
 			}
-			_, err := n.RepoManager.AddRepo(args[0])
+			_, err := n.RepoManager.TrackRepo(args[0])
 			return err
 		},
 	},

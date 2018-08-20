@@ -17,7 +17,7 @@ deps:
 	go get github.com/buger/goterm
 	go get github.com/urfave/cli
 
-build: deps build/conscience-node build/git-remote-conscience build/conscience_encode build/conscience_decode build/conscience_diff build/conscience-cmd
+build: deps build/conscience-node build/git-remote-conscience build/conscience_encode build/conscience_decode build/conscience_diff build/conscience
 
 build/conscience-node: swarm/**/*.go
 	mkdir -p build
@@ -49,7 +49,7 @@ build/conscience_diff: filters/diff/*.go
 	go build -o main *.go; \
 	mv main ../../build/conscience_diff
 
-build/conscience-cmd: cmd/*.go
+build/conscience: cmd/*.go
 	mkdir -p build
 	cd cmd; \
 	go build -o main *.go; \

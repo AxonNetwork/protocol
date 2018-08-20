@@ -165,7 +165,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc] add repo: %s", req.RepoPath)
 
-		_, err = n.RepoManager.AddRepo(req.RepoPath)
+		_, err = n.RepoManager.TrackRepo(req.RepoPath)
 		if err != nil {
 			panic(err)
 		}
@@ -233,7 +233,8 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		refMap, err := n.Eth.GetRefs(context.Background(), req.RepoID, req.Page)
 		if err != nil {
-			panic(err)
+			log.Errorf("[rpc] GetRefs: %v", err)
+			refMap = map[string]Ref{}
 		}
 
 		refs := make([]Ref, len(refMap))
