@@ -76,6 +76,13 @@ type GetReposResponse struct {
 	Repos    []Repo
 }
 
+type Repo struct {
+	RepoIDLen int64 `struc:"sizeof=RepoID"`
+	RepoID    string
+	PathLen   int64 `struc:"sizeof=Path"`
+	Path      string
+}
+
 type SetReplicationPolicyRequest struct {
 	RepoIDLen       int `struc:"sizeof=RepoID"`
 	RepoID          string
@@ -119,13 +126,6 @@ type UpdateRefRequest struct {
 
 type UpdateRefResponse struct {
 	OK bool
-}
-
-type Repo struct {
-	RepoIDLen int64 `struc:"sizeof=RepoID"`
-	RepoID    string
-	PathLen   int64 `struc:"sizeof=Path"`
-	Path      string
 }
 
 type Ref struct {
