@@ -13,12 +13,12 @@ import (
 
 	"../config"
 	"../repo"
-	"../swarm"
+	"../swarm/noderpc"
 )
 
 var (
 	GIT_DIR = os.Getenv("GIT_DIR")
-	client  *swarm.RPCClient
+	client  *noderpc.Client
 	Repo    *repo.Repo
 	repoID  string
 )
@@ -33,7 +33,7 @@ func main() {
 		panic(err)
 	}
 
-	client, err = swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err = noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
 		panic(err)
 	}

@@ -1,4 +1,4 @@
-package swarm
+package wire
 
 import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -10,13 +10,13 @@ const (
 	MessageType_Invalid MessageType = iota
 	MessageType_SetUsername
 	MessageType_GetObject
-	MessageType_CreateRepo
+	MessageType_RegisterRepoID
 	MessageType_AddRepo
 	MessageType_SetReplicationPolicy
 	MessageType_AnnounceRepoContent
 	MessageType_GetRefs
 	MessageType_UpdateRef
-	MessageType_Pull
+	MessageType_Replicate
 )
 
 type SetUsernameRequest struct {
@@ -52,12 +52,12 @@ type GetObjectResponse struct {
 	ObjectLen    int64
 }
 
-type CreateRepoRequest struct {
+type RegisterRepoIDRequest struct {
 	RepoIDLen int `struc:"sizeof=RepoID"`
 	RepoID    string
 }
 
-type CreateRepoResponse struct {
+type RegisterRepoIDResponse struct {
 	OK bool
 }
 
@@ -122,14 +122,14 @@ type Ref struct {
 	Commit    string
 }
 
-type PullRequest struct {
+type ReplicationRequest struct {
 	// UsernameLen   int `struc:"sizeof=Username"`
 	// Username      string
 	RepoIDLen int `struc:"sizeof=RepoID"`
 	RepoID    string
 }
 
-type PullResponse struct {
+type ReplicationResponse struct {
 	ErrorLen int64 `struc:"sizeof=Error"`
 	Error    string
 }

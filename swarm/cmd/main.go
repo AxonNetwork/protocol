@@ -23,7 +23,8 @@ import (
 	"../../config"
 	"../../repo"
 	"../logger"
-	"../statsserver"
+	"../nodehttp"
+	"../noderpc"
 )
 
 func main() {
@@ -64,8 +65,28 @@ func run(configPath string) error {
 		panic(err)
 	}
 
-	// Start the node stats HTTP server
-	go statsserver.Start(":8081", n)
+	// Start the node HTTP server
+	httpserver := nodehttp.New(n)
+	go httpserver.Start()
+
+	// Start the node RPC server
+	rpcserver := noderpc.NewServer(n)
+	go rpcserver.Start()
+
+	// When the node shuts down, the HTTP and RPC servers should shut down as well
+	go func() {
+		<-n.Shutdown
+
+		err := httpserver.Close()
+		if err != nil {
+			log.Errorf("error shutting down http server: %v", err)
+		}
+
+		err = rpcserver.Close()
+		if err != nil {
+			log.Errorf("error shutting down rpc server: %v", err)
+		}
+	}()
 
 	// Catch ctrl+c so that we can gracefully shut down the Node
 	c := make(chan os.Signal, 1)
@@ -132,8 +153,8 @@ var replCommands = map[string]struct {
 	"addrs": {
 		"list the p2p addresses this node is using to communicate with its swarm",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			for _, addr := range n.Host.Addrs() {
-				log.Println(addr.String() + "/ipfs/" + n.Host.ID().Pretty())
+			for _, addr := range n.Addrs() {
+				log.Println(addr.String() + "/ipfs/" + n.ID().Pretty())
 			}
 			return nil
 		},
@@ -164,11 +185,11 @@ var replCommands = map[string]struct {
 	"peers": {
 		"list the peers this node is currently connected to",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			log.Printf("total connected peers: %v", len(n.Host.Network().Conns()))
+			log.Printf("total connected peers: %v", len(n.Conns()))
 
-			for _, peerID := range n.Host.Peerstore().Peers() {
-				log.Printf("  - %v (%v)", peerID.String(), peer.IDB58Encode(peerID))
-				for _, addr := range n.Host.Peerstore().Addrs(peerID) {
+			for _, pinfo := range n.Peers() {
+				log.Printf("  - %v (%v)", pinfo.ID.String(), peer.IDB58Encode(pinfo.ID))
+				for _, addr := range pinfo.Addrs {
 					log.Printf("      - %v", addr)
 				}
 			}
@@ -250,7 +271,7 @@ var replCommands = map[string]struct {
 			if len(args) < 3 {
 				return fmt.Errorf("not enough args")
 			}
-			tx, err := n.Eth.UpdateRef(ctx, args[0], args[1], args[2])
+			tx, err := n.UpdateRef(ctx, args[0], args[1], args[2])
 			if err != nil {
 				return err
 			}
@@ -276,7 +297,7 @@ var replCommands = map[string]struct {
 				return err
 			}
 
-			refs, err := n.Eth.GetRefs(ctx, args[0], page)
+			refs, err := n.GetRefs(ctx, args[0], page)
 			if err != nil {
 				return err
 			}
@@ -298,7 +319,7 @@ var replCommands = map[string]struct {
 				username = args[0]
 			}
 
-			tx, err := n.Eth.EnsureUsername(ctx, username)
+			tx, err := n.EnsureUsername(ctx, username)
 			if err != nil {
 				return err
 			} else if tx == nil && err == nil {

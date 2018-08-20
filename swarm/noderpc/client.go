@@ -1,4 +1,4 @@
-package swarm
+package noderpc
 
 import (
 	"encoding/hex"
@@ -9,28 +9,29 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	"../util"
+	"../../util"
+	. "../wire"
 )
 
-// @@TODO: make all RPCClient methods take a context
-type RPCClient struct {
+// @@TODO: make all Client methods take a context
+type Client struct {
 	conn          net.Conn
 	network, addr string
 }
 
-func NewRPCClient(network, addr string) (*RPCClient, error) {
-	client := &RPCClient{
+func NewClient(network, addr string) (*Client, error) {
+	client := &Client{
 		network: network,
 		addr:    addr,
 	}
 	return client, nil
 }
 
-func (c *RPCClient) writeMessageType(conn net.Conn, typ MessageType) error {
-	return writeUint64(conn, uint64(typ))
+func (c *Client) writeMessageType(conn net.Conn, typ MessageType) error {
+	return WriteUint64(conn, uint64(typ))
 }
 
-func (c *RPCClient) SetUsername(username string) error {
+func (c *Client) SetUsername(username string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
@@ -42,14 +43,14 @@ func (c *RPCClient) SetUsername(username string) error {
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &SetUsernameRequest{Username: username})
+	err = WriteStructPacket(conn, &SetUsernameRequest{Username: username})
 	if err != nil {
 		return err
 	}
 
 	// Read the response packet (i.e., the header for the subsequent object stream)
 	resp := SetUsernameResponse{}
-	err = readStructPacket(conn, &resp)
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	} else if resp.Error != "" {
@@ -58,7 +59,7 @@ func (c *RPCClient) SetUsername(username string) error {
 	return nil
 }
 
-func (c *RPCClient) GetObject(repoID string, objectID []byte) (*util.ObjectReader, error) {
+func (c *Client) GetObject(repoID string, objectID []byte) (*util.ObjectReader, error) {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return nil, err
@@ -70,14 +71,14 @@ func (c *RPCClient) GetObject(repoID string, objectID []byte) (*util.ObjectReade
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &GetObjectRequest{RepoID: repoID, ObjectID: objectID})
+	err = WriteStructPacket(conn, &GetObjectRequest{RepoID: repoID, ObjectID: objectID})
 	if err != nil {
 		return nil, err
 	}
 
 	// Read the response packet (i.e., the header for the subsequent object stream)
 	resp := GetObjectResponse{}
-	err = readStructPacket(conn, &resp)
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -100,19 +101,19 @@ func (c *RPCClient) GetObject(repoID string, objectID []byte) (*util.ObjectReade
 	return reader, nil
 }
 
-func (c *RPCClient) CreateRepo(repoID string) error {
+func (c *Client) RegisterRepoID(repoID string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
 	}
 
-	err = c.writeMessageType(conn, MessageType_CreateRepo)
+	err = c.writeMessageType(conn, MessageType_RegisterRepoID)
 	if err != nil {
 		return err
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &CreateRepoRequest{RepoID: repoID})
+	err = WriteStructPacket(conn, &RegisterRepoIDRequest{RepoID: repoID})
 	if err != nil {
 		return err
 	}
@@ -120,8 +121,8 @@ func (c *RPCClient) CreateRepo(repoID string) error {
 	log.Printf("Create Repo TX Sent")
 
 	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := CreateRepoResponse{}
-	err = readStructPacket(conn, &resp)
+	resp := RegisterRepoIDResponse{}
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	} else if !resp.OK {
@@ -131,7 +132,7 @@ func (c *RPCClient) CreateRepo(repoID string) error {
 	return nil
 }
 
-func (c *RPCClient) AddRepo(repoPath string) error {
+func (c *Client) AddRepo(repoPath string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
@@ -143,14 +144,14 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &AddRepoRequest{RepoPath: repoPath})
+	err = WriteStructPacket(conn, &AddRepoRequest{RepoPath: repoPath})
 	if err != nil {
 		return err
 	}
 
 	// Read the response packet
 	resp := AddRepoResponse{}
-	err = readStructPacket(conn, &resp)
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	} else if !resp.OK {
@@ -159,7 +160,7 @@ func (c *RPCClient) AddRepo(repoPath string) error {
 	return nil
 }
 
-func (c *RPCClient) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
+func (c *Client) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
@@ -170,13 +171,13 @@ func (c *RPCClient) SetReplicationPolicy(repoID string, shouldReplicate bool) er
 		return err
 	}
 
-	err = writeStructPacket(conn, &SetReplicationPolicyRequest{RepoID: repoID, ShouldReplicate: shouldReplicate})
+	err = WriteStructPacket(conn, &SetReplicationPolicyRequest{RepoID: repoID, ShouldReplicate: shouldReplicate})
 	if err != nil {
 		return err
 	}
 
 	resp := SetReplicationPolicyResponse{}
-	err = readStructPacket(conn, &resp)
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	} else if resp.Error != "" {
@@ -185,7 +186,7 @@ func (c *RPCClient) SetReplicationPolicy(repoID string, shouldReplicate bool) er
 	return nil
 }
 
-func (c *RPCClient) AnnounceRepoContent(repoID string) error {
+func (c *Client) AnnounceRepoContent(repoID string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
@@ -197,14 +198,14 @@ func (c *RPCClient) AnnounceRepoContent(repoID string) error {
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &AnnounceRepoContentRequest{RepoID: repoID})
+	err = WriteStructPacket(conn, &AnnounceRepoContentRequest{RepoID: repoID})
 	if err != nil {
 		return err
 	}
 
 	// Read the response packet (i.e., the header for the subsequent object stream)
 	resp := AnnounceRepoContentResponse{}
-	err = readStructPacket(conn, &resp)
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	} else if !resp.OK {
@@ -218,7 +219,7 @@ const (
 	REF_PAGE_SIZE = 10 // @@TODO: make configurable
 )
 
-func (c *RPCClient) GetAllRefs(repoID string) (map[string]Ref, error) {
+func (c *Client) GetAllRefs(repoID string) (map[string]Ref, error) {
 	var page int64
 	var numRefs int64
 	var err error
@@ -246,7 +247,7 @@ func (c *RPCClient) GetAllRefs(repoID string) (map[string]Ref, error) {
 	return refMap, nil
 }
 
-func (c *RPCClient) GetRefs(repoID string, page int64) (map[string]Ref, int64, error) {
+func (c *Client) GetRefs(repoID string, page int64) (map[string]Ref, int64, error) {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return nil, 0, err
@@ -258,14 +259,14 @@ func (c *RPCClient) GetRefs(repoID string, page int64) (map[string]Ref, int64, e
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &GetRefsRequest{RepoID: repoID, Page: page})
+	err = WriteStructPacket(conn, &GetRefsRequest{RepoID: repoID, Page: page})
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Read the response packet (i.e., the header for the subsequent object stream)
 	resp := GetRefsResponse{}
-	err = readStructPacket(conn, &resp)
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -278,7 +279,7 @@ func (c *RPCClient) GetRefs(repoID string, page int64) (map[string]Ref, int64, e
 	return refs, resp.NumRefs, nil
 }
 
-func (c *RPCClient) UpdateRef(repoID string, refName string, commitHash string) error {
+func (c *Client) UpdateRef(repoID string, refName string, commitHash string) error {
 	if len(commitHash) != 40 {
 		return errors.New("commit hash is not 40 hex characters")
 	}
@@ -294,7 +295,7 @@ func (c *RPCClient) UpdateRef(repoID string, refName string, commitHash string) 
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &UpdateRefRequest{
+	err = WriteStructPacket(conn, &UpdateRefRequest{
 		RepoID:  repoID,
 		RefName: refName,
 		Commit:  commitHash,
@@ -307,7 +308,7 @@ func (c *RPCClient) UpdateRef(repoID string, refName string, commitHash string) 
 
 	// Read the response packet
 	resp := UpdateRefResponse{}
-	err = readStructPacket(conn, &resp)
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	} else if !resp.OK {
@@ -316,37 +317,35 @@ func (c *RPCClient) UpdateRef(repoID string, refName string, commitHash string) 
 	return nil
 }
 
-func (c *RPCClient) RequestPull(repoID string) error {
+func (c *Client) RequestReplication(repoID string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
 	}
 
-	err = c.writeMessageType(conn, MessageType_Pull)
+	err = c.writeMessageType(conn, MessageType_Replicate)
 	if err != nil {
 		return err
 	}
 
 	// Write the request packet
-	err = writeStructPacket(conn, &PullRequest{
-		RepoID: repoID,
-	})
+	err = WriteStructPacket(conn, &ReplicationRequest{RepoID: repoID})
 	if err != nil {
 		return err
 	}
 
 	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := PullResponse{}
-	err = readStructPacket(conn, &resp)
+	resp := ReplicationResponse{}
+	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
 	}
 
 	if resp.Error == "" {
-		log.Printf("[rpc stream] RequestPull: ok")
+		log.Printf("[rpc stream] RequestReplication: ok")
 		return nil
 	} else {
-		log.Errorf("[rpc stream] RequestPull: error = %v", resp.Error)
+		log.Errorf("[rpc stream] RequestReplication: error = %v", resp.Error)
 		return errors.New(resp.Error)
 	}
 }

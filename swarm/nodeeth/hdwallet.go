@@ -1,4 +1,4 @@
-package hdwallet
+package nodeeth
 
 import (
 	"crypto/ecdsa"

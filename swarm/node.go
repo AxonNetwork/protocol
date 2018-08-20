@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"os/exec"
 	"sync"
 	"time"
@@ -28,21 +27,22 @@ import (
 	"../config"
 	"../repo"
 	"../util"
+	"./nodeeth"
+	. "./wire"
 )
 
 type Node struct {
-	Host        host.Host
-	DHT         *dht.IpfsDHT
-	Eth         *nodeETH
-	rpc         net.Listener
+	host        host.Host
+	dht         *dht.IpfsDHT
+	eth         *nodeeth.Client
 	RepoManager *RepoManager
 	Config      config.Config
-	chShutdown  chan struct{}
+	Shutdown    chan struct{}
 }
 
 const (
-	OBJECT_STREAM_PROTO = "/conscience/object-stream/1.0.0"
-	PULL_PROTO          = "/conscience/pull/1.0.0"
+	OBJECT_PROTO      = "/conscience/object/1.0.0"
+	REPLICATION_PROTO = "/conscience/replication/1.0.0"
 )
 
 func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
@@ -50,6 +50,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		cfg = &config.DefaultConfig
 	}
 
+	// Initialize the p2p host
 	h, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(
 			fmt.Sprintf("/ip4/%v/tcp/%v", cfg.Node.P2PListenAddr, cfg.Node.P2PListenPort),
@@ -60,30 +61,31 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
-	eth, err := initETH(ctx, cfg)
+	// Initialize the DHT
+	d := dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore()))
+	d.Validator = blankValidator{} // Set a pass-through validator
+
+	// Initialize the Ethereum client
+	eth, err := nodeeth.NewClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	n := &Node{
-		Host:        h,
-		DHT:         dht.NewDHT(ctx, h, dsync.MutexWrap(dstore.NewMapDatastore())),
-		Eth:         eth,
+		host:        h,
+		dht:         d,
+		eth:         eth,
 		RepoManager: NewRepoManager(cfg),
 		Config:      *cfg,
-		rpc:         nil,
-		chShutdown:  make(chan struct{}),
+		Shutdown:    make(chan struct{}),
 	}
 
-	// Set a pass-through validator
-	n.DHT.Validator = blankValidator{}
-
-	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide (happens every few seconds)
-	go n.periodicallyRequestContent(ctx)  // Start a goroutine for requesting repos we are replicating
+	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
+	go n.periodicallyRequestContent(ctx)  // Start a goroutine for pulling content from repos we are replicating
 
 	// Set the handler function for when we get a new incoming object stream
-	n.Host.SetStreamHandler(OBJECT_STREAM_PROTO, n.objectStreamHandler)
-	n.Host.SetStreamHandler(PULL_PROTO, n.pullHandler)
+	n.host.SetStreamHandler(OBJECT_PROTO, n.handleObjectRequest)
+	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
 
 	// Connect to our list of bootstrap peers
 	for _, peeraddr := range cfg.Node.BootstrapPeers {
@@ -93,39 +95,44 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		}
 	}
 
-	// Setup the RPC interface so our git helpers can push and pull objects to the network
-	err = n.initRPC(cfg.Node.RPCListenNetwork, cfg.Node.RPCListenHost)
-	if err != nil {
-		return nil, err
-	}
-
 	return n, nil
 }
 
 func (n *Node) Close() error {
-	close(n.chShutdown)
+	close(n.Shutdown)
 
-	err := n.Host.Close()
+	err := n.host.Close()
 	if err != nil {
 		return err
 	}
 
-	err = n.DHT.Close()
+	err = n.dht.Close()
 	if err != nil {
 		return err
 	}
 
-	err = n.Eth.Close()
-	if err != nil {
-		return err
-	}
-
-	err = n.rpc.Close()
+	err = n.eth.Close()
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (n *Node) ID() peer.ID {
+	return n.host.ID()
+}
+
+func (n *Node) Addrs() []ma.Multiaddr {
+	return n.host.Addrs()
+}
+
+func (n *Node) Peers() []pstore.PeerInfo {
+	return pstore.PeerInfos(n.host.Peerstore(), n.host.Peerstore().Peers())
+}
+
+func (n *Node) Conns() []netp2p.Conn {
+	return n.host.Network().Conns()
 }
 
 type NodeState struct {
@@ -138,22 +145,22 @@ type NodeState struct {
 
 func (n *Node) GetNodeState() (*NodeState, error) {
 	user := n.Config.User.Username
-	ethAccount := n.Eth.account.Address.Hex()
+	ethAccount := n.eth.Address().Hex()
 
 	addrs := make([]string, 0)
-	for _, addr := range n.Host.Addrs() {
-		addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), n.Host.ID().Pretty()))
+	for _, addr := range n.host.Addrs() {
+		addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), n.host.ID().Pretty()))
 	}
 
 	peers := make(map[string][]string)
-	for _, peerID := range n.Host.Peerstore().Peers() {
-		if peerID == n.Host.ID() {
+	for _, peerID := range n.host.Peerstore().Peers() {
+		if peerID == n.host.ID() {
 			continue
 		}
 
 		pid := peerID.Pretty()
 		peers[pid] = make([]string, 0)
-		for _, addr := range n.Host.Peerstore().Addrs(peerID) {
+		for _, addr := range n.host.Peerstore().Addrs(peerID) {
 			peers[pid] = append(peers[pid], addr.String())
 		}
 	}
@@ -178,30 +185,9 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 	for range c {
 		log.Infof("[content request] starting content request")
 
-		// Request all repos we have locally (@@TODO: do we actually want to do this?)
-		// err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
-		//     repoID, err := r.RepoID()
-		//     if err != nil {
-		//         log.Errorf("[content request] error getting repoID (%v): %v", r.Path, err)
-		//         return nil
-		//     }
-
-		//     log.Infof("[content request] requesting repo '%v'", repoID)
-
-		//     err = n.pullrepo(repoID)
-		//     if err != nil {
-		//         log.Errorf("[content request] error pulling repo (%v): %v", repoID, err)
-		//     }
-		//     return nil
-		// })
-		// if err != nil {
-		//     log.Errorf("[content request] %v", err)
-		//     continue
-		// }
-
 		for _, repoID := range n.Config.Node.ReplicateRepos {
 			log.Infof("[content request] requesting repo '%v'", repoID)
-			err := n.pullrepo(repoID)
+			err := n.pullRepo(repoID)
 			if err != nil {
 				log.Errorf("[content request] error pulling repo (%v): %v", repoID, err)
 			}
@@ -217,17 +203,16 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 
 		// alreadyAnnounced := map[string]bool{}
 
-		// Announce the repos we're willing to replicate (whether or not we have any objects from them yet)
-		// @@TODO: explain why we're announcing something we don't have yet
+		// // Announce what we're willing to replicate.
 		// for _, repoID := range n.Config.Node.ReplicateRepos {
-		// 	log.Infof("[content announce] announcing repo '%v'", repoID)
+		//     log.Infof("[content announce] announcing repo '%v'", repoID)
 
-		// 	err := n.announceRepo(ctx, repoID)
-		// 	if err != nil {
-		// 		log.Errorf("[content announce] %v", err)
-		// 		continue
-		// 	}
-		// 	alreadyAnnounced[repoID] = true
+		//     err := n.announceRepoReplicator(ctx, repoID)
+		//     if err != nil {
+		//         log.Errorf("[content announce] %v", err)
+		//         continue
+		//     }
+		//     alreadyAnnounced[repoID] = true
 		// }
 
 		// Announce the repos we have locally
@@ -281,7 +266,7 @@ func (n *Node) announceRepo(ctx context.Context, repoID string) error {
 		return err
 	}
 
-	err = n.DHT.Provide(ctx, c, true)
+	err = n.dht.Provide(ctx, c, true)
 	if err != nil && err != kbucket.ErrLookupFailure {
 		return err
 	}
@@ -295,7 +280,7 @@ func (n *Node) announceObject(ctx context.Context, repoID string, objectID []byt
 		return err
 	}
 
-	err = n.DHT.Provide(ctx, c, true)
+	err = n.dht.Provide(ctx, c, true)
 	if err != nil && err != kbucket.ErrLookupFailure {
 		return err
 	}
@@ -315,7 +300,7 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 		return err
 	}
 
-	err = n.Host.Connect(ctx, *pinfo)
+	err = n.host.Connect(ctx, *pinfo)
 	if err != nil {
 		return fmt.Errorf("connect to peer failed: %v", err)
 	}
@@ -324,13 +309,13 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 }
 
 func (n *Node) RemovePeer(peerID peer.ID) error {
-	if len(n.Host.Network().ConnsToPeer(peerID)) > 0 {
-		err := n.Host.Network().ClosePeer(peerID)
+	if len(n.host.Network().ConnsToPeer(peerID)) > 0 {
+		err := n.host.Network().ClosePeer(peerID)
 		if err != nil {
 			return err
 		}
 	}
-	n.Host.Peerstore().ClearAddrs(peerID)
+	n.host.Peerstore().ClearAddrs(peerID)
 	return nil
 }
 
@@ -338,10 +323,6 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 // the filesystem.  Otherwise, we look for a peer and stream it over a p2p connection.
 func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
 	r := n.RepoManager.Repo(repoID)
-	// if r == nil {
-	//  log.Printf("repo doesn't exist")
-	//  return nil, errors.New("repo doesn't exist")
-	// }
 
 	// If we detect that we already have the object locally, just open a regular file stream
 	if r != nil && r.HasObject(repoID, objectID) {
@@ -353,20 +334,20 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 		return nil, err
 	}
 
-	// Try to find 1 provider of the object within the given timeout
-	// @@TODO: reach out to multiple peers, take first responder
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
-	defer cancel()
-
 	var objectReader *util.ObjectReader
 
 	err = retry(func() (bool, error) {
-		provider, found := <-n.DHT.FindProvidersAsync(ctxTimeout, c, 1)
+		// @@TODO: reach out to multiple peers, take first responder
+		// Try to find 1 provider of the object within the given timeout
+		ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
+		defer cancel()
+
+		provider, found := <-n.dht.FindProvidersAsync(ctxTimeout, c, 1)
 		if !found {
 			return false, errors.New("can't find peer with object " + repoID + ":" + hex.EncodeToString(objectID))
 		}
 
-		if provider.ID == n.Host.ID() {
+		if provider.ID == n.host.ID() {
 			// We have the object locally (perhaps in another clone of the same repository)
 			objectReader, err = r.OpenObject(objectID)
 			if err != nil {
@@ -375,7 +356,7 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 
 		} else {
 			// We found a peer with the object
-			objectReader, err = n.openPeerObjectReader(ctx, provider.ID, repoID, objectID)
+			objectReader, err = n.requestObject(ctx, provider.ID, repoID, objectID)
 			if err != nil {
 				return true, err
 			}
@@ -398,7 +379,7 @@ func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
-func (n *Node) requestReplication(ctx context.Context, repoID string) error {
+func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
 	log.Printf("requesting replication of '%v'", repoID)
 	c, err := cidForString(repoID)
 	if err != nil {
@@ -409,11 +390,11 @@ func (n *Node) requestReplication(ctx context.Context, repoID string) error {
 	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	chProviders := n.DHT.FindProvidersAsync(ctxTimeout, c, 8)
+	chProviders := n.dht.FindProvidersAsync(ctxTimeout, c, 8)
 
 	wg := &sync.WaitGroup{}
 	for provider := range chProviders {
-		if provider.ID == n.Host.ID() {
+		if provider.ID == n.host.ID() {
 			continue
 		}
 
@@ -421,10 +402,34 @@ func (n *Node) requestReplication(ctx context.Context, repoID string) error {
 
 		go func(peerID peer.ID) {
 			defer wg.Done()
-			err := n.requestPull(ctx, peerID, repoID)
+
+			log.Printf("[pull] requesting pull of %v from %v", repoID, peerID.String())
+			stream, err := n.host.NewStream(ctx, peerID, REPLICATION_PROTO)
 			if err != nil {
 				log.Errorf("[pull] error: %v", err)
+				return
 			}
+			defer stream.Close()
+
+			err = WriteStructPacket(stream, &ReplicationRequest{RepoID: repoID})
+			if err != nil {
+				log.Errorf("[pull] error: %v", err)
+				return
+			}
+
+			resp := ReplicationResponse{}
+			err = ReadStructPacket(stream, &resp)
+			if err != nil {
+				log.Errorf("[pull] error: %v", err)
+				return
+			}
+
+			if resp.Error != "" {
+				log.Printf("[pull] request rejected by peer %v (error: %v)", peerID.String(), resp.Error)
+				return
+			}
+			log.Printf("[pull] request accepted by peer %v", peerID.String())
+
 		}(provider.ID)
 	}
 	wg.Wait()
@@ -432,47 +437,18 @@ func (n *Node) requestReplication(ctx context.Context, repoID string) error {
 	return nil
 }
 
-// Issues a request to a single replicator peer to pull from the given repository.
-func (n *Node) requestPull(ctx context.Context, peerID peer.ID, repoID string) error {
-	log.Printf("[pull] requesting pull of %v from %v", repoID, peerID.String())
-	stream, err := n.Host.NewStream(ctx, peerID, PULL_PROTO)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-
-	err = writeStructPacket(stream, &PullRequest{RepoID: repoID})
-	if err != nil {
-		return err
-	}
-
-	resp := PullResponse{}
-	err = readStructPacket(stream, &resp)
-	if err != nil {
-		return err
-	}
-
-	if resp.Error == "" {
-		log.Printf("[pull] request accepted by peer %v", peerID.String())
-		return nil
-	} else {
-		log.Printf("[pull] request rejected by peer %v (error: %v)", peerID.String(), resp.Error)
-		return errors.New(resp.Error)
-	}
-}
-
 // Handles an incoming request to replicate (pull changes from) a given repository.
-func (n *Node) pullHandler(stream netp2p.Stream) {
-	log.Printf("[pull] receiving pull request")
+func (n *Node) handleReplicationRequest(stream netp2p.Stream) {
+	log.Printf("[replication] receiving replication request")
 	defer stream.Close()
 
-	req := PullRequest{}
-	err := readStructPacket(stream, &req)
+	req := ReplicationRequest{}
+	err := ReadStructPacket(stream, &req)
 	if err != nil {
-		log.Errorf("[pull] error: %v", err)
+		log.Errorf("[replication] error: %v", err)
 		return
 	}
-	log.Printf("[pull] repoID: %v", req.RepoID)
+	log.Printf("[replication] repoID: %v", req.RepoID)
 
 	// Ensure that the repo has been whitelisted for replication.
 	whitelisted := false
@@ -484,33 +460,33 @@ func (n *Node) pullHandler(stream netp2p.Stream) {
 	}
 
 	if !whitelisted {
-		err = writeStructPacket(stream, &PullResponse{Error: "not a whitelisted repo"})
+		err = WriteStructPacket(stream, &ReplicationResponse{Error: "not a whitelisted repo"})
 		if err != nil {
-			log.Errorf("[pull] error: %v", err)
+			log.Errorf("[replication] error: %v", err)
 		}
 		return
 	}
 
-	err = n.pullrepo(req.RepoID)
+	err = n.pullRepo(req.RepoID)
 	if err != nil {
-		log.Errorf("[pull] error: %v", err)
+		log.Errorf("[replication] error: %v", err)
 
-		err = writeStructPacket(stream, &PullResponse{Error: err.Error()})
+		err = WriteStructPacket(stream, &ReplicationResponse{Error: err.Error()})
 		if err != nil {
-			log.Errorf("[pull] error: %v", err)
+			log.Errorf("[replication] error: %v", err)
 			return
 		}
 		return
 	}
 
-	err = writeStructPacket(stream, &PullResponse{Error: ""})
+	err = WriteStructPacket(stream, &ReplicationResponse{Error: ""})
 	if err != nil {
-		log.Errorf("[pull] error: %v", err)
+		log.Errorf("[replication] error: %v", err)
 		return
 	}
 }
 
-func (n *Node) pullrepo(repoID string) error {
+func (n *Node) pullRepo(repoID string) error {
 	r, err := n.RepoManager.EnsureLocalCheckoutExists(repoID)
 	if err != nil {
 		return err
@@ -528,10 +504,30 @@ func (n *Node) pullrepo(repoID string) error {
 
 	scan := bufio.NewScanner(buf)
 	for scan.Scan() {
-		log.Printf("[pull] git: %v", scan.Text())
+		log.Printf("[replication] git: %v", scan.Text())
 	}
 	if err = scan.Err(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (n *Node) EnsureUsername(ctx context.Context, username string) (*nodeeth.Transaction, error) {
+	return n.eth.EnsureUsername(ctx, username)
+}
+
+func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*nodeeth.Transaction, error) {
+	return n.eth.EnsureRepoIDRegistered(ctx, repoID)
+}
+
+func (n *Node) GetNumRefs(ctx context.Context, repoID string) (int64, error) {
+	return n.eth.GetNumRefs(ctx, repoID)
+}
+
+func (n *Node) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
+	return n.eth.GetRefs(ctx, repoID, page)
+}
+
+func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*nodeeth.Transaction, error) {
+	return n.eth.UpdateRef(ctx, repoID, refName, commitHash)
 }

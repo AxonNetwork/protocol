@@ -1,4 +1,4 @@
-package statsserver
+package nodehttp
 
 import (
 	"html/template"
@@ -13,28 +13,38 @@ import (
 	"../logger"
 )
 
-type server struct {
-	router *http.ServeMux
+type Server struct {
+	server *http.Server
 	node   *swarm.Node
 }
 
-func Start(listenaddr string, node *swarm.Node) {
-	s := &server{
-		router: http.NewServeMux(),
-		node:   node,
+func New(node *swarm.Node) *Server {
+	s := &Server{
+		node: node,
 	}
 
-	s.router.HandleFunc("/", s.handleIndex())
-	s.router.HandleFunc("/set-replication-policy", s.handleAddReplicatedRepo())
-	s.router.HandleFunc("/remove-peer", s.handleRemovePeer())
+	router := http.NewServeMux()
+	router.HandleFunc("/", s.handleIndex())
+	router.HandleFunc("/set-replication-policy", s.handleAddReplicatedRepo())
+	router.HandleFunc("/remove-peer", s.handleRemovePeer())
 
-	err := http.ListenAndServe(listenaddr, s.router)
-	if err != nil {
+	s.server = &http.Server{Addr: node.Config.Node.HTTPListenAddr, Handler: router}
+
+	return s
+}
+
+func (s *Server) Start() {
+	err := s.server.ListenAndServe()
+	if err != nil && err != http.ErrServerClosed {
 		panic(err)
 	}
 }
 
-func (s *server) handleRemovePeer() http.HandlerFunc {
+func (s *Server) Close() error {
+	return s.server.Close()
+}
+
+func (s *Server) handleRemovePeer() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := r.ParseForm()
 		if err != nil {
@@ -64,7 +74,7 @@ func (s *server) handleRemovePeer() http.HandlerFunc {
 	}
 }
 
-func (s *server) handleAddReplicatedRepo() http.HandlerFunc {
+func (s *Server) handleAddReplicatedRepo() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := r.ParseForm()
 		if err != nil {
@@ -85,7 +95,7 @@ func (s *server) handleAddReplicatedRepo() http.HandlerFunc {
 	}
 }
 
-func (s *server) handleIndex() http.HandlerFunc {
+func (s *Server) handleIndex() http.HandlerFunc {
 	type Peer struct {
 		PrettyName string
 		Name       string
@@ -114,17 +124,15 @@ func (s *server) handleIndex() http.HandlerFunc {
 		state.Username = nodeState.User
 		state.EthAddress = nodeState.EthAccount
 		state.Addrs = nodeState.Addrs
-		for _, peerID := range s.node.Host.Peerstore().Peers() {
-			if peerID == s.node.Host.ID() {
-				continue
-			}
 
-			p := Peer{PrettyName: peerID.String(), Name: peer.IDB58Encode(peerID)}
-			for _, addr := range s.node.Host.Peerstore().Addrs(peerID) {
+		for _, pinfo := range s.node.Peers() {
+			p := Peer{PrettyName: pinfo.ID.String(), Name: peer.IDB58Encode(pinfo.ID)}
+			for _, addr := range pinfo.Addrs {
 				p.Addrs = append(p.Addrs, addr.String())
 			}
 			state.Peers = append(state.Peers, p)
 		}
+
 		for _, repo := range nodeState.Repos {
 			state.Repos = append(state.Repos, repo)
 		}

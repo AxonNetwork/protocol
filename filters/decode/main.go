@@ -13,7 +13,7 @@ import (
 
 	"../../config"
 	"../../repo"
-	"../../swarm"
+	"../../swarm/noderpc"
 )
 
 var GIT_DIR string = os.Getenv("GIT_DIR")
@@ -34,7 +34,7 @@ func main() {
 		panic(err)
 	}
 
-	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
 		panic(err)
 	}
@@ -108,7 +108,7 @@ func main() {
 	}
 }
 
-func downloadChunk(client *swarm.RPCClient, repoID string, objectIDStr string) error {
+func downloadChunk(client *noderpc.Client, repoID string, objectIDStr string) error {
 	objectID, err := hex.DecodeString(objectIDStr)
 	if err != nil {
 		return err

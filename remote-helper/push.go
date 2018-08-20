@@ -3,7 +3,6 @@ package main
 import (
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
@@ -13,7 +12,7 @@ func push(srcRefName string, destRefName string) error {
 		srcRefName = srcRefName[1:]
 	}
 
-	log.Printf("Why is this being called?")
+	// Tell the node to announce the new content so that replicator nodes can find and pull it.
 	err := client.AnnounceRepoContent(repoID)
 	if err != nil {
 		return err
@@ -26,12 +25,11 @@ func push(srcRefName string, destRefName string) error {
 
 	commitHash := srcRef.Hash().String()
 
-	log.Printf("Updating Ref On-chain")
 	err = client.UpdateRef(repoID, destRefName, commitHash)
 	if err != nil {
 		return err
 	}
 
-	err = client.RequestPull(repoID)
+	err = client.RequestReplication(repoID)
 	return err
 }

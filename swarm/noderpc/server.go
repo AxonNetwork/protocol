@@ -1,4 +1,4 @@
-package swarm
+package noderpc
 
 import (
 	"context"
@@ -7,40 +7,54 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+
+	swarm ".."
+	. "../wire"
 )
 
-func (n *Node) initRPC(network, addr string) error {
-	listener, err := net.Listen(network, addr)
-	if err != nil {
-		return err
-	}
-
-	n.rpc = listener
-
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				// this is the awkward way that Go requires us to detect that listener.Close() has been called
-				select {
-				case <-n.chShutdown:
-					return
-				default:
-				}
-
-				log.Errorf("[rpc] %v", err)
-			} else {
-				log.Printf("[rpc] opening new stream")
-				go n.rpcStreamHandler(conn)
-			}
-
-		}
-	}()
-
-	return nil
+type Server struct {
+	listener   net.Listener
+	node       *swarm.Node
+	chShutdown chan struct{}
 }
 
-func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
+func NewServer(node *swarm.Node) *Server {
+	return &Server{node: node, chShutdown: make(chan struct{})}
+}
+
+func (s *Server) Start() {
+	listener, err := net.Listen(s.node.Config.Node.RPCListenNetwork, s.node.Config.Node.RPCListenHost)
+	if err != nil {
+		panic(err)
+	}
+
+	s.listener = listener
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			// this is the awkward way that Go requires us to detect that listener.Close() has been called
+			select {
+			case <-s.chShutdown:
+				return
+			default:
+			}
+
+			log.Errorf("[rpc] %v", err)
+		} else {
+			log.Printf("[rpc] opening new stream")
+			go s.rpcStreamHandler(conn)
+		}
+
+	}
+}
+
+func (s *Server) Close() error {
+	close(s.chShutdown)
+	return s.listener.Close()
+}
+
+func (s *Server) rpcStreamHandler(stream io.ReadWriteCloser) {
 	defer stream.Close()
 
 	logErr := func(err error) {
@@ -49,7 +63,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 	}
 
-	msgType, err := readUint64(stream)
+	msgType, err := ReadUint64(stream)
 	if err != nil {
 		panic(err)
 	}
@@ -58,49 +72,49 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 	case MessageType_SetUsername:
 		req := SetUsernameRequest{}
-		err := readStructPacket(stream, &req)
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
 		ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
 
-		tx, err := n.Eth.EnsureUsername(ctx, req.Username)
+		tx, err := s.node.EnsureUsername(ctx, req.Username)
 		if err != nil {
-			writeStructPacket(stream, &SetUsernameResponse{Error: err.Error()})
+			WriteStructPacket(stream, &SetUsernameResponse{Error: err.Error()})
 			return
 		}
 
 		if tx != nil {
 			resp := <-tx.Await(ctx)
 			if resp.Err != nil {
-				writeStructPacket(stream, &SetUsernameResponse{Error: resp.Err.Error()})
+				WriteStructPacket(stream, &SetUsernameResponse{Error: resp.Err.Error()})
 				return
 			} else if resp.Receipt.Status != 1 {
-				writeStructPacket(stream, &SetUsernameResponse{Error: "transaction failed"})
+				WriteStructPacket(stream, &SetUsernameResponse{Error: "transaction failed"})
 				return
 			}
 		}
 
-		err = writeStructPacket(stream, &SetUsernameResponse{Error: ""})
+		err = WriteStructPacket(stream, &SetUsernameResponse{Error: ""})
 
 	case MessageType_GetObject:
 		req := GetObjectRequest{}
-		err := readStructPacket(stream, &req)
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
-		objectReader, err := n.GetObjectReader(context.Background(), req.RepoID, req.ObjectID)
+		objectReader, err := s.node.GetObjectReader(context.Background(), req.RepoID, req.ObjectID)
 		// @@TODO: maybe don't assume err == 404
 		if err != nil {
 			switch err {
 			case ErrUnauthorized:
-				err = writeStructPacket(stream, &GetObjectResponse{Unauthorized: true})
+				err = WriteStructPacket(stream, &GetObjectResponse{Unauthorized: true})
 			case ErrObjectNotFound:
-				err = writeStructPacket(stream, &GetObjectResponse{HasObject: false})
+				err = WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
 			default:
-				err = writeStructPacket(stream, &GetObjectResponse{HasObject: false})
+				err = WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
 			}
 			if err != nil {
 				panic(err)
@@ -108,7 +122,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			return
 		}
 
-		err = writeStructPacket(stream, &GetObjectResponse{
+		err = WriteStructPacket(stream, &GetObjectResponse{
 			Unauthorized: false,
 			HasObject:    true,
 			ObjectType:   objectReader.Type(),
@@ -126,17 +140,17 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic("written < objectLen")
 		}
 
-	case MessageType_CreateRepo:
-		log.Printf("[rpc] CreateRepo")
-		req := CreateRepoRequest{}
-		err := readStructPacket(stream, &req)
+	case MessageType_RegisterRepoID:
+		log.Printf("[rpc] RegisterRepoID")
+		req := RegisterRepoIDRequest{}
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
 		log.Printf("[rpc] create repo: %s", req.RepoID)
 
-		tx, err := n.Eth.EnsureRepo(context.Background(), req.RepoID)
+		tx, err := s.node.EnsureRepoIDRegistered(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
@@ -150,7 +164,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
 		}
 
-		err = writeStructPacket(stream, &CreateRepoResponse{OK: true})
+		err = WriteStructPacket(stream, &RegisterRepoIDResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}
@@ -158,19 +172,19 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 	case MessageType_AddRepo:
 		log.Printf("[rpc] AddRepo")
 		req := AddRepoRequest{}
-		err := readStructPacket(stream, &req)
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
 		log.Printf("[rpc] add repo: %s", req.RepoPath)
 
-		_, err = n.RepoManager.TrackRepo(req.RepoPath)
+		_, err = s.node.RepoManager.TrackRepo(req.RepoPath)
 		if err != nil {
 			panic(err)
 		}
 
-		err = writeStructPacket(stream, &AddRepoResponse{OK: true})
+		err = WriteStructPacket(stream, &AddRepoResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}
@@ -178,7 +192,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 	case MessageType_SetReplicationPolicy:
 		log.Printf("[rpc] SetReplicationPolicy")
 		req := SetReplicationPolicyRequest{}
-		err := readStructPacket(stream, &req)
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			logErr(err)
 			return
@@ -186,32 +200,32 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 
 		log.Printf("[rpc] SetReplicationPolicy(%s, %v)", req.RepoID, req.ShouldReplicate)
 
-		err = n.SetReplicationPolicy(req.RepoID, req.ShouldReplicate)
+		err = s.node.SetReplicationPolicy(req.RepoID, req.ShouldReplicate)
 		if err != nil {
-			err = writeStructPacket(stream, &SetReplicationPolicyResponse{Error: err.Error()})
+			err = WriteStructPacket(stream, &SetReplicationPolicyResponse{Error: err.Error()})
 			logErr(err)
 			return
 		}
 
-		err = writeStructPacket(stream, &SetReplicationPolicyResponse{Error: ""})
+		err = WriteStructPacket(stream, &SetReplicationPolicyResponse{Error: ""})
 		logErr(err)
 
 	case MessageType_AnnounceRepoContent:
 		log.Printf("[rpc] AnnounceRepoContent")
 		req := AnnounceRepoContentRequest{}
-		err := readStructPacket(stream, &req)
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
 		log.Printf("[rpc] announce repo content: %s", req.RepoID)
 
-		err = n.AnnounceRepoContent(context.Background(), req.RepoID)
+		err = s.node.AnnounceRepoContent(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
 
-		err = writeStructPacket(stream, &AnnounceRepoContentResponse{OK: true})
+		err = WriteStructPacket(stream, &AnnounceRepoContentResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}
@@ -219,19 +233,19 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 	case MessageType_GetRefs:
 		log.Printf("[rpc] GetRefs")
 		req := GetRefsRequest{}
-		err := readStructPacket(stream, &req)
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
 		log.Printf("[rpc] get refs from %s", req.RepoID)
 
-		numRefs, err := n.Eth.GetNumRefs(context.Background(), req.RepoID)
+		numRefs, err := s.node.GetNumRefs(context.Background(), req.RepoID)
 		if err != nil {
 			panic(err)
 		}
 
-		refMap, err := n.Eth.GetRefs(context.Background(), req.RepoID, req.Page)
+		refMap, err := s.node.GetRefs(context.Background(), req.RepoID, req.Page)
 		if err != nil {
 			log.Errorf("[rpc] GetRefs: %v", err)
 			refMap = map[string]Ref{}
@@ -244,7 +258,7 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 			i++
 		}
 
-		err = writeStructPacket(stream, &GetRefsResponse{Refs: refs, NumRefs: numRefs})
+		err = WriteStructPacket(stream, &GetRefsResponse{Refs: refs, NumRefs: numRefs})
 		if err != nil {
 			panic(err)
 		}
@@ -252,13 +266,13 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 	case MessageType_UpdateRef:
 		log.Printf("[rpc] UpdateRef")
 		req := UpdateRefRequest{}
-		err := readStructPacket(stream, &req)
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
 		log.Printf("[rpc] add ref to %s: %s %s", req.RepoID, req.RefName, req.Commit)
-		tx, err := n.Eth.UpdateRef(context.Background(), req.RepoID, req.RefName, req.Commit)
+		tx, err := s.node.UpdateRef(context.Background(), req.RepoID, req.RefName, req.Commit)
 		if err != nil {
 			panic(err)
 		}
@@ -269,26 +283,26 @@ func (n *Node) rpcStreamHandler(stream io.ReadWriteCloser) {
 		}
 		log.Printf("[rpc] update ref tx resolved: %s", tx.Hash().Hex())
 
-		err = writeStructPacket(stream, &UpdateRefResponse{OK: true})
+		err = WriteStructPacket(stream, &UpdateRefResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}
 
-	case MessageType_Pull:
-		req := PullRequest{}
-		err := readStructPacket(stream, &req)
+	case MessageType_Replicate:
+		req := ReplicationRequest{}
+		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
 		}
 
-		err = n.requestReplication(context.Background(), req.RepoID)
+		err = s.node.RequestReplication(context.Background(), req.RepoID)
 		errStr := ""
 		if err != nil {
-			log.Errorf("[rpc] MessageType_Pull error: %v", err)
+			log.Errorf("[rpc] MessageType_Replicate error: %v", err)
 			errStr = err.Error()
 		}
 
-		err = writeStructPacket(stream, &PullResponse{Error: errStr})
+		err = WriteStructPacket(stream, &ReplicationResponse{Error: errStr})
 		if err != nil {
 			panic(err)
 		}

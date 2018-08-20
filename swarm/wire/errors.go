@@ -1,8 +1,7 @@
-package swarm
+package wire
 
 import (
 	"github.com/pkg/errors"
-	// "fmt"
 )
 
 var (

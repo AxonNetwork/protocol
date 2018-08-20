@@ -1,47 +1,40 @@
-package swarm
+package nodeeth
 
 import (
 	"context"
 	"crypto/ecdsa"
 	"math/big"
-	"time"
 
 	// log "github.com/sirupsen/logrus"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 
-	"../config"
-	"./ethcontracts"
-	"./hdwallet"
+	"../../config"
+	. "../wire"
 )
 
-const (
-	POLL_INTERVAL = 1000
-)
-
-type nodeETH struct {
+type Client struct {
 	ethClient        *ethclient.Client
-	protocolContract *ethcontracts.Protocol
-	prv              *ecdsa.PrivateKey
-	auth             *bind.TransactOpts
+	protocolContract *Protocol
+	privateKey       *ecdsa.PrivateKey
 	account          accounts.Account
-	wallet           *hdwallet.Wallet
+	auth             *bind.TransactOpts
+	wallet           *Wallet
 }
 
-func initETH(ctx context.Context, cfg *config.Config) (*nodeETH, error) {
+func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 	ethClient, err := ethclient.DialContext(ctx, cfg.Node.EthereumHost)
 	if err != nil {
 		return nil, err
 	}
 
-	protocolContract, err := ethcontracts.NewProtocol(common.HexToAddress(cfg.Node.ProtocolContract), ethClient)
+	protocolContract, err := NewProtocol(common.HexToAddress(cfg.Node.ProtocolContract), ethClient)
 	if err != nil {
 		return nil, err
 	}
@@ -58,24 +51,24 @@ func initETH(ctx context.Context, cfg *config.Config) (*nodeETH, error) {
 
 	auth := bind.NewKeyedTransactor(prv)
 
-	return &nodeETH{
+	return &Client{
 		ethClient:        ethClient,
 		protocolContract: protocolContract,
-		prv:              prv,
+		privateKey:       prv,
 		auth:             auth,
 		account:          account,
 		wallet:           wallet,
 	}, nil
 }
 
-func initAccount(mnemonic string, password string) (accounts.Account, *hdwallet.Wallet, error) {
+func initAccount(mnemonic string, password string) (accounts.Account, *Wallet, error) {
 	seed := bip39.NewSeed(mnemonic, password)
-	wallet, err := hdwallet.NewFromSeed(seed)
+	wallet, err := NewFromSeed(seed)
 	if err != nil {
 		return accounts.Account{}, nil, err
 	}
 
-	path := hdwallet.MustParseDerivationPath("m/44'/60'/0'/0/0")
+	path := MustParseDerivationPath("m/44'/60'/0'/0/0")
 	account, err := wallet.Derive(path, false)
 	if err != nil {
 		return accounts.Account{}, nil, err
@@ -84,11 +77,11 @@ func initAccount(mnemonic string, password string) (accounts.Account, *hdwallet.
 	return account, wallet, nil
 }
 
-func (n *nodeETH) callOpts(ctx context.Context) *bind.CallOpts {
+func (n *Client) callOpts(ctx context.Context) *bind.CallOpts {
 	return &bind.CallOpts{Context: ctx}
 }
 
-func (n *nodeETH) transactOpts(ctx context.Context) *bind.TransactOpts {
+func (n *Client) transactOpts(ctx context.Context) *bind.TransactOpts {
 	return &bind.TransactOpts{
 		From:    n.auth.From,
 		Signer:  n.auth.Signer,
@@ -96,50 +89,30 @@ func (n *nodeETH) transactOpts(ctx context.Context) *bind.TransactOpts {
 	}
 }
 
-func (n *nodeETH) Close() error {
+func (n *Client) Close() error {
 	n.ethClient.Close()
 	return nil
 }
 
-type Transaction struct {
-	*types.Transaction
-	c interface {
-		TransactionReceipt(context.Context, common.Hash) (*types.Receipt, error)
+func (n *Client) Address() common.Address {
+	return n.account.Address
+}
+
+func (n *Client) SignHash(data []byte) ([]byte, error) {
+	hash := crypto.Keccak256(data)
+	return crypto.Sign(hash, n.privateKey)
+}
+
+func (n *Client) AddrFromSignedHash(data, sig []byte) (common.Address, error) {
+	hash := crypto.Keccak256(data)
+	pubkey, err := crypto.SigToPub(hash, sig)
+	if err != nil {
+		return common.Address{}, err
 	}
+	return crypto.PubkeyToAddress(*pubkey), nil
 }
 
-type TxResult struct {
-	Receipt *types.Receipt
-	Err     error
-}
-
-func (tx Transaction) Await(ctx context.Context) chan TxResult {
-	ch := make(chan TxResult)
-	hash := tx.Hash()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				ch <- TxResult{nil, errors.New("deadline expired before transaction was mined")}
-				return
-
-			default:
-				receipt, err := tx.c.TransactionReceipt(ctx, hash)
-				if err != nil && err != ethereum.NotFound {
-					ch <- TxResult{nil, err}
-					return
-				} else if receipt != nil {
-					ch <- TxResult{receipt, nil}
-					return
-				}
-				time.Sleep(time.Millisecond * POLL_INTERVAL)
-			}
-		}
-	}()
-	return ch
-}
-
-func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
+func (n *Client) GetUsername(ctx context.Context) (string, error) {
 	addr, err := n.wallet.Address(n.account)
 	if err != nil {
 		return "", err
@@ -147,7 +120,7 @@ func (n *nodeETH) GetUsername(ctx context.Context) (string, error) {
 	return n.protocolContract.UsernamesByAddress(n.callOpts(ctx), addr)
 }
 
-func (n *nodeETH) EnsureUsername(ctx context.Context, username string) (*Transaction, error) {
+func (n *Client) EnsureUsername(ctx context.Context, username string) (*Transaction, error) {
 	un, err := n.GetUsername(ctx)
 	if err != nil {
 		return nil, err
@@ -160,7 +133,7 @@ func (n *nodeETH) EnsureUsername(ctx context.Context, username string) (*Transac
 	return n.SetUsername(ctx, username)
 }
 
-func (n *nodeETH) SetUsername(ctx context.Context, username string) (*Transaction, error) {
+func (n *Client) SetUsername(ctx context.Context, username string) (*Transaction, error) {
 	tx, err := n.protocolContract.SetUsername(n.transactOpts(ctx), username)
 	if err != nil {
 		return nil, err
@@ -168,17 +141,17 @@ func (n *nodeETH) SetUsername(ctx context.Context, username string) (*Transactio
 	return &Transaction{tx, n.ethClient}, nil
 }
 
-func (n *nodeETH) EnsureRepo(ctx context.Context, repoID string) (*Transaction, error) {
+func (n *Client) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*Transaction, error) {
 	exists, err := n.protocolContract.RepoExists(n.callOpts(ctx), repoID)
 	if err != nil {
 		return nil, err
 	} else if exists {
 		return nil, nil
 	}
-	return n.CreateRepo(ctx, repoID)
+	return n.RegisterRepoID(ctx, repoID)
 }
 
-func (n *nodeETH) CreateRepo(ctx context.Context, repoID string) (*Transaction, error) {
+func (n *Client) RegisterRepoID(ctx context.Context, repoID string) (*Transaction, error) {
 	tx, err := n.protocolContract.CreateRepo(n.transactOpts(ctx), repoID)
 	if err != nil {
 		return nil, err
@@ -186,7 +159,7 @@ func (n *nodeETH) CreateRepo(ctx context.Context, repoID string) (*Transaction, 
 	return &Transaction{tx, n.ethClient}, nil
 }
 
-func (n *nodeETH) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*Transaction, error) {
+func (n *Client) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*Transaction, error) {
 	tx, err := n.protocolContract.UpdateRef(n.transactOpts(ctx), repoID, refName, commitHash)
 	if err != nil {
 		return nil, err
@@ -194,7 +167,7 @@ func (n *nodeETH) UpdateRef(ctx context.Context, repoID string, refName string, 
 	return &Transaction{tx, n.ethClient}, nil
 }
 
-func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) {
+func (n *Client) GetNumRefs(ctx context.Context, repoID string) (int64, error) {
 	num, err := n.protocolContract.NumRefs(n.callOpts(ctx), repoID)
 	if err != nil {
 		return 0, err
@@ -202,11 +175,11 @@ func (n *nodeETH) GetNumRefs(ctx context.Context, repoID string) (int64, error) 
 	return num.Int64(), nil
 }
 
-func (n *nodeETH) GetRef(ctx context.Context, repoID string, refName string) (string, error) {
+func (n *Client) GetRef(ctx context.Context, repoID string, refName string) (string, error) {
 	return n.protocolContract.GetRef(n.callOpts(ctx), repoID, refName)
 }
 
-func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
+func (n *Client) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
 	refs := map[string]Ref{}
 	refsBytes, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(page))
 	if err != nil {
@@ -233,7 +206,7 @@ func (n *nodeETH) GetRefs(ctx context.Context, repoID string, page int64) (map[s
 	return refs, nil
 }
 
-func (n *nodeETH) AddressHasPullAccess(ctx context.Context, user common.Address, repoID string) (bool, error) {
+func (n *Client) AddressHasPullAccess(ctx context.Context, user common.Address, repoID string) (bool, error) {
 	hasAccess, err := n.protocolContract.AddressHasPullAccess(n.callOpts(ctx), user, repoID)
 	return hasAccess, err
 }

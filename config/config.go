@@ -29,6 +29,7 @@ type NodeConfig struct {
 	BootstrapPeers          []string
 	RPCListenNetwork        string
 	RPCListenHost           string
+	HTTPListenAddr          string
 	EthereumHost            string
 	ProtocolContract        string
 	EthereumBIP39Seed       string
@@ -54,6 +55,7 @@ var DefaultConfig = Config{
 		P2PListenPort:           1337,
 		RPCListenNetwork:        "tcp",
 		RPCListenHost:           "127.0.0.1:1338",
+		HTTPListenAddr:          ":8081",
 		EthereumHost:            "http://127.0.0.1:8545",
 		ProtocolContract:        "",
 		EthereumBIP39Seed:       "",

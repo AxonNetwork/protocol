@@ -5,7 +5,7 @@ import (
 
 	"../config"
 	"../repo"
-	"../swarm"
+	"../swarm/noderpc"
 
 	"gopkg.in/src-d/go-git.v4"
 )
@@ -34,7 +34,7 @@ func initRepo(repoID string) error {
 		return err
 	}
 
-	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func initRepo(repoID string) error {
 		return err
 	}
 
-	err = client.CreateRepo(repoID)
+	err = client.RegisterRepoID(repoID)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func setUsername(username string) error {
 		return err
 	}
 
-	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func setReplicationPolicy(repoID string, shouldReplicate bool) error {
 		return err
 	}
 
-	client, err := swarm.NewRPCClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
 		return err
 	}
