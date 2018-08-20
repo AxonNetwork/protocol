@@ -11,9 +11,9 @@ import (
 )
 
 type Config struct {
-	User      UserConfig      `toml:"user"`
-	Node      NodeConfig      `toml:"node"`
-	RPCClient RPCClientConfig `toml:"rpcclient"`
+	User      *UserConfig      `toml:"user"`
+	Node      *NodeConfig      `toml:"node"`
+	RPCClient *RPCClientConfig `toml:"rpcclient"`
 
 	configPath string
 	mu         sync.Mutex
@@ -46,10 +46,10 @@ type RPCClientConfig struct {
 }
 
 var DefaultConfig = Config{
-	User: UserConfig{
+	User: &UserConfig{
 		Username: "nobody",
 	},
-	Node: NodeConfig{
+	Node: &NodeConfig{
 		P2PListenAddr:           "0.0.0.0",
 		P2PListenPort:           1337,
 		RPCListenNetwork:        "tcp",
@@ -64,7 +64,7 @@ var DefaultConfig = Config{
 		ReplicateRepos:          []string{},
 		BootstrapPeers:          []string{},
 	},
-	RPCClient: RPCClientConfig{
+	RPCClient: &RPCClientConfig{
 		Network: "tcp",
 		Host:    "127.0.0.1:1338",
 	},
