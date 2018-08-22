@@ -54,8 +54,8 @@ func newWallet(seed []byte) (*Wallet, error) {
 	}, nil
 }
 
-// NewFromMnemonic returns a new wallet from a BIP-39 mnemonic.
-func NewFromMnemonic(mnemonic string) (*Wallet, error) {
+// NewWalletFromMnemonic returns a new wallet from a BIP-39 mnemonic.
+func NewWalletFromMnemonic(mnemonic string) (*Wallet, error) {
 	if mnemonic == "" {
 		return nil, errors.New("mnemonic is required")
 	}
@@ -78,8 +78,8 @@ func NewFromMnemonic(mnemonic string) (*Wallet, error) {
 	return wallet, nil
 }
 
-// NewFromSeed returns a new wallet from a BIP-39 seed.
-func NewFromSeed(seed []byte) (*Wallet, error) {
+// NewWalletFromSeed returns a new wallet from a BIP-39 seed.
+func NewWalletFromSeed(seed []byte) (*Wallet, error) {
 	if len(seed) == 0 {
 		return nil, errors.New("seed is required")
 	}

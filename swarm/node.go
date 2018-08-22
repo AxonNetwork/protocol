@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os/exec"
 	"sync"
@@ -201,19 +200,16 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	for range c {
 		log.Infof("[content announce] starting content announce")
 
-		// alreadyAnnounced := map[string]bool{}
+		// Announce what we're willing to replicate.
+		for _, repoID := range n.Config.Node.ReplicateRepos {
+			log.Infof("[content announce] announcing repo '%v'", repoID)
 
-		// // Announce what we're willing to replicate.
-		// for _, repoID := range n.Config.Node.ReplicateRepos {
-		//     log.Infof("[content announce] announcing repo '%v'", repoID)
-
-		//     err := n.announceRepoReplicator(ctx, repoID)
-		//     if err != nil {
-		//         log.Errorf("[content announce] %v", err)
-		//         continue
-		//     }
-		//     alreadyAnnounced[repoID] = true
-		// }
+			err := n.announceRepoReplicator(ctx, repoID)
+			if err != nil {
+				log.Errorf("[content announce] %v", err)
+				continue
+			}
+		}
 
 		// Announce the repos we have locally
 		err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
@@ -222,12 +218,10 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 				return err
 			}
 
-			// if _, already := alreadyAnnounced[repoID]; !already {
 			err = n.announceRepo(ctx, repoID)
 			if err != nil {
 				return err
 			}
-			// }
 
 			return r.ForEachObjectID(func(objectID []byte) error {
 				return n.announceObject(ctx, repoID, objectID)
@@ -273,7 +267,21 @@ func (n *Node) announceRepo(ctx context.Context, repoID string) error {
 	return nil
 }
 
-// Announce to the swarm that this Node can provide a given object from a given repository.
+// Announce to the swarm that this Node is willing to replicate objects from the given repository.
+func (n *Node) announceRepoReplicator(ctx context.Context, repoID string) error {
+	c, err := cidForString("replicate:" + repoID)
+	if err != nil {
+		return err
+	}
+
+	err = n.dht.Provide(ctx, c, true)
+	if err != nil && err != kbucket.ErrLookupFailure {
+		return err
+	}
+	return nil
+}
+
+// Announce to the swarm that this Node can provide a specific object from a given repository.
 func (n *Node) announceObject(ctx context.Context, repoID string, objectID []byte) error {
 	c, err := cidForObject(repoID, objectID)
 	if err != nil {
@@ -334,36 +342,28 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 		return nil, err
 	}
 
-	var objectReader *util.ObjectReader
+	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
+	defer cancel()
 
-	err = retry(func() (bool, error) {
-		// @@TODO: reach out to multiple peers, take first responder
-		// Try to find 1 provider of the object within the given timeout
-		ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
-		defer cancel()
-
-		provider, found := <-n.dht.FindProvidersAsync(ctxTimeout, c, 1)
-		if !found {
-			return false, errors.New("can't find peer with object " + repoID + ":" + hex.EncodeToString(objectID))
-		}
-
+	for provider := range n.dht.FindProvidersAsync(ctxTimeout, c, 10) {
 		if provider.ID == n.host.ID() {
 			// We have the object locally (perhaps in another clone of the same repository)
-			objectReader, err = r.OpenObject(objectID)
+			objectReader, err := r.OpenObject(objectID)
 			if err != nil {
-				return false, err
+				continue
 			}
+			return objectReader, nil
 
 		} else {
 			// We found a peer with the object
-			objectReader, err = n.requestObject(ctx, provider.ID, repoID, objectID)
+			objectReader, err := n.requestObject(ctx, provider.ID, repoID, objectID)
 			if err != nil {
-				return true, err
+				continue
 			}
+			return objectReader, nil
 		}
-		return false, nil
-	})
-	return objectReader, err
+	}
+	return nil, errors.Errorf("could not find provider for %v : %v", repoID, objectID)
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
@@ -381,7 +381,7 @@ func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 // to them to pull from our local copy.
 func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
 	log.Printf("requesting replication of '%v'", repoID)
-	c, err := cidForString(repoID)
+	c, err := cidForString("replicate:" + repoID)
 	if err != nil {
 		return err
 	}

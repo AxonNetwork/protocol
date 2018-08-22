@@ -63,7 +63,7 @@ func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 
 func initAccount(mnemonic string, password string) (accounts.Account, *Wallet, error) {
 	seed := bip39.NewSeed(mnemonic, password)
-	wallet, err := NewFromSeed(seed)
+	wallet, err := NewWalletFromSeed(seed)
 	if err != nil {
 		return accounts.Account{}, nil, err
 	}
