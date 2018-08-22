@@ -499,6 +499,12 @@ func (n *Node) pullRepo(repoID string) error {
 	cmd.Stdout = buf
 	err = cmd.Run()
 	if err != nil {
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Errorf("[pullRepo] error running git pull, then error trying to get CombinedOutput")
+			return err
+		}
+		log.Errorf("[pullRepo] error running git pull: %v", string(output))
 		return err
 	}
 
