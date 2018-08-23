@@ -32,7 +32,7 @@ func initRepo(repoID string) error {
 		return err
 	}
 
-	err = client.AddRepo(cwd)
+	err = client.TrackLocalRepo(cwd)
 	if err != nil {
 		return err
 	}

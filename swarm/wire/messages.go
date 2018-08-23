@@ -11,7 +11,7 @@ const (
 	MessageType_SetUsername
 	MessageType_GetObject
 	MessageType_RegisterRepoID
-	MessageType_AddRepo
+	MessageType_TrackLocalRepo
 	MessageType_GetRepos
 	MessageType_SetReplicationPolicy
 	MessageType_AnnounceRepoContent
@@ -62,12 +62,12 @@ type RegisterRepoIDResponse struct {
 	OK bool
 }
 
-type AddRepoRequest struct {
+type TrackLocalRepoRequest struct {
 	RepoPathLen int `struc:"sizeof=RepoPath"`
 	RepoPath    string
 }
 
-type AddRepoResponse struct {
+type TrackLocalRepoResponse struct {
 	OK bool
 }
 

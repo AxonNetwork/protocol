@@ -172,9 +172,9 @@ func (s *Server) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
-	case MessageType_AddRepo:
-		log.Printf("[rpc] AddRepo")
-		req := AddRepoRequest{}
+	case MessageType_TrackLocalRepo:
+		log.Printf("[rpc] TrackLocalRepo")
+		req := TrackLocalRepoRequest{}
 		err := ReadStructPacket(stream, &req)
 		if err != nil {
 			panic(err)
@@ -187,7 +187,7 @@ func (s *Server) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
-		err = WriteStructPacket(stream, &AddRepoResponse{OK: true})
+		err = WriteStructPacket(stream, &TrackLocalRepoResponse{OK: true})
 		if err != nil {
 			panic(err)
 		}

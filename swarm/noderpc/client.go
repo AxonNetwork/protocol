@@ -134,26 +134,26 @@ func (c *Client) RegisterRepoID(repoID string) error {
 	return nil
 }
 
-func (c *Client) AddRepo(repoPath string) error {
+func (c *Client) TrackLocalRepo(repoPath string) error {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	err = c.writeMessageType(conn, MessageType_AddRepo)
+	err = c.writeMessageType(conn, MessageType_TrackLocalRepo)
 	if err != nil {
 		return err
 	}
 
 	// Write the request packet
-	err = WriteStructPacket(conn, &AddRepoRequest{RepoPath: repoPath})
+	err = WriteStructPacket(conn, &TrackLocalRepoRequest{RepoPath: repoPath})
 	if err != nil {
 		return err
 	}
 
 	// Read the response packet
-	resp := AddRepoResponse{}
+	resp := TrackLocalRepoResponse{}
 	err = ReadStructPacket(conn, &resp)
 	if err != nil {
 		return err
