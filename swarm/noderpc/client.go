@@ -163,14 +163,14 @@ func (c *Client) TrackLocalRepo(repoPath string) error {
 	return nil
 }
 
-func (c *Client) GetRepos() ([]Repo, error) {
+func (c *Client) GetLocalRepos() ([]Repo, error) {
 	conn, err := net.Dial(c.network, c.addr)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
-	err = c.writeMessageType(conn, MessageType_GetRepos)
+	err = c.writeMessageType(conn, MessageType_GetLocalRepos)
 	if err != nil {
 		return nil, err
 	}

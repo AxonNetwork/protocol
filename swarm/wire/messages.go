@@ -12,7 +12,7 @@ const (
 	MessageType_GetObject
 	MessageType_RegisterRepoID
 	MessageType_TrackLocalRepo
-	MessageType_GetRepos
+	MessageType_GetLocalRepos
 	MessageType_SetReplicationPolicy
 	MessageType_AnnounceRepoContent
 	MessageType_GetRefs

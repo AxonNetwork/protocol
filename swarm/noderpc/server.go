@@ -192,8 +192,8 @@ func (s *Server) rpcStreamHandler(stream io.ReadWriteCloser) {
 			panic(err)
 		}
 
-	case MessageType_GetRepos:
-		log.Printf("[rpc] GetRepos")
+	case MessageType_GetLocalRepos:
+		log.Printf("[rpc] GetLocalRepos")
 
 		repos := make([]Repo, 0)
 

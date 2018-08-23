@@ -19,5 +19,5 @@ func getRepos() ([]wire.Repo, error) {
 		return nil, err
 	}
 
-	return client.GetRepos()
+	return client.GetLocalRepos()
 }
