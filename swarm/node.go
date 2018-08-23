@@ -495,20 +495,17 @@ func (n *Node) pullRepo(repoID string) error {
 	// Start a git-pull process
 	cmd := exec.Command("git", "pull", "origin", "master")
 	cmd.Dir = r.Path
-	buf := &bytes.Buffer{}
-	cmd.Stdout = buf
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	err = cmd.Run()
 	if err != nil {
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Errorf("[pullRepo] error running git pull, then error trying to get CombinedOutput")
-			return err
-		}
-		log.Errorf("[pullRepo] error running git pull: %v", string(output))
+		log.Errorf("[pullRepo] error running git pull: %v", string(stderr.Bytes()))
 		return err
 	}
 
-	scan := bufio.NewScanner(buf)
+	scan := bufio.NewScanner(stdout)
 	for scan.Scan() {
 		log.Printf("[replication] git: %v", scan.Text())
 	}
