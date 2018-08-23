@@ -123,6 +123,7 @@ func (s *Server) rpcStreamHandler(stream io.ReadWriteCloser) {
 			}
 			return
 		}
+		defer objectReader.Close()
 
 		err = WriteStructPacket(stream, &GetObjectResponse{
 			Unauthorized: false,

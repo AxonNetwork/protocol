@@ -96,6 +96,9 @@ func main() {
 				chErr <- err
 				return
 			}
+
+			// Try to close after each iteration to keep our resource footprint small
+			f.Close()
 		}
 
 		close(chDone)

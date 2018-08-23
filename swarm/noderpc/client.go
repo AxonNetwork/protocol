@@ -15,7 +15,6 @@ import (
 
 // @@TODO: make all Client methods take a context
 type Client struct {
-	conn          net.Conn
 	network, addr string
 }
 
@@ -36,6 +35,7 @@ func (c *Client) SetUsername(username string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_SetUsername)
 	if err != nil {
@@ -64,6 +64,7 @@ func (c *Client) GetObject(repoID string, objectID []byte) (*util.ObjectReader, 
 	if err != nil {
 		return nil, err
 	}
+	// It is the caller's responsibility to `.Close()` the conn.
 
 	err = c.writeMessageType(conn, MessageType_GetObject)
 	if err != nil {
@@ -106,6 +107,7 @@ func (c *Client) RegisterRepoID(repoID string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_RegisterRepoID)
 	if err != nil {
@@ -137,6 +139,7 @@ func (c *Client) AddRepo(repoPath string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_AddRepo)
 	if err != nil {
@@ -165,6 +168,7 @@ func (c *Client) GetRepos() ([]Repo, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_GetRepos)
 	if err != nil {
@@ -186,6 +190,7 @@ func (c *Client) SetReplicationPolicy(repoID string, shouldReplicate bool) error
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_SetReplicationPolicy)
 	if err != nil {
@@ -212,6 +217,7 @@ func (c *Client) AnnounceRepoContent(repoID string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_AnnounceRepoContent)
 	if err != nil {
@@ -273,6 +279,7 @@ func (c *Client) GetRefs(repoID string, page int64) (map[string]Ref, int64, erro
 	if err != nil {
 		return nil, 0, err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_GetRefs)
 	if err != nil {
@@ -309,6 +316,7 @@ func (c *Client) UpdateRef(repoID string, refName string, commitHash string) err
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_UpdateRef)
 	if err != nil {
@@ -343,6 +351,7 @@ func (c *Client) RequestReplication(repoID string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
 	err = c.writeMessageType(conn, MessageType_Replicate)
 	if err != nil {

@@ -57,10 +57,12 @@ func Init(path string) (*Repo, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = os.Create(filepath.Join(path, ".git", "config"))
+
+	f, err := os.Create(filepath.Join(path, ".git", "config"))
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
 	return &Repo{
 		Repository: gitRepo,
@@ -151,10 +153,13 @@ func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
 	if err != nil {
 		return err
 	}
+	oIter.Close()
 
 	// Then crawl the Conscience objects
 	dataDir, err := os.Open(filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR))
 	if err == nil {
+		defer dataDir.Close()
+
 		entries, err := dataDir.Readdir(-1)
 		if err != nil {
 			return err
@@ -206,10 +211,13 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 	if len(objectID) == CONSCIENCE_HASH_LENGTH {
 		// Open a Conscience object
 		p := filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
+
 		f, err := os.Open(p)
 		if err != nil {
 			return nil, errors.Wrapf(ErrObjectNotFound, "RepoManager")
 		}
+		defer f.Close()
+
 		stat, err := f.Stat()
 		if err != nil {
 			return nil, err
@@ -236,6 +244,7 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 			log.Errorf("WEIRD ERROR (@@todo: diagnose): %v", err)
 			return nil, errors.WithStack(ErrObjectNotFound)
 		}
+		// It is the caller's responsibility to `.Close()` this reader, so we don't do it here.
 
 		or := &util.ObjectReader{
 			Reader:     r,
@@ -281,6 +290,8 @@ func (r *Repo) SetupConfig(repoID string) error {
 		if err != nil {
 			return err
 		}
+		defer f.Close()
+
 		w := io.Writer(f)
 
 		enc := gitconfigformat.NewEncoder(w)
