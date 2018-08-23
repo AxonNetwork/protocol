@@ -28,6 +28,7 @@ RUN go get github.com/logrusorgru/aurora
 COPY . $GOPATH/src/github.com/Conscience/protocol
 WORKDIR $GOPATH/src/github.com/Conscience/protocol
 RUN make && make install
+RUN ln -s /mnt/.consciencerc $HOME/.consciencerc
 
 # Expose ports
 EXPOSE 1337
@@ -36,4 +37,4 @@ EXPOSE 8081
 # Copy config files
 # COPY swarm/docker/consciencerc /mnt/.consciencerc
 
-CMD ["/usr/local/bin/conscience-node", "--config", "/mnt/.consciencerc"]
+CMD ["/usr/local/bin/conscience-node"]
