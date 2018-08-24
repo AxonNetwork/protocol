@@ -95,7 +95,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 				return err
 			}
 			err = addRepoToNode()
-			if err != nil{
+			if err != nil {
 				return err
 			}
 			fmt.Fprintln(w)

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
-	"path/filepath"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -104,10 +104,11 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 
 func addRepoToNode() error {
 	cwd, err := os.Getwd()
-	if err != nil{
+	if err != nil {
 		return err
 	}
 	repoName := strings.Split(repoID, "/")[1]
 	repoFolder := filepath.Join(cwd, repoName)
-	return client.AddRepo(repoFolder)
+	// @@TODO: give context a timeout and make it configurable
+	return client.TrackLocalRepo(context.Background(), repoFolder)
 }
