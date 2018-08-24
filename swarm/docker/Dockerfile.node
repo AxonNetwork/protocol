@@ -23,6 +23,9 @@ RUN go get github.com/buger/goterm
 RUN go get github.com/aclements/go-rabin/rabin
 RUN go get github.com/dustin/go-humanize
 RUN go get github.com/logrusorgru/aurora
+RUN go get github.com/golang/protobuf/proto
+RUN go get golang.org/x/net/context
+RUN go get google.golang.org/grpc
 
 # Build all of the binaries with the Makefile
 COPY . $GOPATH/src/github.com/Conscience/protocol
