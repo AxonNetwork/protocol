@@ -32,7 +32,10 @@ func (s *Server) Start() {
 		panic(fmt.Sprintf("failed to listen: %v\n", err))
 	}
 
-	var opts []grpc.ServerOption
+	var opts []grpc.ServerOption = []grpc.ServerOption{
+		grpc.StreamInterceptor(StreamServerInterceptor()),
+		grpc.UnaryInterceptor(UnaryServerInterceptor()),
+	}
 	s.server = grpc.NewServer(opts...)
 	pb.RegisterNodeRPCServer(s.server, s)
 	s.server.Serve(lis)
