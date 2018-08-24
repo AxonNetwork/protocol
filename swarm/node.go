@@ -446,7 +446,7 @@ func (n *Node) handleReplicationRequest(stream netp2p.Stream) {
 		log.Errorf("[replication] error: %v", err)
 		return
 	}
-	log.Printf("[replication] repoID: %v", req.RepoID)
+	log.Debugf("[replication] repoID: %v", req.RepoID)
 
 	// Ensure that the repo has been whitelisted for replication.
 	whitelisted := false
@@ -499,13 +499,13 @@ func (n *Node) pullRepo(repoID string) error {
 	cmd.Stderr = stderr
 	err = cmd.Run()
 	if err != nil {
-		log.Errorf("[pullRepo] error running git pull: %v", string(stderr.Bytes()))
+		log.Errorf("[pull repo] error running git pull: %v", string(stderr.Bytes()))
 		return err
 	}
 
 	scan := bufio.NewScanner(stdout)
 	for scan.Scan() {
-		log.Printf("[replication] git: %v", scan.Text())
+		log.Debugf("[pull repo] git: %v", scan.Text())
 	}
 	if err = scan.Err(); err != nil {
 		return err
