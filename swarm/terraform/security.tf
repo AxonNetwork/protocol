@@ -39,6 +39,16 @@ resource "aws_security_group" "ec2_sg" {
     ]
   }
 
+  # RPC port
+  ingress {
+    protocol  = "tcp"
+    from_port = 1338
+    to_port   = 1338
+    cidr_blocks = [
+      "0.0.0.0/0",
+    ]
+  }
+
   # HTTP port
   ingress {
     protocol  = "tcp"
