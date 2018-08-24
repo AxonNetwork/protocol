@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 
 	"../../config"
 	"../../repo"
-	"../../swarm/noderpc"
+	"../../swarm/noderpc2"
 )
 
 var GIT_DIR string = os.Getenv("GIT_DIR")
@@ -119,7 +120,8 @@ func downloadChunk(client *noderpc.Client, repoID string, objectIDStr string) er
 
 	fmt.Fprintf(os.Stderr, "Downloading chunk %v...\n", objectIDStr)
 
-	objectStream, err := client.GetObject(repoID, objectID)
+	// @@TODO: give context a timeout and make it configurable
+	objectStream, err := client.GetObject(context.Background(), repoID, objectID)
 	if err != nil {
 		return err
 	}
@@ -145,7 +147,7 @@ func downloadChunk(client *noderpc.Client, repoID string, objectIDStr string) er
 	if err != nil {
 		os.Remove(chunkPath)
 		return err
-	} else if copied != objectStream.Len() {
+	} else if uint64(copied) != objectStream.Len() {
 		os.Remove(chunkPath)
 		return fmt.Errorf("copied (%v) != objectLen (%v)", copied, objectStream.Len())
 	} else if !bytes.Equal(objectID, hasher.Sum(nil)) {

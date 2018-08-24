@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"../config"
-	"../swarm/noderpc"
+	"../swarm/noderpc2"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -74,14 +74,14 @@ func main() {
 		{
 			Name:      "repos",
 			UsageText: "conscience repos",
-			Usage:     "returns a list of conscience repositories",
+			Usage:     "returns a list of conscience repositories hosted locally on this machine",
 			ArgsUsage: "[args usage]",
 			Action: func(c *cli.Context) error {
-				repos, err := getRepos()
+				repos, err := getLocalRepos()
 				if err != nil {
 					return err
 				}
-				for _, repo := range repos {
+				for repo := range repos {
 					fmt.Fprintf(c.App.Writer, "%s %s\n", repo.RepoID, repo.Path)
 				}
 
@@ -105,7 +105,7 @@ func main() {
 					return err
 				}
 				for _, ref := range refs {
-					fmt.Fprintf(c.App.Writer, "%s %s\n", ref.Commit, ref.Name)
+					fmt.Fprintf(c.App.Writer, "%s %s\n", ref.CommitHash, ref.RefName)
 				}
 
 				return nil
@@ -124,6 +124,5 @@ func getClient() (*noderpc.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 }

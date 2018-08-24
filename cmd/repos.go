@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+
+	"../swarm/noderpc2"
 	"../swarm/wire"
 )
 
@@ -10,14 +13,16 @@ func getAllRefs(repoID string) (map[string]wire.Ref, error) {
 		return nil, err
 	}
 
-	return client.GetAllRefs(repoID)
+	// @@TODO: give context a timeout and make it configurable
+	return client.GetAllRefs(context.Background(), repoID)
 }
 
-func getRepos() ([]wire.Repo, error) {
+func getLocalRepos() (chan noderpc.MaybeLocalRepo, error) {
 	client, err := getClient()
 	if err != nil {
 		return nil, err
 	}
 
-	return client.GetLocalRepos()
+	// @@TODO: give context a timeout and make it configurable
+	return client.GetLocalRepos(context.Background())
 }

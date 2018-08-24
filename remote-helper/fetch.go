@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -61,7 +62,8 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 		// already downloaded
 		return nil
 	}
-	objectStream, err := client.GetObject(repoID, hash[:])
+	// @@TODO: give context a timeout and make it configurable
+	objectStream, err := client.GetObject(context.Background(), repoID, hash[:])
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -78,7 +80,7 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 	copied, err := io.Copy(w, objectStream)
 	if err != nil {
 		return errors.WithStack(err)
-	} else if copied != objectStream.Len() {
+	} else if uint64(copied) != objectStream.Len() {
 		return errors.WithStack(fmt.Errorf("object stream bad length"))
 	}
 

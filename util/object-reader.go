@@ -15,11 +15,11 @@ import (
 type ObjectReader struct {
 	io.Reader
 	io.Closer
-	ObjectLen  int64
+	ObjectLen  uint64
 	ObjectType gitplumbing.ObjectType
 }
 
-func (or ObjectReader) Len() int64 {
+func (or ObjectReader) Len() uint64 {
 	return or.ObjectLen
 }
 

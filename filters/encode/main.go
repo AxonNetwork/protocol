@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/aclements/go-rabin/rabin"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+
+	"github.com/aclements/go-rabin/rabin"
 )
 
 func main() {

@@ -523,7 +523,7 @@ func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*node
 	return n.eth.EnsureRepoIDRegistered(ctx, repoID)
 }
 
-func (n *Node) GetNumRefs(ctx context.Context, repoID string) (int64, error) {
+func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
 	return n.eth.GetNumRefs(ctx, repoID)
 }
 

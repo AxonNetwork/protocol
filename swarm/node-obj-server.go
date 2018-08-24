@@ -102,7 +102,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	sent, err := io.Copy(stream, objectStream)
 	if err != nil {
 		log.Errorf("[stream] %v", err)
-	} else if sent < objectStream.Len() {
+	} else if uint64(sent) < objectStream.Len() {
 		log.Errorf("[stream] terminated while sending")
 	}
 

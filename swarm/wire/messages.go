@@ -20,16 +20,6 @@ const (
 	MessageType_Replicate
 )
 
-type SetUsernameRequest struct {
-	UsernameLen int `struc:"sizeof=Username"`
-	Username    string
-}
-
-type SetUsernameResponse struct {
-	ErrorLen int `struc:"sizeof=Error"`
-	Error    string
-}
-
 type GetObjectRequest struct {
 	RepoIDLen   int `struc:"sizeof=RepoID"`
 	RepoID      string
@@ -50,94 +40,10 @@ type GetObjectResponse struct {
 	Unauthorized bool
 	HasObject    bool
 	ObjectType   gitplumbing.ObjectType
-	ObjectLen    int64
-}
-
-type RegisterRepoIDRequest struct {
-	RepoIDLen int `struc:"sizeof=RepoID"`
-	RepoID    string
-}
-
-type RegisterRepoIDResponse struct {
-	OK bool
-}
-
-type TrackLocalRepoRequest struct {
-	RepoPathLen int `struc:"sizeof=RepoPath"`
-	RepoPath    string
-}
-
-type TrackLocalRepoResponse struct {
-	OK bool
-}
-
-type GetReposResponse struct {
-	ReposLen int `struc:"sizeof=Repos"`
-	Repos    []Repo
-}
-
-type Repo struct {
-	RepoIDLen int64 `struc:"sizeof=RepoID"`
-	RepoID    string
-	PathLen   int64 `struc:"sizeof=Path"`
-	Path      string
-}
-
-type SetReplicationPolicyRequest struct {
-	RepoIDLen       int `struc:"sizeof=RepoID"`
-	RepoID          string
-	ShouldReplicate bool
-}
-
-type SetReplicationPolicyResponse struct {
-	ErrorLen int `struc:"sizeof=Error"`
-	Error    string
-}
-
-type AnnounceRepoContentRequest struct {
-	RepoIDLen int `struc:"sizeof=RepoID"`
-	RepoID    string
-}
-
-type AnnounceRepoContentResponse struct {
-	OK bool
-}
-
-type GetRefsRequest struct {
-	RepoIDLen int64 `struc:"sizeof=RepoID"`
-	RepoID    string
-	Page      int64
-}
-
-type GetRefsResponse struct {
-	RefsLen int `struc:"sizeof=Refs"`
-	Refs    []Ref
-	NumRefs int64
-}
-
-type UpdateRefRequest struct {
-	RepoIDLen  int64 `struc:"sizeof=RepoID"`
-	RepoID     string
-	RefNameLen int64 `struc:"sizeof=RefName"`
-	RefName    string
-	CommitLen  int64 `struc:"sizeof=Commit"`
-	Commit     string
-}
-
-type UpdateRefResponse struct {
-	OK bool
-}
-
-type Ref struct {
-	NameLen   int64 `struc:"sizeof=Name"`
-	Name      string
-	CommitLen int64 `struc:"sizeof=Commit"`
-	Commit    string
+	ObjectLen    uint64
 }
 
 type ReplicationRequest struct {
-	// UsernameLen   int `struc:"sizeof=Username"`
-	// Username      string
 	RepoIDLen int `struc:"sizeof=RepoID"`
 	RepoID    string
 }
@@ -145,4 +51,19 @@ type ReplicationRequest struct {
 type ReplicationResponse struct {
 	ErrorLen int64 `struc:"sizeof=Error"`
 	Error    string
+}
+
+type LocalRepo struct {
+	RepoID string
+	Path   string
+}
+
+type Ref struct {
+	RefName    string
+	CommitHash string
+}
+
+type ObjectMetadata struct {
+	Type gitplumbing.ObjectType
+	Len  uint64
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 
 	"../repo"
@@ -32,12 +33,14 @@ func initRepo(repoID string) error {
 		return err
 	}
 
-	err = client.TrackLocalRepo(cwd)
+	// @@TODO: give context a timeout and make it configurable
+	err = client.TrackLocalRepo(context.Background(), cwd)
 	if err != nil {
 		return err
 	}
 
-	err = client.RegisterRepoID(repoID)
+	// @@TODO: give context a timeout and make it configurable
+	err = client.RegisterRepoID(context.Background(), repoID)
 	if err != nil {
 		return err
 	}
@@ -50,7 +53,8 @@ func setUsername(username string) error {
 		return err
 	}
 
-	err = client.SetUsername(username)
+	// @@TODO: give context a timeout and make it configurable
+	err = client.SetUsername(context.Background(), username)
 	if err != nil {
 		return err
 	}
@@ -63,7 +67,8 @@ func setReplicationPolicy(repoID string, shouldReplicate bool) error {
 		return err
 	}
 
-	err = client.SetReplicationPolicy(repoID, shouldReplicate)
+	// @@TODO: give context a timeout and make it configurable
+	err = client.SetReplicationPolicy(context.Background(), repoID, shouldReplicate)
 	if err != nil {
 		return err
 	}

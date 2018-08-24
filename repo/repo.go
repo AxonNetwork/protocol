@@ -227,7 +227,7 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 			Reader:     f,
 			Closer:     f,
 			ObjectType: 0,
-			ObjectLen:  stat.Size(),
+			ObjectLen:  uint64(stat.Size()),
 		}
 		return or, nil
 
@@ -250,7 +250,7 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 			Reader:     r,
 			Closer:     r,
 			ObjectType: obj.Type(),
-			ObjectLen:  obj.Size(),
+			ObjectLen:  uint64(obj.Size()),
 		}
 		return or, nil
 

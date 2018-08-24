@@ -17,7 +17,10 @@ deps:
 	go get github.com/buger/goterm
 	go get github.com/urfave/cli
 
-build: deps build/conscience-node build/git-remote-conscience build/conscience_encode build/conscience_decode build/conscience_diff build/conscience
+generate:
+	go generate ./...
+
+build: deps generate build/conscience-node build/git-remote-conscience build/conscience_encode build/conscience_decode build/conscience_diff build/conscience
 
 build/conscience-node: swarm/**/*.go
 	mkdir -p build

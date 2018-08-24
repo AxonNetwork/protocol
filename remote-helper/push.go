@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -13,7 +14,8 @@ func push(srcRefName string, destRefName string) error {
 	}
 
 	// Tell the node to announce the new content so that replicator nodes can find and pull it.
-	err := client.AnnounceRepoContent(repoID)
+	// @@TODO: give context a timeout and make it configurable
+	err := client.AnnounceRepoContent(context.Background(), repoID)
 	if err != nil {
 		return err
 	}
@@ -25,11 +27,13 @@ func push(srcRefName string, destRefName string) error {
 
 	commitHash := srcRef.Hash().String()
 
-	err = client.UpdateRef(repoID, destRefName, commitHash)
+	// @@TODO: give context a timeout and make it configurable
+	err = client.UpdateRef(context.Background(), repoID, destRefName, commitHash)
 	if err != nil {
 		return err
 	}
 
-	err = client.RequestReplication(repoID)
+	// @@TODO: give context a timeout and make it configurable
+	err = client.RequestReplication(context.Background(), repoID)
 	return err
 }

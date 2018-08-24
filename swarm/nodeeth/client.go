@@ -5,8 +5,6 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
-	// log "github.com/sirupsen/logrus"
-
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,7 +14,7 @@ import (
 	"github.com/tyler-smith/go-bip39"
 
 	"../../config"
-	. "../wire"
+	"../wire"
 )
 
 type Client struct {
@@ -167,20 +165,20 @@ func (n *Client) UpdateRef(ctx context.Context, repoID string, refName string, c
 	return &Transaction{tx, n.ethClient}, nil
 }
 
-func (n *Client) GetNumRefs(ctx context.Context, repoID string) (int64, error) {
+func (n *Client) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
 	num, err := n.protocolContract.NumRefs(n.callOpts(ctx), repoID)
 	if err != nil {
 		return 0, err
 	}
-	return num.Int64(), nil
+	return num.Uint64(), nil
 }
 
 func (n *Client) GetRef(ctx context.Context, repoID string, refName string) (string, error) {
 	return n.protocolContract.GetRef(n.callOpts(ctx), repoID, refName)
 }
 
-func (n *Client) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
-	refs := map[string]Ref{}
+func (n *Client) GetRefs(ctx context.Context, repoID string, page int64) (map[string]wire.Ref, error) {
+	refs := map[string]wire.Ref{}
 	refsBytes, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(page))
 	if err != nil {
 		return nil, err
@@ -188,19 +186,19 @@ func (n *Client) GetRefs(ctx context.Context, repoID string, page int64) (map[st
 
 	var read int64
 	for read < int64(len(refsBytes)) {
-		ref := Ref{}
+		ref := wire.Ref{}
 
-		ref.NameLen = big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
+		nameLen := big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
 		read += 32
-		ref.Name = string(refsBytes[read : read+ref.NameLen])
-		read += ref.NameLen
+		ref.RefName = string(refsBytes[read : read+nameLen])
+		read += nameLen
 
-		ref.CommitLen = big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
+		commitLen := big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
 		read += 32
-		ref.Commit = string(refsBytes[read : read+ref.CommitLen])
-		read += ref.CommitLen
+		ref.CommitHash = string(refsBytes[read : read+commitLen])
+		read += commitLen
 
-		refs[ref.Name] = ref
+		refs[ref.RefName] = ref
 	}
 
 	return refs, nil

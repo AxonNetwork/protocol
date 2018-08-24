@@ -24,7 +24,7 @@ import (
 	"../../repo"
 	"../logger"
 	"../nodehttp"
-	"../noderpc"
+	"../noderpc2"
 )
 
 func main() {
@@ -302,8 +302,8 @@ var replCommands = map[string]struct {
 				return err
 			}
 
-			for _, ref := range refs {
-				log.Printf("ref: %v %v", ref.Name, ref.Commit)
+			for refName, commitHash := range refs {
+				log.Printf("ref: %v %v", refName, commitHash)
 			}
 			return nil
 		},

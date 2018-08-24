@@ -1,0 +1,97 @@
+
+syntax = "proto3";
+
+package noderpc;
+
+option go_package = "pb";
+
+service NodeRPC {
+  rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse) {}
+  rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
+  rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
+  rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
+  rpc GetLocalRepos(GetLocalReposRequest) returns (stream GetLocalReposResponsePacket) {}
+  rpc SetReplicationPolicy(SetReplicationPolicyRequest) returns (SetReplicationPolicyResponse) {}
+  rpc AnnounceRepoContent(AnnounceRepoContentRequest) returns (AnnounceRepoContentResponse) {}
+  rpc GetRefs(GetRefsRequest) returns (GetRefsResponse) {}
+  rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
+  rpc RequestReplication(ReplicationRequest) returns (ReplicationResponse) {}
+}
+
+message SetUsernameRequest {
+    string username = 1;
+}
+
+message SetUsernameResponse {}
+
+message GetObjectRequest {
+    string repoID = 1;
+    bytes objectID = 2;
+}
+
+message GetObjectResponsePacket {
+    bytes data = 1;
+}
+
+message RegisterRepoIDRequest {
+    string repoID = 1;
+}
+
+message RegisterRepoIDResponse {}
+
+message TrackLocalRepoRequest {
+    string repoPath = 1;
+}
+
+message TrackLocalRepoResponse {}
+
+message GetLocalReposRequest {}
+
+message GetLocalReposResponsePacket {
+    string repoID = 1;
+    string path = 2;
+}
+
+message SetReplicationPolicyRequest {
+    string repoID = 1;
+    bool shouldReplicate = 2;
+}
+
+message SetReplicationPolicyResponse {}
+
+message AnnounceRepoContentRequest {
+    string repoID = 1;
+}
+
+message AnnounceRepoContentResponse {}
+
+message Ref {
+    string refName = 1;
+    string commitHash = 2;
+}
+
+message GetRefsRequest {
+    string repoID = 1;
+    uint64 page = 2;
+}
+
+message GetRefsResponse {
+    uint64 numRefs = 1;
+    repeated Ref ref = 2;
+}
+
+message UpdateRefRequest {
+    string repoID = 1;
+    string refName = 2;
+    string commitHash = 3;
+}
+
+message UpdateRefResponse {}
+
+message ReplicationRequest {
+    string repoID = 1;
+}
+
+message ReplicationResponse {}
+
+
