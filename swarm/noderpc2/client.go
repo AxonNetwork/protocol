@@ -6,7 +6,6 @@ import (
 	"io"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
 	"../../util"
