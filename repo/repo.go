@@ -55,12 +55,12 @@ func EnsureExists(path string) (*Repo, error) {
 func Init(path string) (*Repo, error) {
 	gitRepo, err := git.PlainInit(path, false)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "could not initialize repo at path '%v'", path)
 	}
 
 	f, err := os.Create(filepath.Join(path, ".git", "config"))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "could not create .git/config at path '%v'", path)
 	}
 	defer f.Close()
 
@@ -73,7 +73,7 @@ func Init(path string) (*Repo, error) {
 func Open(path string) (*Repo, error) {
 	gitRepo, err := git.PlainOpen(path)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "could not open repo at path '%v'", path)
 	}
 
 	return &Repo{
@@ -85,16 +85,16 @@ func Open(path string) (*Repo, error) {
 func (r *Repo) RepoID() (string, error) {
 	cfg, err := r.Config()
 	if err != nil {
-		return "", err
+		return "", errors.Wrapf(err, "could not open repo config at path '%v'", r.Path)
 	}
 
 	section := cfg.Raw.Section("conscience")
 	if section == nil {
-		return "", fmt.Errorf("repo config doesn't have conscience section")
+		return "", errors.Errorf("repo config doesn't have conscience section (path: %v)", r.Path)
 	}
 	repoID := section.Option("repoid")
 	if repoID == "" {
-		return "", fmt.Errorf("repo config doesn't have conscience.repoid key")
+		return "", errors.Errorf("repo config doesn't have conscience.repoid key (path: %v)", r.Path)
 	}
 
 	return repoID, nil
@@ -103,7 +103,7 @@ func (r *Repo) RepoID() (string, error) {
 func (r *Repo) HeadHash() (string, error) {
 	head, err := r.Head()
 	if err != nil {
-		return "", err
+		return "", errors.Wrapf(err, "could not fetch HEAD for repo (path: %v)", r.Path)
 	}
 	return head.Hash().String(), nil
 }
@@ -118,24 +118,29 @@ type RepoInfo struct {
 func (r *Repo) GetInfo() (RepoInfo, error) {
 	repoID, err := r.RepoID()
 	if err != nil {
-		log.Println("repoid")
 		return RepoInfo{}, err
 	}
+
 	path := r.Path
 	head, err := r.HeadHash()
 	if err != nil {
 		head = ""
 	}
+
 	objects := make([]string, 0)
-	r.ForEachObjectID(func(objectID []byte) error {
+	err = r.ForEachObjectID(func(objectID []byte) error {
 		objects = append(objects, hex.EncodeToString(objectID))
 		return nil
 	})
+	if err != nil {
+		return RepoInfo{}, err
+	}
+
 	return RepoInfo{
-		repoID,
-		path,
-		head,
-		objects,
+		RepoID:  repoID,
+		Path:    path,
+		Head:    head,
+		Objects: objects,
 	}, nil
 }
 
@@ -143,7 +148,7 @@ func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
 	// First crawl the Git objects
 	oIter, err := r.Repository.Objects()
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "could not fetch repo object iterator (path: %v)", r.Path)
 	}
 
 	err = oIter.ForEach(func(obj gitobject.Object) error {
@@ -151,7 +156,7 @@ func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
 		return fn(id[:])
 	})
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "could not iterate over repo objects (path: %v)", r.Path)
 	}
 	oIter.Close()
 
@@ -162,7 +167,7 @@ func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
 
 		entries, err := dataDir.Readdir(-1)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "could not crawl conscience objects (path: %v)", r.Path)
 		}
 
 		for _, entry := range entries {
@@ -214,13 +219,13 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 
 		f, err := os.Open(p)
 		if err != nil {
-			return nil, errors.Wrapf(ErrObjectNotFound, "RepoManager")
+			return nil, errors.WithStack(ErrObjectNotFound)
 		}
 		defer f.Close()
 
 		stat, err := f.Stat()
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "could not stat file '%v'", p)
 		}
 
 		or := &util.ObjectReader{
@@ -236,7 +241,7 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 		copy(hash[:], objectID)
 		obj, err := r.Storer.EncodedObject(gitplumbing.AnyObject, hash)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "error fetching encoded git object from repo (path: %v, object: %v)", r.Path, hash.String())
 		}
 
 		r, err := obj.Reader()
@@ -255,14 +260,14 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 		return or, nil
 
 	} else {
-		return nil, fmt.Errorf("objectID is wrong size (%v)", len(objectID))
+		return nil, errors.Errorf("objectID is wrong size (%v)", len(objectID))
 	}
 }
 
 func (r *Repo) SetupConfig(repoID string) error {
 	cfg, err := r.Config()
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "could not get repo config (repoID: %v, path: %v)", repoID, r.Path)
 	}
 
 	raw := cfg.Raw
@@ -288,7 +293,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 		p := filepath.Join(r.Path, ".git", "config")
 		f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "could not open .git/config (path: %v)", r.Path)
 		}
 		defer f.Close()
 
@@ -297,7 +302,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 		enc := gitconfigformat.NewEncoder(w)
 		err = enc.Encode(raw)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "could not encode git config (repoID: %v, path: %v)", repoID, r.Path)
 		}
 	}
 
@@ -305,7 +310,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 	{
 		remotes, err := r.Remotes()
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "could not read git remote config (repoID: %v, path: %v)", repoID, r.Path)
 		}
 
 		found := false
@@ -339,7 +344,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 			})
 
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "could not create remote (repoID: %v, path: %v)", repoID, r.Path)
 			}
 		}
 	}

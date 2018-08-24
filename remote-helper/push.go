@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
@@ -22,7 +23,7 @@ func push(srcRefName string, destRefName string) error {
 
 	srcRef, err := Repo.Reference(gitplumbing.ReferenceName(srcRefName), false)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	commitHash := srcRef.Hash().String()

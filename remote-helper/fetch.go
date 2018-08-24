@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,14 +19,14 @@ func recurseCommit(hash gitplumbing.Hash) error {
 
 	commit, err := Repo.CommitObject(hash)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	if commit.NumParents() > 0 {
 		for _, phash := range commit.ParentHashes {
 			err := recurseCommit(phash)
 			if err != nil {
-				return errors.WithStack(err)
+				return err
 			}
 		}
 	}
@@ -81,7 +80,7 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 	if err != nil {
 		return errors.WithStack(err)
 	} else if uint64(copied) != objectStream.Len() {
-		return errors.WithStack(fmt.Errorf("object stream bad length"))
+		return errors.Errorf("object stream bad length (copied: %v, object length: %v)", copied, objectStream.Len())
 	}
 
 	err = w.Close()
@@ -91,7 +90,7 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 
 	// Check the checksum
 	if hash != obj.Hash() {
-		return errors.WithStack(fmt.Errorf("bad checksum for piece %v", hash.String()))
+		return errors.Errorf("bad checksum for piece %v", hash.String())
 	}
 
 	// Write the object to disk
@@ -105,9 +104,16 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 func addRepoToNode() error {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not get working dir")
 	}
-	repoName := strings.Split(repoID, "/")[1]
+
+	// @@TODO: revisit structure of repoIDs (haven't decided upon anything yet)
+	parts := strings.Split(repoID, "/")
+	repoName := parts[0]
+	if len(parts) > 1 {
+		repoName = parts[1]
+	}
+
 	repoFolder := filepath.Join(cwd, repoName)
 	// @@TODO: give context a timeout and make it configurable
 	return client.TrackLocalRepo(context.Background(), repoFolder)

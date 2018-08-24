@@ -17,6 +17,9 @@ deps:
 	go get github.com/buger/goterm
 	go get github.com/urfave/cli
 
+gofmt:
+	gofmt -s -w .
+
 generate:
 	go generate ./...
 

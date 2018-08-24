@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
 	"../../util"
@@ -20,7 +22,7 @@ type Client struct {
 func NewClient(network string, host string) (*Client, error) {
 	conn, err := grpc.Dial(network+"://"+host, grpc.WithInsecure())
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return &Client{
 		client: pb.NewNodeRPCClient(conn),
@@ -30,13 +32,13 @@ func NewClient(network string, host string) (*Client, error) {
 
 func (c *Client) SetUsername(ctx context.Context, username string) error {
 	_, err := c.client.SetUsername(ctx, &pb.SetUsernameRequest{Username: username})
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
 	getObjectClient, err := c.client.GetObject(ctx, &pb.GetObjectRequest{RepoID: repoID, ObjectID: objectID})
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	// First, read the special header packet containing a wire.ObjectMetadata{} struct
@@ -44,18 +46,19 @@ func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) 
 	{
 		packet, err := getObjectClient.Recv()
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		headerbuf := bytes.NewBuffer(packet.Data)
 		err = wire.ReadStructPacket(headerbuf, &meta)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 
+	// Second, receive protobuf packets and pipe their blob payloads into an io.Reader so that
+	// consumers can interact with them as a regular byte stream.
 	r, w := io.Pipe()
-
 	go func() {
 		var err error
 		defer func() {
@@ -72,11 +75,13 @@ func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) 
 			if err == io.EOF {
 				return
 			} else if err != nil {
+				err = errors.WithStack(err)
 				return
 			}
 
 			_, err = w.Write(packet.Data)
 			if err != nil {
+				err = errors.WithStack(err)
 				return
 			}
 		}
@@ -92,12 +97,12 @@ func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) 
 
 func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {
 	_, err := c.client.RegisterRepoID(ctx, &pb.RegisterRepoIDRequest{RepoID: repoID})
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string) error {
 	_, err := c.client.TrackLocalRepo(ctx, &pb.TrackLocalRepoRequest{RepoPath: repoPath})
-	return err
+	return errors.WithStack(err)
 }
 
 type MaybeLocalRepo struct {
@@ -108,7 +113,7 @@ type MaybeLocalRepo struct {
 func (c *Client) GetLocalRepos(ctx context.Context) (chan MaybeLocalRepo, error) {
 	cl, err := c.client.GetLocalRepos(ctx, &pb.GetLocalReposRequest{})
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	ch := make(chan MaybeLocalRepo)
@@ -119,7 +124,7 @@ func (c *Client) GetLocalRepos(ctx context.Context) (chan MaybeLocalRepo, error)
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				ch <- MaybeLocalRepo{Error: err}
+				ch <- MaybeLocalRepo{Error: errors.WithStack(err)}
 			} else {
 				ch <- MaybeLocalRepo{LocalRepo: wire.LocalRepo{RepoID: item.RepoID, Path: item.Path}}
 			}
@@ -130,18 +135,18 @@ func (c *Client) GetLocalRepos(ctx context.Context) (chan MaybeLocalRepo, error)
 
 func (c *Client) SetReplicationPolicy(ctx context.Context, repoID string, shouldReplicate bool) error {
 	_, err := c.client.SetReplicationPolicy(ctx, &pb.SetReplicationPolicyRequest{RepoID: repoID, ShouldReplicate: shouldReplicate})
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *Client) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	_, err := c.client.AnnounceRepoContent(ctx, &pb.AnnounceRepoContentRequest{RepoID: repoID})
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *Client) GetRefs(ctx context.Context, repoID string, page uint64) (map[string]wire.Ref, uint64, error) {
 	resp, err := c.client.GetRefs(ctx, &pb.GetRefsRequest{RepoID: repoID, Page: page})
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, errors.WithStack(err)
 	}
 
 	refMap := make(map[string]wire.Ref)
@@ -166,7 +171,7 @@ func (c *Client) GetAllRefs(ctx context.Context, repoID string) (map[string]wire
 		var refs map[string]wire.Ref
 		refs, numRefs, err = c.GetRefs(ctx, repoID, page)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		for _, ref := range refs {
@@ -185,14 +190,15 @@ func (c *Client) GetAllRefs(ctx context.Context, repoID string) (map[string]wire
 
 func (c *Client) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) error {
 	_, err := c.client.UpdateRef(ctx, &pb.UpdateRefRequest{RepoID: repoID, RefName: refName, CommitHash: commitHash})
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *Client) RequestReplication(ctx context.Context, repoID string) error {
 	_, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *Client) Close() error {
-	return c.conn.Close()
+	err := c.conn.Close()
+	return errors.WithStack(err)
 }

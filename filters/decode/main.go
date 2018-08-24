@@ -22,22 +22,22 @@ var GIT_DIR string = os.Getenv("GIT_DIR")
 func main() {
 	r, err := repo.Open(filepath.Dir(GIT_DIR))
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 
 	repoID, err := r.RepoID()
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 
 	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 
 	// First, make sure we have all of the chunks.  Any missing chunks are downloaded from the Node
@@ -107,7 +107,7 @@ func main() {
 
 	select {
 	case err := <-chErr:
-		panic(err)
+		die(err)
 	case <-chDone:
 	}
 }
@@ -156,4 +156,9 @@ func downloadChunk(client *noderpc.Client, repoID string, objectIDStr string) er
 	}
 
 	return nil
+}
+
+func die(err error) {
+	fmt.Printf("error: %+v\n", err)
+	os.Exit(1)
 }

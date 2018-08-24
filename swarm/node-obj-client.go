@@ -2,7 +2,6 @@ package swarm
 
 import (
 	"context"
-	"encoding/hex"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -15,7 +14,7 @@ import (
 
 // Opens an outgoing request to another Node for the given object.
 func (n *Node) requestObject(ctx context.Context, peerID peer.ID, repoID string, objectID []byte) (*util.ObjectReader, error) {
-	log.Printf("[stream] requesting object...")
+	log.Debugf("[p2p object client] requesting object %v/%0x from peer %v", repoID, objectID, peerID.Pretty())
 
 	// Open the stream
 	stream, err := n.host.NewStream(ctx, peerID, OBJECT_PROTO)
@@ -40,10 +39,12 @@ func (n *Node) requestObject(ctx context.Context, peerID peer.ID, repoID string,
 	if err != nil {
 		return nil, err
 	} else if resp.Unauthorized {
-		return nil, errors.Wrapf(ErrUnauthorized, "%v:%v", repoID, hex.EncodeToString(objectID))
+		return nil, errors.Wrapf(ErrUnauthorized, "%v:%0x", repoID, objectID)
 	} else if !resp.HasObject {
-		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%v", repoID, hex.EncodeToString(objectID))
+		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%0x", repoID, objectID)
 	}
+
+	log.Debugf("[p2p object client] got object metadata %+v", resp)
 
 	or := &util.ObjectReader{
 		Reader:     stream,

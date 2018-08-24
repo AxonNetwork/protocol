@@ -15,19 +15,18 @@ import (
 // Handles incoming requests for objects.
 func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	defer stream.Close()
-	log.Printf("handling stream")
 
 	// Read the request packet
 	req := GetObjectRequestSigned{}
 	err := ReadStructPacket(stream, &req)
 	if err != nil {
-		log.Errorf("[stream] %v", err)
+		log.Errorf("[p2p object server] %v", err)
 		return
 	}
 
 	addr, err := n.eth.AddrFromSignedHash(req.ObjectID, req.Signature)
 	if err != nil {
-		log.Errorf("[stream] %v", err)
+		log.Errorf("[p2p object server] %v", err)
 		return
 	}
 
@@ -35,12 +34,12 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 
 	hasAccess, err := n.eth.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
-		log.Errorf("[stream] %v", err)
+		log.Errorf("[p2p object server] %v", err)
 		return
 	}
 
-	log.Printf("[stream] peer requested %v %v", req.RepoID, hex.EncodeToString(req.ObjectID))
-	log.Printf("[stream] address 0x%s has pull access %t", hex.EncodeToString(addr.Bytes()), hasAccess)
+	log.Debugf("[p2p object server] peer requested %v %v", req.RepoID, hex.EncodeToString(req.ObjectID))
+	log.Debugf("[p2p object server] address 0x%s has pull access %t", hex.EncodeToString(addr.Bytes()), hasAccess)
 
 	//
 	// Send our response:
@@ -59,7 +58,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	if r == nil {
 		err := WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
 		if err != nil {
-			log.Errorf("[stream] %v", err)
+			log.Errorf("[p2p object server] %v", err)
 			return
 		}
 		return
@@ -68,7 +67,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	if hasAccess == false {
 		err := WriteStructPacket(stream, &GetObjectResponse{Unauthorized: true})
 		if err != nil {
-			log.Errorf("[stream] %v", err)
+			log.Errorf("[p2p object server] %v", err)
 			return
 		}
 		return
@@ -76,12 +75,12 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 
 	objectStream, err := r.OpenObject(req.ObjectID)
 	if err != nil {
-		log.Printf("[stream] we don't have %v %v (err: %v)", req.RepoID, hex.EncodeToString(req.ObjectID), err)
+		log.Debugf("[p2p object server] we don't have %v %v (err: %v)", req.RepoID, hex.EncodeToString(req.ObjectID), err)
 
 		// tell the peer we don't have the object and then close the connection
 		err := WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
 		if err != nil {
-			log.Errorf("[stream] %v", err)
+			log.Errorf("[p2p object server] %v", err)
 			return
 		}
 		return
@@ -95,16 +94,16 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 		ObjectLen:    objectStream.Len(),
 	})
 	if err != nil {
-		log.Errorf("[stream] %v", err)
+		log.Errorf("[p2p object server] %v", err)
 		return
 	}
 
 	sent, err := io.Copy(stream, objectStream)
 	if err != nil {
-		log.Errorf("[stream] %v", err)
+		log.Errorf("[p2p object server] %v", err)
 	} else if uint64(sent) < objectStream.Len() {
-		log.Errorf("[stream] terminated while sending")
+		log.Errorf("[p2p object server] terminated while sending")
 	}
 
-	log.Printf("[stream] sent %v %v (%v bytes)", req.RepoID, hex.EncodeToString(req.ObjectID), sent)
+	log.Printf("[p2p object server] sent %v %v (%v bytes)", req.RepoID, hex.EncodeToString(req.ObjectID), sent)
 }

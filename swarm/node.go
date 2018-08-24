@@ -57,7 +57,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		libp2p.NATPortMap(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not initialize libp2p host")
 	}
 
 	// Initialize the DHT
@@ -67,7 +67,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	// Initialize the Ethereum client
 	eth, err := nodeeth.NewClient(ctx, cfg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not initialize Ethereum client")
 	}
 
 	n := &Node{
@@ -102,17 +102,17 @@ func (n *Node) Close() error {
 
 	err := n.host.Close()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not .Close libp2p host")
 	}
 
 	err = n.dht.Close()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not .Close libp2p DHT")
 	}
 
 	err = n.eth.Close()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not .Close Ethereum client")
 	}
 
 	return nil
@@ -166,7 +166,6 @@ func (n *Node) GetNodeState() (*NodeState, error) {
 
 	repos, err := n.RepoManager.GetReposInfo()
 	if err != nil {
-		log.Printf(err.Error())
 		return nil, err
 	}
 
@@ -182,13 +181,13 @@ func (n *Node) GetNodeState() (*NodeState, error) {
 func (n *Node) periodicallyRequestContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.ContentRequestInterval))
 	for range c {
-		log.Infof("[content request] starting content request")
+		log.Debugf("[content request] starting content request")
 
 		for _, repoID := range n.Config.Node.ReplicateRepos {
-			log.Infof("[content request] requesting repo '%v'", repoID)
+			log.Debugf("[content request] requesting repo '%v'", repoID)
 			err := n.pullRepo(repoID)
 			if err != nil {
-				log.Errorf("[content request] error pulling repo (%v): %v", repoID, err)
+				log.Errorf("[content request] error pulling repo (%v): %+v", repoID, err)
 			}
 		}
 	}
@@ -198,15 +197,15 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.ContentAnnounceInterval))
 	for range c {
-		log.Infof("[content announce] starting content announce")
+		log.Debugf("[content announce] starting content announce")
 
 		// Announce what we're willing to replicate.
 		for _, repoID := range n.Config.Node.ReplicateRepos {
-			log.Infof("[content announce] announcing repo '%v'", repoID)
+			log.Debugf("[content announce] announcing repo '%v'", repoID)
 
 			err := n.announceRepoReplicator(ctx, repoID)
 			if err != nil {
-				log.Errorf("[content announce] %v", err)
+				log.Errorf("[content announce] %+v", err)
 				continue
 			}
 		}
@@ -228,7 +227,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 			})
 		})
 		if err != nil {
-			log.Errorf("[content announce] %v", err)
+			log.Errorf("[content announce] %+v", err)
 		}
 	}
 }
@@ -240,7 +239,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	repo := n.RepoManager.Repo(repoID)
 	if repo == nil {
-		return errors.New("repo not found")
+		return errors.Errorf("repo '%v' not found", repoID)
 	}
 
 	err := n.announceRepo(ctx, repoID)
@@ -262,7 +261,7 @@ func (n *Node) announceRepo(ctx context.Context, repoID string) error {
 
 	err = n.dht.Provide(ctx, c, true)
 	if err != nil && err != kbucket.ErrLookupFailure {
-		return err
+		return errors.Wrapf(err, "could not dht.Provide repo '%v'", repoID)
 	}
 	return nil
 }
@@ -276,7 +275,7 @@ func (n *Node) announceRepoReplicator(ctx context.Context, repoID string) error 
 
 	err = n.dht.Provide(ctx, c, true)
 	if err != nil && err != kbucket.ErrLookupFailure {
-		return err
+		return errors.Wrapf(err, "could not dht.Provide replicator for repo '%v'", repoID)
 	}
 	return nil
 }
@@ -290,7 +289,7 @@ func (n *Node) announceObject(ctx context.Context, repoID string, objectID []byt
 
 	err = n.dht.Provide(ctx, c, true)
 	if err != nil && err != kbucket.ErrLookupFailure {
-		return err
+		return errors.Wrapf(err, "could not dht.Provide object '%0x' in repo '%v'", objectID, repoID)
 	}
 	return nil
 }
@@ -300,19 +299,18 @@ func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	// The following code extracts the peer ID from the given multiaddress
 	addr, err := ma.NewMultiaddr(multiaddrString)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "could not parse multiaddr '%v'", multiaddrString)
 	}
 
 	pinfo, err := pstore.InfoFromP2pAddr(addr)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "could not parse PeerInfo from multiaddr '%v'", multiaddrString)
 	}
 
 	err = n.host.Connect(ctx, *pinfo)
 	if err != nil {
-		return fmt.Errorf("connect to peer failed: %v", err)
+		return errors.Wrapf(err, "could not connect to peer '%v'", multiaddrString)
 	}
-
 	return nil
 }
 

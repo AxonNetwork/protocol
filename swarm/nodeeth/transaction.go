@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	// @@TODO: make this configurable
 	POLL_INTERVAL = 1000
 )
 
@@ -33,13 +34,13 @@ func (tx Transaction) Await(ctx context.Context) chan TxResult {
 		for {
 			select {
 			case <-ctx.Done():
-				ch <- TxResult{nil, errors.New("deadline expired before transaction was mined")}
+				ch <- TxResult{nil, errors.WithStack(ctx.Err())}
 				return
 
 			default:
 				receipt, err := tx.c.TransactionReceipt(ctx, hash)
 				if err != nil && err != ethereum.NotFound {
-					ch <- TxResult{nil, err}
+					ch <- TxResult{nil, errors.WithStack(err)}
 					return
 				} else if receipt != nil {
 					ch <- TxResult{receipt, nil}

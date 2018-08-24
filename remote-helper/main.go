@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
@@ -30,26 +31,27 @@ func main() {
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 
 	client, err = noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 
 	if GIT_DIR == "" {
-		panic("empty GIT_DIR")
+		fmt.Printf("error: empty GIT_DIR\n")
+		os.Exit(1)
 	}
 
 	Repo, err = repo.Open(filepath.Dir(GIT_DIR))
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 
 	err = speakGit(os.Stdin, os.Stdout)
 	if err != nil {
-		panic(err)
+		die(err)
 	}
 }
 
@@ -104,11 +106,11 @@ func speakGit(r io.Reader, w io.Writer) error {
 			for scanner.Scan() {
 				pushSplit := strings.Split(text, " ")
 				if len(pushSplit) < 2 {
-					return fmt.Errorf("malformed 'push' command. %q", text)
+					return errors.Errorf("malformed 'push' command. %q", text)
 				}
 				srcDstSplit := strings.Split(pushSplit[1], ":")
 				if len(srcDstSplit) < 2 {
-					return fmt.Errorf("malformed 'push' command. %q", text)
+					return errors.Errorf("malformed 'push' command. %q", text)
 				}
 				src, dst := srcDstSplit[0], srcDstSplit[1]
 				err := push(src, dst)
@@ -131,4 +133,9 @@ func speakGit(r io.Reader, w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func die(err error) {
+	fmt.Printf("error: %+v\n", err)
+	os.Exit(1)
 }

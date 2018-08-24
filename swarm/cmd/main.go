@@ -28,6 +28,8 @@ import (
 )
 
 func main() {
+	log.SetLevel(log.DebugLevel)
+
 	app := cli.NewApp()
 
 	app.Flags = []cli.Flag{
