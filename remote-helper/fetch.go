@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
+	"path/filepath"
+	"os"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -95,4 +98,14 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 		return errors.WithStack(err)
 	}
 	return nil
+}
+
+func addRepoToNode() error {
+	cwd, err := os.Getwd()
+	if err != nil{
+		return err
+	}
+	repoName := strings.Split(repoID, "/")[1]
+	repoFolder := filepath.Join(cwd, repoName)
+	return client.AddRepo(repoFolder)
 }

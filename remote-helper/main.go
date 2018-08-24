@@ -94,6 +94,10 @@ func speakGit(r io.Reader, w io.Writer) error {
 			if err != nil {
 				return err
 			}
+			err = addRepoToNode()
+			if err != nil{
+				return err
+			}
 			fmt.Fprintln(w)
 
 		case strings.HasPrefix(text, "push"):
