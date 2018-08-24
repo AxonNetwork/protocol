@@ -110,6 +110,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 	type State struct {
 		Username       string
 		EthAddress     string
+		RPCListenAddr  string
 		Addrs          []string
 		Peers          []Peer
 		Repos          []repo.RepoInfo
@@ -128,6 +129,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 		state.Username = nodeState.User
 		state.EthAddress = nodeState.EthAccount
+		state.RPCListenAddr = s.node.Config.Node.RPCListenNetwork + ":" + s.node.Config.Node.RPCListenHost
 		state.Addrs = nodeState.Addrs
 
 		for _, pinfo := range s.node.Peers() {
@@ -213,6 +215,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
                 <section>
                     <div><label>Username:</label> {{ .Username }}</div>
                     <div><label>ETH account:</label> {{ .EthAddress }}</div>
+                    <div><label>RPC listen addr:</label> {{ .RPCListenAddr }}</div>
                     <div>
                         <label>Listen addrs:</label>
                         <ul>
