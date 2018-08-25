@@ -189,17 +189,19 @@ func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.U
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[rpc] update ref tx sent: %s", tx.Hash().Hex())
+
 	txResult := <-tx.Await(ctx)
 	if txResult.Err != nil {
 		return nil, txResult.Err
+	} else if txResult.Receipt.Status == 0 {
+		return nil, errors.New("transaction failed")
 	}
-	log.Printf("[rpc] update ref tx resolved: %s", tx.Hash().Hex())
+
 	return &pb.UpdateRefResponse{}, nil
 }
 
 func (s *Server) RequestReplication(ctx context.Context, req *pb.ReplicationRequest) (*pb.ReplicationResponse, error) {
-	err := s.node.RequestReplication(context.Background(), req.RepoID)
+	err := s.node.RequestReplication(ctx, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
