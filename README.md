@@ -27,9 +27,13 @@ ReplicateRepos      = []
 BootstrapPeers      = []
 
 [rpcclient]
-Network = "unix"
-Host    = "/tmp/conscience.sock"
+Host    = "unix:///tmp/conscience.sock"
 ```
 
 4. Run the node with `conscience-node`.
 
+## Config notes
+
+`RPCClient.Host` can be things like:
+- `unix:///tmp/conscience.sock`
+- `0.0.0.0:1338`

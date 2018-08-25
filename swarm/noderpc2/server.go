@@ -10,6 +10,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"gopkg.in/src-d/go-git.v4"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 
 	swarm ".."
 	"../../repo"
@@ -206,4 +209,82 @@ func (s *Server) RequestReplication(ctx context.Context, req *pb.ReplicationRequ
 		return nil, err
 	}
 	return &pb.ReplicationResponse{}, nil
+}
+
+func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryRequest) (*pb.GetRepoHistoryResponse, error) {
+	r := s.node.RepoManager.Repo(req.RepoID)
+	if r == nil {
+		return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
+	}
+
+	cIter, err := r.Log(&git.LogOptions{From: gitplumbing.ZeroHash, Order: git.LogOrderDFS})
+	if err != nil {
+		return nil, err
+	}
+
+	commits := []*pb.Commit{}
+	err = cIter.ForEach(func(commit *gitobject.Commit) error {
+		if commit == nil {
+			log.Warnf("[node] nil commit (repoID: %v)", req.RepoID)
+			return nil
+		}
+		commits = append(commits, &pb.Commit{
+			CommitHash: c.Hash.String(),
+			Author:     c.Author.String(),
+			Message:    c.Message,
+			Timestamp:  uint64(c.Author.When.Unix()),
+		})
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
+}
+
+func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
+	r := s.node.RepoManager.Repo(req.RepoID)
+	if r == nil {
+		return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
+	}
+
+	commitHash := gitplumbing.NewHash(req.CommitHash)
+	if commitHash.IsZero() {
+		return nil, errors.Errorf("invalid commit hash '%v'", req.CommitHash)
+	}
+
+	commit, err := r.CommitObject(commitHash)
+	if err != nil {
+		return nil, err
+	}
+
+	tree, err := r.TreeObject(commit.TreeHash)
+	if err != nil {
+		return nil, err
+	}
+
+	pbfiles := []*pb.File{}
+	for _, e := range tree.Entries {
+		size := uint64(0)
+
+		if e.Mode.IsFile() {
+			file, err := tree.TreeEntryFile(&e)
+			if err != nil {
+				return nil, err
+			}
+
+			size = uint64(file.Blob.Size)
+		}
+
+		pbfiles = append(pbfiles, &pb.File{
+			Name: e.Name,
+			Hash: e.Hash[:],
+			Mode: uint32(e.Mode),
+			Size: size,
+		})
+	}
+
+	return &pb.GetRepoFilesResponse{Files: pbfiles}, nil
 }
