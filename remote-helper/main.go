@@ -34,7 +34,7 @@ func main() {
 		die(err)
 	}
 
-	client, err = noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err = noderpc.NewClient(cfg.RPCClient.Host)
 	if err != nil {
 		die(err)
 	}
@@ -136,6 +136,6 @@ func speakGit(r io.Reader, w io.Writer) error {
 }
 
 func die(err error) {
-	fmt.Printf("error: %+v\n", err)
+	log.Errorf("%+v\n", err)
 	os.Exit(1)
 }

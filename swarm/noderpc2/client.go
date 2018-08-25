@@ -16,16 +16,18 @@ import (
 type Client struct {
 	client pb.NodeRPCClient
 	conn   *grpc.ClientConn
+	host   string
 }
 
-func NewClient(network string, host string) (*Client, error) {
-	conn, err := grpc.Dial(network+"://"+host, grpc.WithInsecure())
+func NewClient(host string) (*Client, error) {
+	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	return &Client{
 		client: pb.NewNodeRPCClient(conn),
 		conn:   conn,
+		host:   host,
 	}, nil
 }
 

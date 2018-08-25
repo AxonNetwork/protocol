@@ -35,7 +35,7 @@ func main() {
 		die(err)
 	}
 
-	client, err := noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	client, err := noderpc.NewClient(cfg.RPCClient.Host)
 	if err != nil {
 		die(err)
 	}

@@ -127,5 +127,5 @@ func getClient() (*noderpc.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return noderpc.NewClient(cfg.RPCClient.Network, cfg.RPCClient.Host)
+	return noderpc.NewClient(cfg.RPCClient.Host)
 }

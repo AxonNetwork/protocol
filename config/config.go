@@ -42,8 +42,7 @@ type NodeConfig struct {
 }
 
 type RPCClientConfig struct {
-	Network string
-	Host    string
+	Host string
 }
 
 var DefaultConfig = Config{
@@ -53,8 +52,8 @@ var DefaultConfig = Config{
 	Node: &NodeConfig{
 		P2PListenAddr:           "0.0.0.0",
 		P2PListenPort:           1337,
-		RPCListenNetwork:        "tcp",
-		RPCListenHost:           "127.0.0.1:1338",
+		RPCListenNetwork:        "unix",
+		RPCListenHost:           "/tmp/conscience.sock",
 		HTTPListenAddr:          ":8081",
 		EthereumHost:            "http://127.0.0.1:8545",
 		ProtocolContract:        "",
@@ -67,8 +66,7 @@ var DefaultConfig = Config{
 		BootstrapPeers:          []string{},
 	},
 	RPCClient: &RPCClientConfig{
-		Network: "tcp",
-		Host:    "127.0.0.1:1338",
+		Host: "unix:///tmp/conscience.sock",
 	},
 }
 
