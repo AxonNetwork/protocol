@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -19,6 +21,7 @@ import (
 	pstore "gx/ipfs/QmZR2XWVVBCtbgBWnQhWk2xcQfaR3W8faQPriAiaaj7rsr/go-libp2p-peerstore"
 	"gx/ipfs/Qmb8T6YBBsjYsVGfrihQLfCJveczZnneSBqBKkYEBWDjge/go-libp2p-host"
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	crypto "gx/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5/go-libp2p-crypto"
 	dstore "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
 	dsync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
 	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
@@ -49,11 +52,17 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		cfg = &config.DefaultConfig
 	}
 
+	privkey, err := obtainKey(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	// Initialize the p2p host
 	h, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(
 			fmt.Sprintf("/ip4/%v/tcp/%v", cfg.Node.P2PListenAddr, cfg.Node.P2PListenPort),
 		),
+		libp2p.Identity(privkey),
 		libp2p.NATPortMap(),
 	)
 	if err != nil {
@@ -95,6 +104,39 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	}
 
 	return n, nil
+}
+
+func obtainKey(cfg *config.Config) (crypto.PrivKey, error) {
+	f, err := os.Open(cfg.Node.PrivateKeyFile)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+
+	} else if err == nil {
+		defer f.Close()
+
+		data, err := ioutil.ReadFile(cfg.Node.PrivateKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		return crypto.UnmarshalPrivateKey(data)
+	}
+
+	privkey, _, err := crypto.GenerateKeyPair(crypto.Secp256k1, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	bs, err := privkey.Bytes()
+	if err != nil {
+		return nil, err
+	}
+
+	err = ioutil.WriteFile(cfg.Node.PrivateKeyFile, bs, 0400)
+	if err != nil {
+		return nil, err
+	}
+
+	return privkey, nil
 }
 
 func (n *Node) Close() error {

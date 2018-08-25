@@ -24,6 +24,7 @@ type UserConfig struct {
 }
 
 type NodeConfig struct {
+	PrivateKeyFile          string
 	P2PListenAddr           string
 	P2PListenPort           int
 	BootstrapPeers          []string
@@ -50,6 +51,7 @@ var DefaultConfig = Config{
 		Username: "nobody",
 	},
 	Node: &NodeConfig{
+		PrivateKeyFile:          filepath.Join(os.Getenv("HOME"), ".conscience.key"),
 		P2PListenAddr:           "0.0.0.0",
 		P2PListenPort:           1337,
 		RPCListenNetwork:        "unix",
