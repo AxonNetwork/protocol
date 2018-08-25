@@ -229,10 +229,10 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 			return nil
 		}
 		commits = append(commits, &pb.Commit{
-			CommitHash: c.Hash.String(),
-			Author:     c.Author.String(),
-			Message:    c.Message,
-			Timestamp:  uint64(c.Author.When.Unix()),
+			CommitHash: commit.Hash.String(),
+			Author:     commit.Author.String(),
+			Message:    commit.Message,
+			Timestamp:  uint64(commit.Author.When.Unix()),
 		})
 
 		return nil
