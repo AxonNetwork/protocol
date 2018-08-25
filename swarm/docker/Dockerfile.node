@@ -35,6 +35,7 @@ RUN ln -s /mnt/.consciencerc $HOME/.consciencerc
 
 # Expose ports
 EXPOSE 1337
+EXPOSE 1338
 EXPOSE 8081
 
 # Copy config files

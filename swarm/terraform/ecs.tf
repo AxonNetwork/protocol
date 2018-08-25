@@ -11,6 +11,7 @@ data "template_file" "task_definition" {
     log_group_region    = "${var.aws_region}"
     log_group_name      = "${element(aws_cloudwatch_log_group.app.*.name, count.index)}"
     container_p2p_port  = "${element(split(",", var.container_p2p_port), count.index)}"
+    container_rpc_port  = "${element(split(",", var.container_rpc_port), count.index)}"
     container_http_port = "${element(split(",", var.container_http_port), count.index)}"
     # alb              = "${aws_alb.main.dns_name}"
     name                = "${var.env_key}"

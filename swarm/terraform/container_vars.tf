@@ -15,6 +15,10 @@ variable "container_p2p_port" {
   description = "P2P port inside of container[i] (comma separated list)"
   default = "1337"
 }
+variable "container_rpc_port" {
+  description = "RPC port inside of container[i] (comma separated list)"
+  default = "1338"
+}
 variable "container_http_port" {
   description = "Application port inside of container[i] (comma separated list)"
   default = "8081"
