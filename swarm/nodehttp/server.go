@@ -1,9 +1,11 @@
 package nodehttp
 
 import (
+	"expvar"
 	"html/template"
 	"net/http"
 
+	"github.com/brynbellomy/debugcharts"
 	log "github.com/sirupsen/logrus"
 
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
@@ -28,6 +30,8 @@ func New(node *swarm.Node) *Server {
 	router.HandleFunc("/", s.handleIndex())
 	router.HandleFunc("/set-replication-policy", s.handleAddReplicatedRepo())
 	router.HandleFunc("/remove-peer", s.handleRemovePeer())
+	router.Handle("/debug/vars", expvar.Handler())
+	debugcharts.RegisterHandlers(router)
 
 	s.server = &http.Server{Addr: node.Config.Node.HTTPListenAddr, Handler: router}
 

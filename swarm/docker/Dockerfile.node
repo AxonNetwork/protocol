@@ -26,6 +26,7 @@ RUN go get github.com/logrusorgru/aurora
 RUN go get github.com/golang/protobuf/proto
 RUN go get golang.org/x/net/context
 RUN go get google.golang.org/grpc
+RUN go get github.com/brynbellomy/debugcharts
 
 # Build all of the binaries with the Makefile
 COPY . $GOPATH/src/github.com/Conscience/protocol
