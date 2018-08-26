@@ -104,12 +104,14 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
 
 	// Connect to our list of bootstrap peers
-	for _, peeraddr := range cfg.Node.BootstrapPeers {
-		err = n.AddPeer(ctx, peeraddr)
-		if err != nil {
-			log.Errorf("[node] could not reach boostrap peer %v", peeraddr)
+	go func() {
+		for _, peeraddr := range cfg.Node.BootstrapPeers {
+			err = n.AddPeer(ctx, peeraddr)
+			if err != nil {
+				log.Errorf("[node] could not reach boostrap peer %v", peeraddr)
+			}
 		}
-	}
+	}()
 
 	return n, nil
 }
@@ -428,7 +430,6 @@ func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
 func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
-	log.Printf("requesting replication of '%v'", repoID)
 	c, err := cidForString("replicate:" + repoID)
 	if err != nil {
 		return err
@@ -451,7 +452,6 @@ func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
 		go func(peerID peer.ID) {
 			defer wg.Done()
 
-			log.Printf("[pull] requesting pull of %v from %v", repoID, peerID.String())
 			stream, err := n.host.NewStream(ctx, peerID, REPLICATION_PROTO)
 			if err != nil {
 				log.Errorf("[pull] error: %v", err)
