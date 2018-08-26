@@ -10,6 +10,7 @@ import (
 
 	swarm ".."
 	"../../repo"
+	"../../util"
 	"../logger"
 )
 
@@ -108,14 +109,20 @@ func (s *Server) handleIndex() http.HandlerFunc {
 	}
 
 	type State struct {
-		Username       string
-		EthAddress     string
-		RPCListenAddr  string
-		Addrs          []string
-		Peers          []Peer
-		Repos          []repo.RepoInfo
-		ReplicateRepos []string
-		Logs           []Log
+		Username        string
+		EthAddress      string
+		RPCListenAddr   string
+		Addrs           []string
+		Peers           []Peer
+		LocalRepos      []repo.RepoInfo
+		ReplicateRepos  []string
+		Logs            []Log
+		GlobalConnStats struct {
+			TotalIn  string
+			TotalOut string
+			RateIn   string
+			RateOut  string
+		}
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -140,8 +147,8 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			state.Peers = append(state.Peers, p)
 		}
 
-		for _, repo := range nodeState.Repos {
-			state.Repos = append(state.Repos, repo)
+		for _, repo := range nodeState.LocalRepos {
+			state.LocalRepos = append(state.LocalRepos, repo)
 		}
 
 		state.ReplicateRepos = s.node.Config.Node.ReplicateRepos
@@ -149,6 +156,12 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		for _, entry := range logger.GetLogs() {
 			state.Logs = append(state.Logs, Log{Level: entry.Level.String(), Message: entry.Message})
 		}
+
+		stats := s.node.GetBandwidthTotals()
+		state.GlobalConnStats.TotalIn = util.HumanizeBytes(float64(stats.TotalIn))
+		state.GlobalConnStats.TotalOut = util.HumanizeBytes(float64(stats.TotalOut))
+		state.GlobalConnStats.RateIn = util.HumanizeBytes(stats.RateIn)
+		state.GlobalConnStats.RateOut = util.HumanizeBytes(stats.RateOut)
 
 		tpl, err := template.New("indexpage").Parse(`
             <html>
@@ -227,6 +240,13 @@ func (s *Server) handleIndex() http.HandlerFunc {
                 </section>
 
                 <section class="section-peers">
+                    <label>Network stats:</label>
+                    <div>
+                        <div>In: {{ .GlobalConnStats.TotalIn }} ({{ .GlobalConnStats.RateIn }} / s)</div>
+                        <div>Out: {{ .GlobalConnStats.TotalOut }} ({{ .GlobalConnStats.RateOut }} / s)</div>
+                    </div>
+                    <br />
+
                     <label>Peers:</label>
                     <ul>
                         {{ range .Peers }}
@@ -265,6 +285,15 @@ func (s *Server) handleIndex() http.HandlerFunc {
                         <div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
                         <div><input type="submit" value="Set" /></div>
                     </form>
+
+                    <br />
+
+                    <label>Local repos:</label>
+                    <ul>
+                        {{ range .LocalRepos }}
+                            <li>{{ .RepoID }} ({{ .Path }})</li>
+                        {{ end }}
+                    </ul>
                 </section>
 
                 <section class="section-logs">

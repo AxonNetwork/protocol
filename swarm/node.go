@@ -18,8 +18,10 @@ import (
 	"gx/ipfs/QmQYwRL1T9dJtdCScoeRQwwvScbJTcWqnXhq4dYQ6Cu5vX/go-libp2p-kad-dht"
 	ma "gx/ipfs/QmYmsdtJ3HsodkePE3eU3TsCaP2YvPZJ4LoXnNkDE5Tpt7/go-multiaddr"
 	"gx/ipfs/QmZ86eLPtXkQ1Dfa992Q8NpXArUoWWh3y728JDcWvzRrvC/go-libp2p"
+	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
 	pstore "gx/ipfs/QmZR2XWVVBCtbgBWnQhWk2xcQfaR3W8faQPriAiaaj7rsr/go-libp2p-peerstore"
 	"gx/ipfs/Qmb8T6YBBsjYsVGfrihQLfCJveczZnneSBqBKkYEBWDjge/go-libp2p-host"
+	metrics "gx/ipfs/QmcoBbyTiL9PFjo1GFixJwqQ8mZLJ36CribuqyKmS1okPu/go-libp2p-metrics"
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 	crypto "gx/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5/go-libp2p-crypto"
 	dstore "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
@@ -40,6 +42,8 @@ type Node struct {
 	RepoManager *RepoManager
 	Config      config.Config
 	Shutdown    chan struct{}
+
+	bandwidthCounter *metrics.BandwidthCounter
 }
 
 const (
@@ -57,12 +61,15 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
+	bandwidthCounter := metrics.NewBandwidthCounter()
+
 	// Initialize the p2p host
 	h, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(
 			fmt.Sprintf("/ip4/%v/tcp/%v", cfg.Node.P2PListenAddr, cfg.Node.P2PListenPort),
 		),
 		libp2p.Identity(privkey),
+		libp2p.BandwidthReporter(bandwidthCounter),
 		libp2p.NATPortMap(),
 	)
 	if err != nil {
@@ -80,12 +87,13 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	}
 
 	n := &Node{
-		host:        h,
-		dht:         d,
-		eth:         eth,
-		RepoManager: NewRepoManager(cfg),
-		Config:      *cfg,
-		Shutdown:    make(chan struct{}),
+		host:             h,
+		dht:              d,
+		eth:              eth,
+		RepoManager:      NewRepoManager(cfg),
+		Config:           *cfg,
+		Shutdown:         make(chan struct{}),
+		bandwidthCounter: bandwidthCounter,
 	}
 
 	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
@@ -181,7 +189,7 @@ type NodeState struct {
 	EthAccount string
 	Addrs      []string
 	Peers      map[string][]string
-	Repos      map[string]repo.RepoInfo
+	LocalRepos map[string]repo.RepoInfo
 }
 
 func (n *Node) GetNodeState() (*NodeState, error) {
@@ -212,11 +220,11 @@ func (n *Node) GetNodeState() (*NodeState, error) {
 	}
 
 	return &NodeState{
-		user,
-		ethAccount,
-		addrs,
-		peers,
-		repos,
+		User:       user,
+		EthAccount: ethAccount,
+		Addrs:      addrs,
+		Peers:      peers,
+		LocalRepos: repos,
 	}, nil
 }
 
@@ -573,4 +581,16 @@ func (n *Node) GetRefs(ctx context.Context, repoID string, page int64) (map[stri
 
 func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*nodeeth.Transaction, error) {
 	return n.eth.UpdateRef(ctx, repoID, refName, commitHash)
+}
+
+func (n *Node) GetBandwidthForPeer(p peer.ID) metrics.Stats {
+	return n.bandwidthCounter.GetBandwidthForPeer(p)
+}
+
+func (n *Node) GetBandwidthForProtocol(proto protocol.ID) metrics.Stats {
+	return n.bandwidthCounter.GetBandwidthForProtocol(proto)
+}
+
+func (n *Node) GetBandwidthTotals() metrics.Stats {
+	return n.bandwidthCounter.GetBandwidthTotals()
 }

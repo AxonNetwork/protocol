@@ -143,7 +143,7 @@ var replCommands = map[string]struct {
 				}
 			}
 			tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
-			for repo := range state.Repos {
+			for repo := range state.LocalRepos {
 				tm.Printf("  - %s\n", repo)
 			}
 
