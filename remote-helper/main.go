@@ -93,7 +93,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 		case strings.HasPrefix(text, "fetch"):
 			fetchArgs := strings.Split(text, " ")
 			objHash := fetchArgs[1]
-			err := recurseCommit(gitplumbing.NewHash(objHash))
+			err := fetch(gitplumbing.NewHash(objHash))
 			if err != nil {
 				return err
 			}
