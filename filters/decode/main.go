@@ -39,6 +39,7 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	defer client.Close()
 
 	// First, make sure we have all of the chunks.  Any missing chunks are downloaded from the Node
 	// in parallel.

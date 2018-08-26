@@ -32,6 +32,7 @@ func initRepo(repoID string) error {
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
 	// @@TODO: give context a timeout and make it configurable
 	err = client.TrackLocalRepo(context.Background(), cwd)
@@ -52,6 +53,7 @@ func setUsername(username string) error {
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
 	// @@TODO: give context a timeout and make it configurable
 	err = client.SetUsername(context.Background(), username)
@@ -66,6 +68,7 @@ func setReplicationPolicy(repoID string, shouldReplicate bool) error {
 	if err != nil {
 		return err
 	}
+	defer client.Close()
 
 	// @@TODO: give context a timeout and make it configurable
 	err = client.SetReplicationPolicy(context.Background(), repoID, shouldReplicate)

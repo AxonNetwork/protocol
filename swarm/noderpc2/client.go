@@ -31,6 +31,11 @@ func NewClient(host string) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) Close() error {
+	err := c.conn.Close()
+	return errors.WithStack(err)
+}
+
 func (c *Client) SetUsername(ctx context.Context, username string) error {
 	_, err := c.client.SetUsername(ctx, &pb.SetUsernameRequest{Username: username})
 	return errors.WithStack(err)
@@ -196,10 +201,5 @@ func (c *Client) UpdateRef(ctx context.Context, repoID string, refName string, c
 
 func (c *Client) RequestReplication(ctx context.Context, repoID string) error {
 	_, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
-	return errors.WithStack(err)
-}
-
-func (c *Client) Close() error {
-	err := c.conn.Close()
 	return errors.WithStack(err)
 }

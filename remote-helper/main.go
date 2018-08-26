@@ -39,6 +39,7 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	defer client.Close()
 
 	if GIT_DIR == "" {
 		fmt.Printf("error: empty GIT_DIR\n")
@@ -140,7 +141,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		}
 	}
-	return nil
+	return scanner.Err()
 }
 
 func die(err error) {
