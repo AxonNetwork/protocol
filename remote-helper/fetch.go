@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"io"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -99,22 +96,4 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 		return errors.WithStack(err)
 	}
 	return nil
-}
-
-func addRepoToNode() error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return errors.Wrap(err, "could not get working dir")
-	}
-
-	// @@TODO: revisit structure of repoIDs (haven't decided upon anything yet)
-	parts := strings.Split(repoID, "/")
-	repoName := parts[0]
-	if len(parts) > 1 {
-		repoName = parts[1]
-	}
-
-	repoFolder := filepath.Join(cwd, repoName)
-	// @@TODO: give context a timeout and make it configurable
-	return client.TrackLocalRepo(context.Background(), repoFolder)
 }

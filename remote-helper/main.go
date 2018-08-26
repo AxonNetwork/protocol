@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -96,7 +97,9 @@ func speakGit(r io.Reader, w io.Writer) error {
 			if err != nil {
 				return err
 			}
-			err = addRepoToNode()
+
+			// @@TODO: give context a timeout and make it configurable
+			err = client.TrackLocalRepo(context.Background(), filepath.Dir(GIT_DIR))
 			if err != nil {
 				return err
 			}
