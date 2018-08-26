@@ -98,8 +98,13 @@ func speakGit(r io.Reader, w io.Writer) error {
 				return err
 			}
 
+			// Tell the node to track this repo
+			fullpath, err := filepath.Abs(filepath.Dir(GIT_DIR))
+			if err != nil {
+				return err
+			}
 			// @@TODO: give context a timeout and make it configurable
-			err = client.TrackLocalRepo(context.Background(), filepath.Dir(GIT_DIR))
+			err = client.TrackLocalRepo(context.Background(), fullpath)
 			if err != nil {
 				return err
 			}
