@@ -46,7 +46,7 @@ func EnsureExists(path string) (*Repo, error) {
 	r, err := Open(path)
 	if err == nil {
 		return r, nil
-	} else if err != ErrRepoNotFound {
+	} else if errors.Cause(err) != ErrRepoNotFound {
 		return nil, err
 	}
 	return Init(path)
