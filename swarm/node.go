@@ -555,11 +555,20 @@ func (n *Node) pullRepo(repoID string) error {
 
 	scan := bufio.NewScanner(stdout)
 	for scan.Scan() {
-		log.Debugf("[pull repo] git: %v", scan.Text())
+		log.Debugf("[pull repo] git (stdout): %v", scan.Text())
 	}
 	if err = scan.Err(); err != nil {
 		return err
 	}
+
+	scan = bufio.NewScanner(stderr)
+	for scan.Scan() {
+		log.Debugf("[pull repo] git (stderr): %v", scan.Text())
+	}
+	if err = scan.Err(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
