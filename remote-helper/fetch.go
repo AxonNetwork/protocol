@@ -5,11 +5,12 @@ import (
 	"io"
 
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
 func recurseCommit(hash gitplumbing.Hash) error {
-	err := fetchAndWriteObject(gitplumbing.CommitObject, hash)
+	err := fetchAndWriteObject(hash)
 	if err != nil {
 		return err
 	}
@@ -28,36 +29,21 @@ func recurseCommit(hash gitplumbing.Hash) error {
 		}
 	}
 
-	return fetchTree(commit.TreeHash)
+	return fetchAndWriteObject(commit.TreeHash)
 }
 
-func fetchTree(hash gitplumbing.Hash) error {
-	err := fetchAndWriteObject(gitplumbing.TreeObject, hash)
-	if err != nil {
-		return err
-	}
-
-	tIter, err := Repo.TreeObject(hash)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	for _, entry := range tIter.Entries {
-		err := fetchAndWriteObject(gitplumbing.BlobObject, entry.Hash)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) error {
-	_, err := Repo.Object(objType, hash)
+func fetchAndWriteObject(hash gitplumbing.Hash) error {
+	obj, err := Repo.Object(gitplumbing.AnyObject, hash)
+	// The object has already been downloaded
 	if err == nil {
-		// already downloaded
+		// If the object is a tree, make sure we have its children
+		if obj.Type() == gitplumbing.TreeObject {
+			return fetchTreeChildren(hash)
+		}
 		return nil
 	}
+
+	// Fetch an object stream from the node via RPC
 	// @@TODO: give context a timeout and make it configurable
 	objectStream, err := client.GetObject(context.Background(), repoID, hash[:])
 	if err != nil {
@@ -65,35 +51,58 @@ func fetchAndWriteObject(objType gitplumbing.ObjectType, hash gitplumbing.Hash) 
 	}
 	defer objectStream.Close()
 
-	obj := Repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
-	obj.SetType(objectStream.Type())
-
-	w, err := obj.Writer()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	copied, err := io.Copy(w, objectStream)
-	if err != nil {
-		return errors.WithStack(err)
-	} else if uint64(copied) != objectStream.Len() {
-		return errors.Errorf("object stream bad length (copied: %v, object length: %v)", copied, objectStream.Len())
-	}
-
-	err = w.Close()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	// Check the checksum
-	if hash != obj.Hash() {
-		return errors.Errorf("bad checksum for piece %v", hash.String())
-	}
-
 	// Write the object to disk
-	_, err = Repo.Storer.SetEncodedObject(obj)
+	{
+		newobj := Repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
+		newobj.SetType(objectStream.Type())
+
+		w, err := newobj.Writer()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		copied, err := io.Copy(w, objectStream)
+		if err != nil {
+			return errors.WithStack(err)
+		} else if uint64(copied) != objectStream.Len() {
+			return errors.Errorf("object stream bad length (copied: %v, object length: %v)", copied, objectStream.Len())
+		}
+
+		err = w.Close()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		// Check the checksum
+		if hash != newobj.Hash() {
+			return errors.Errorf("bad checksum for piece %v", hash.String())
+		}
+
+		// Write the object to disk
+		_, err = Repo.Storer.SetEncodedObject(newobj)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	// If the object is a tree, fetch its children as well
+	if objectStream.Type() == gitplumbing.TreeObject {
+		return fetchTreeChildren(hash)
+	}
+	return nil
+}
+
+func fetchTreeChildren(hash gitplumbing.Hash) error {
+	tree, err := Repo.TreeObject(hash)
 	if err != nil {
 		return errors.WithStack(err)
+	}
+
+	for _, entry := range tree.Entries {
+		err := fetchAndWriteObject(entry.Hash)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
