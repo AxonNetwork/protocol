@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
