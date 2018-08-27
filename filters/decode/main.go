@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+
 	"../../config"
 	"../../repo"
 	"../../swarm/noderpc2"
@@ -74,7 +77,7 @@ func main() {
 			ch <- objectIDStr
 		}
 		if err = scanner.Err(); err != nil {
-			chErr <- err
+			chErr <- errors.Wrap(err, "error scanning stdin")
 			return
 		}
 
@@ -88,14 +91,14 @@ func main() {
 
 			f, err := os.Open(filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR, objectIDStr))
 			if err != nil {
-				chErr <- err
+				chErr <- errors.Wrapf(err, "could not open file to write object '%v'", objectIDStr)
 				return
 			}
 			defer f.Close()
 
 			_, err = io.Copy(os.Stdout, f)
 			if err != nil {
-				chErr <- err
+				chErr <- errors.Wrap(err, "error while streaming file contents to stdout")
 				return
 			}
 
@@ -116,7 +119,7 @@ func main() {
 func downloadChunk(client *noderpc.Client, repoID string, objectIDStr string) error {
 	objectID, err := hex.DecodeString(objectIDStr)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "error decoding objectID '%v'", objectIDStr)
 	}
 
 	fmt.Fprintf(os.Stderr, "Downloading chunk %v...\n", objectIDStr)
@@ -124,20 +127,20 @@ func downloadChunk(client *noderpc.Client, repoID string, objectIDStr string) er
 	// @@TODO: give context a timeout and make it configurable
 	objectStream, err := client.GetObject(context.Background(), repoID, objectID)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not get object stream via RPC")
 	}
 	defer objectStream.Close()
 
 	dataDir := filepath.Join(GIT_DIR, "data")
 	err = os.MkdirAll(dataDir, 0777)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not mkdir")
 	}
 
 	chunkPath := filepath.Join(dataDir, objectIDStr)
 	f, err := os.Create(chunkPath)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not create chunk on disk")
 	}
 	defer f.Close()
 
@@ -150,16 +153,16 @@ func downloadChunk(client *noderpc.Client, repoID string, objectIDStr string) er
 		return err
 	} else if uint64(copied) != objectStream.Len() {
 		os.Remove(chunkPath)
-		return fmt.Errorf("copied (%v) != objectLen (%v)", copied, objectStream.Len())
+		return errors.Errorf("copied (%v) != objectLen (%v)", copied, objectStream.Len())
 	} else if !bytes.Equal(objectID, hasher.Sum(nil)) {
 		os.Remove(chunkPath)
-		return fmt.Errorf("checksum error (objectID: %v)", objectIDStr)
+		return errors.Errorf("checksum error (objectID: %v)", objectIDStr)
 	}
 
 	return nil
 }
 
 func die(err error) {
-	fmt.Printf("error: %+v\n", err)
+	log.Errorf("error: %+v\n", err)
 	os.Exit(1)
 }
