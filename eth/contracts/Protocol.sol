@@ -63,6 +63,7 @@ contract Protocol
         repo.exists = true;
         repo.pushers.add(username);
         repo.admins.add(username);
+        repo.pullers.add(username);
 
         emit LogCreateRepo(msg.sender, repoID);
     }

@@ -32,6 +32,14 @@ module.exports = {
       gas: 4000000,
       gasPrice: 50000000000,
     },
+    awsgeth: {
+      network_id: 23332,
+      provider: function() {
+          return new HDWalletProvider(mnemonic, host)
+      },
+      gas: 4000000,
+      gasPrice: 50000000000,
+    },
     mainnet: {
       network_id: 1,
       provider: function() {
