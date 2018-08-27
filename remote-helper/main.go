@@ -15,7 +15,7 @@ import (
 
 	"../config"
 	"../repo"
-	"../swarm/noderpc2"
+	"../swarm/noderpc"
 )
 
 var (

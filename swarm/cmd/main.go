@@ -24,7 +24,7 @@ import (
 	"../../repo"
 	"../logger"
 	"../nodehttp"
-	"../noderpc2"
+	"../noderpc"
 )
 
 func main() {

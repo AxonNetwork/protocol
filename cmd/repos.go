@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"../swarm/noderpc2"
+	"../swarm/noderpc"
 	"../swarm/wire"
 )
 

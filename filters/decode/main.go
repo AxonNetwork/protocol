@@ -17,7 +17,7 @@ import (
 
 	"../../config"
 	"../../repo"
-	"../../swarm/noderpc2"
+	"../../swarm/noderpc"
 )
 
 var GIT_DIR string = os.Getenv("GIT_DIR")

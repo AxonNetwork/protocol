@@ -1,270 +1,190 @@
 package noderpc
 
 import (
-	"encoding/hex"
-	"fmt"
+	"bytes"
+	"context"
 	"io"
-	"net"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 
 	"../../util"
-	. "../wire"
+	"../wire"
+	"./pb"
 )
 
-// @@TODO: make all Client methods take a context
 type Client struct {
-	network, addr string
+	client pb.NodeRPCClient
+	conn   *grpc.ClientConn
+	host   string
 }
 
-func NewClient(network, addr string) (*Client, error) {
-	client := &Client{
-		network: network,
-		addr:    addr,
+func NewClient(host string) (*Client, error) {
+	conn, err := grpc.Dial(host, grpc.WithInsecure())
+	if err != nil {
+		return nil, errors.WithStack(err)
 	}
-	return client, nil
+	return &Client{
+		client: pb.NewNodeRPCClient(conn),
+		conn:   conn,
+		host:   host,
+	}, nil
 }
 
-func (c *Client) writeMessageType(conn net.Conn, typ MessageType) error {
-	return WriteUint64(conn, uint64(typ))
+func (c *Client) Close() error {
+	err := c.conn.Close()
+	return errors.WithStack(err)
 }
 
-func (c *Client) SetUsername(username string) error {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_SetUsername)
-	if err != nil {
-		return err
-	}
-
-	// Write the request packet
-	err = WriteStructPacket(conn, &SetUsernameRequest{Username: username})
-	if err != nil {
-		return err
-	}
-
-	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := SetUsernameResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return err
-	} else if resp.Error != "" {
-		return errors.New(resp.Error)
-	}
-	return nil
+func (c *Client) SetUsername(ctx context.Context, username string) error {
+	_, err := c.client.SetUsername(ctx, &pb.SetUsernameRequest{Username: username})
+	return errors.WithStack(err)
 }
 
-func (c *Client) GetObject(repoID string, objectID []byte) (*util.ObjectReader, error) {
-	conn, err := net.Dial(c.network, c.addr)
+func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
+	getObjectClient, err := c.client.GetObject(ctx, &pb.GetObjectRequest{RepoID: repoID, ObjectID: objectID})
 	if err != nil {
-		return nil, err
-	}
-	// It is the caller's responsibility to `.Close()` the conn.
-
-	err = c.writeMessageType(conn, MessageType_GetObject)
-	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
-	// Write the request packet
-	err = WriteStructPacket(conn, &GetObjectRequest{RepoID: repoID, ObjectID: objectID})
-	if err != nil {
-		return nil, err
+	// First, read the special header packet containing a wire.ObjectMetadata{} struct
+	var meta wire.ObjectMetadata
+	{
+		packet, err := getObjectClient.Recv()
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
+		headerbuf := bytes.NewBuffer(packet.Data)
+		err = wire.ReadStructPacket(headerbuf, &meta)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
 	}
 
-	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := GetObjectResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return nil, err
-	}
+	// Second, receive protobuf packets and pipe their blob payloads into an io.Reader so that
+	// consumers can interact with them as a regular byte stream.
+	r, w := io.Pipe()
+	go func() {
+		var err error
+		defer func() {
+			if err != nil && err != io.EOF {
+				w.CloseWithError(err)
+			} else {
+				w.Close()
+			}
+		}()
 
-	if resp.Unauthorized {
-		return nil, errors.Wrapf(ErrUnauthorized, "%v:%v", repoID, hex.EncodeToString(objectID))
-	}
+		var packet *pb.GetObjectResponsePacket
+		for {
+			packet, err = getObjectClient.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				err = errors.WithStack(err)
+				return
+			}
 
-	if !resp.HasObject {
-		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%v", repoID, hex.EncodeToString(objectID))
-	}
+			_, err = w.Write(packet.Data)
+			if err != nil {
+				err = errors.WithStack(err)
+				return
+			}
+		}
+	}()
 
-	reader := &util.ObjectReader{
-		Reader:     &io.LimitedReader{conn, resp.ObjectLen},
-		Closer:     conn,
-		ObjectType: resp.ObjectType,
-		ObjectLen:  resp.ObjectLen,
-	}
-
-	return reader, nil
+	return &util.ObjectReader{
+		Reader:     r,
+		Closer:     r,
+		ObjectLen:  meta.Len,
+		ObjectType: meta.Type,
+	}, nil
 }
 
-func (c *Client) RegisterRepoID(repoID string) error {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_RegisterRepoID)
-	if err != nil {
-		return err
-	}
-
-	// Write the request packet
-	err = WriteStructPacket(conn, &RegisterRepoIDRequest{RepoID: repoID})
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Create Repo TX Sent")
-
-	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := RegisterRepoIDResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return err
-	} else if !resp.OK {
-		return errors.New("repo could not be added")
-	}
-
-	return nil
+func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {
+	_, err := c.client.RegisterRepoID(ctx, &pb.RegisterRepoIDRequest{RepoID: repoID})
+	return errors.WithStack(err)
 }
 
-func (c *Client) TrackLocalRepo(repoPath string) error {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_TrackLocalRepo)
-	if err != nil {
-		return err
-	}
-
-	// Write the request packet
-	err = WriteStructPacket(conn, &TrackLocalRepoRequest{RepoPath: repoPath})
-	if err != nil {
-		return err
-	}
-
-	// Read the response packet
-	resp := TrackLocalRepoResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return err
-	} else if !resp.OK {
-		return errors.New("repo could not be added")
-	}
-	return nil
+func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string) error {
+	_, err := c.client.TrackLocalRepo(ctx, &pb.TrackLocalRepoRequest{RepoPath: repoPath})
+	return errors.WithStack(err)
 }
 
-func (c *Client) GetLocalRepos() ([]Repo, error) {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_GetLocalRepos)
-	if err != nil {
-		return nil, err
-	}
-
-	// Read the response packet
-	resp := GetReposResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp.Repos, nil
+type MaybeLocalRepo struct {
+	wire.LocalRepo
+	Error error
 }
 
-func (c *Client) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
-	conn, err := net.Dial(c.network, c.addr)
+func (c *Client) GetLocalRepos(ctx context.Context) (chan MaybeLocalRepo, error) {
+	cl, err := c.client.GetLocalRepos(ctx, &pb.GetLocalReposRequest{})
 	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_SetReplicationPolicy)
-	if err != nil {
-		return err
+		return nil, errors.WithStack(err)
 	}
 
-	err = WriteStructPacket(conn, &SetReplicationPolicyRequest{RepoID: repoID, ShouldReplicate: shouldReplicate})
-	if err != nil {
-		return err
-	}
-
-	resp := SetReplicationPolicyResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return err
-	} else if resp.Error != "" {
-		return errors.New(resp.Error)
-	}
-	return nil
+	ch := make(chan MaybeLocalRepo)
+	go func() {
+		defer close(ch)
+		for {
+			item, err := cl.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				ch <- MaybeLocalRepo{Error: errors.WithStack(err)}
+			} else {
+				ch <- MaybeLocalRepo{LocalRepo: wire.LocalRepo{RepoID: item.RepoID, Path: item.Path}}
+			}
+		}
+	}()
+	return ch, nil
 }
 
-func (c *Client) AnnounceRepoContent(repoID string) error {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+func (c *Client) SetReplicationPolicy(ctx context.Context, repoID string, shouldReplicate bool) error {
+	_, err := c.client.SetReplicationPolicy(ctx, &pb.SetReplicationPolicyRequest{RepoID: repoID, ShouldReplicate: shouldReplicate})
+	return errors.WithStack(err)
+}
 
-	err = c.writeMessageType(conn, MessageType_AnnounceRepoContent)
-	if err != nil {
-		return err
-	}
+func (c *Client) AnnounceRepoContent(ctx context.Context, repoID string) error {
+	_, err := c.client.AnnounceRepoContent(ctx, &pb.AnnounceRepoContentRequest{RepoID: repoID})
+	return errors.WithStack(err)
+}
 
-	// Write the request packet
-	err = WriteStructPacket(conn, &AnnounceRepoContentRequest{RepoID: repoID})
+func (c *Client) GetRefs(ctx context.Context, repoID string, page uint64) (map[string]wire.Ref, uint64, error) {
+	resp, err := c.client.GetRefs(ctx, &pb.GetRefsRequest{RepoID: repoID, Page: page})
 	if err != nil {
-		return err
+		return nil, 0, errors.WithStack(err)
 	}
 
-	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := AnnounceRepoContentResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return err
-	} else if !resp.OK {
-		return fmt.Errorf("repo could not be added")
+	refMap := make(map[string]wire.Ref)
+	for _, ref := range resp.Ref {
+		refMap[ref.RefName] = wire.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
 	}
-
-	return nil
+	return refMap, resp.NumRefs, nil
 }
 
 const (
 	REF_PAGE_SIZE = 10 // @@TODO: make configurable
 )
 
-func (c *Client) GetAllRefs(repoID string) (map[string]Ref, error) {
-	var page int64
-	var numRefs int64
+func (c *Client) GetAllRefs(ctx context.Context, repoID string) (map[string]wire.Ref, error) {
+	var page uint64
+	var numRefs uint64
 	var err error
 
-	refMap := make(map[string]Ref)
+	refMap := make(map[string]wire.Ref)
 
 	for {
-		var refs map[string]Ref
-		refs, numRefs, err = c.GetRefs(repoID, page)
+		var refs map[string]wire.Ref
+		refs, numRefs, err = c.GetRefs(ctx, repoID, page)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		for _, ref := range refs {
-			refMap[ref.Name] = ref
+			refMap[ref.RefName] = ref
 		}
 
-		if int64(page*REF_PAGE_SIZE) >= numRefs {
+		if page*REF_PAGE_SIZE >= numRefs {
 			break
 		}
 
@@ -274,108 +194,12 @@ func (c *Client) GetAllRefs(repoID string) (map[string]Ref, error) {
 	return refMap, nil
 }
 
-func (c *Client) GetRefs(repoID string, page int64) (map[string]Ref, int64, error) {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_GetRefs)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Write the request packet
-	err = WriteStructPacket(conn, &GetRefsRequest{RepoID: repoID, Page: page})
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := GetRefsResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	refs := map[string]Ref{}
-	for _, ref := range resp.Refs {
-		refs[ref.Name] = ref
-	}
-
-	return refs, resp.NumRefs, nil
+func (c *Client) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) error {
+	_, err := c.client.UpdateRef(ctx, &pb.UpdateRefRequest{RepoID: repoID, RefName: refName, CommitHash: commitHash})
+	return errors.WithStack(err)
 }
 
-func (c *Client) UpdateRef(repoID string, refName string, commitHash string) error {
-	if len(commitHash) != 40 {
-		return errors.New("commit hash is not 40 hex characters")
-	}
-
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_UpdateRef)
-	if err != nil {
-		return err
-	}
-
-	// Write the request packet
-	err = WriteStructPacket(conn, &UpdateRefRequest{
-		RepoID:  repoID,
-		RefName: refName,
-		Commit:  commitHash,
-	})
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Update Ref TX Sent")
-
-	// Read the response packet
-	resp := UpdateRefResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return err
-	} else if !resp.OK {
-		return errors.New("UpdateRefResponse.OK is false")
-	}
-	return nil
-}
-
-func (c *Client) RequestReplication(repoID string) error {
-	conn, err := net.Dial(c.network, c.addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	err = c.writeMessageType(conn, MessageType_Replicate)
-	if err != nil {
-		return err
-	}
-
-	// Write the request packet
-	err = WriteStructPacket(conn, &ReplicationRequest{RepoID: repoID})
-	if err != nil {
-		return err
-	}
-
-	// Read the response packet (i.e., the header for the subsequent object stream)
-	resp := ReplicationResponse{}
-	err = ReadStructPacket(conn, &resp)
-	if err != nil {
-		return err
-	}
-
-	if resp.Error == "" {
-		log.Printf("[rpc stream] RequestReplication: ok")
-		return nil
-	} else {
-		log.Errorf("[rpc stream] RequestReplication: error = %v", resp.Error)
-		return errors.New(resp.Error)
-	}
+func (c *Client) RequestReplication(ctx context.Context, repoID string) error {
+	_, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
+	return errors.WithStack(err)
 }

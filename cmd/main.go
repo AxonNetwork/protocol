@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"../config"
-	"../swarm/noderpc2"
+	"../swarm/noderpc"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"

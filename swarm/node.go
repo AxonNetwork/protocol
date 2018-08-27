@@ -389,11 +389,6 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 		return r.OpenObject(objectID)
 	}
 
-	// c, err := cidForObject(repoID, objectID)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	c, err := cidForString(repoID)
 	if err != nil {
 		return nil, err
