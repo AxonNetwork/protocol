@@ -288,22 +288,28 @@ var replCommands = map[string]struct {
 	},
 
 	"get-refs": {
-		"show the list of git refs for the current repository",
+		"show the list of git refs for the given repository",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			if len(args) < 2 {
+			if len(args) < 3 {
 				return fmt.Errorf("not enough args")
 			}
 
-			page, err := strconv.ParseInt(args[1], 10, 64)
+			pageSize, err := strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
 				return err
 			}
 
-			refs, err := n.GetRefs(ctx, args[0], page)
+			page, err := strconv.ParseUint(args[2], 10, 64)
 			if err != nil {
 				return err
 			}
 
+			refs, total, err := n.GetRefs(ctx, args[0], pageSize, page)
+			if err != nil {
+				return err
+			}
+
+			log.Printf("(%v total)", total)
 			for refName, commitHash := range refs {
 				log.Printf("ref: %v %v", refName, commitHash)
 			}

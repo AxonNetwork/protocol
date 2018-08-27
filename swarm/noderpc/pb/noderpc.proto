@@ -14,6 +14,7 @@ service NodeRPC {
   rpc SetReplicationPolicy(SetReplicationPolicyRequest) returns (SetReplicationPolicyResponse) {}
   rpc AnnounceRepoContent(AnnounceRepoContentRequest) returns (AnnounceRepoContentResponse) {}
   rpc GetRefs(GetRefsRequest) returns (GetRefsResponse) {}
+  rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
   rpc RequestReplication(ReplicationRequest) returns (ReplicationResponse) {}
 
@@ -75,12 +76,13 @@ message Ref {
 
 message GetRefsRequest {
     string repoID = 1;
-    uint64 page = 2;
+    uint64 pageSize = 2;
+    uint64 page = 3;
 }
 
 message GetRefsResponse {
-    uint64 numRefs = 1;
-    repeated Ref ref = 2;
+    uint64 total = 1;
+    repeated Ref refs = 2;
 }
 
 message UpdateRefRequest {
@@ -90,6 +92,18 @@ message UpdateRefRequest {
 }
 
 message UpdateRefResponse {}
+
+message GetRepoUsersRequest {
+    string repoID = 1;
+    uint64 type = 2;
+    uint64 pageSize = 3;
+    uint64 page = 4;
+}
+
+message GetRepoUsersResponse {
+    uint64 total = 1;
+    repeated string users = 2;
+}
 
 message ReplicationRequest {
     string repoID = 1;

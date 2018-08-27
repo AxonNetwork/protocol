@@ -47,6 +47,10 @@ contract Protocol
         emit LogSetUsername(msg.sender, username);
     }
 
+    function getAddressForUsername(string username) public view returns (address) {
+        return addressesByUsername[hashString(username)];
+    }
+
     function createRepo(string repoID) public {
         // Ensure that repoID is nonempty
         require(bytes(repoID).length > 0);
@@ -159,44 +163,83 @@ contract Protocol
         return repo.refsToCommits[hashString(refName)];
     }
 
-    function getRefs(string repoID, uint page) public view returns (bytes) {
+    function getRefs(string repoID, uint pageSize, uint page) public view returns (uint total, bytes data) {
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists);
 
         string memory refName;
         string memory commit;
         uint len = 0;
-        uint start = page * 10;
-        for (uint i = 0; i + start < repo.refs.size(); i++) {
+        uint start = page * pageSize;
+        for (uint i = 0; i < pageSize && i + start < repo.refs.size(); i++) {
             refName = repo.refs.get(i + start);
             commit = repo.refsToCommits[hashString(refName)];
             len += 32 + bytes(refName).length + 32 + bytes(commit).length;
         }
 
-        bytes memory bs = new bytes(len);
+        data = new bytes(len);
         uint written = 0;
-        for (i = 0; i + start < repo.refs.size(); i++) {
+        for (i = 0; i < pageSize && i + start < repo.refs.size(); i++) {
             refName = repo.refs.get(i + start);
             commit = repo.refsToCommits[hashString(refName)];
 
-            writeUint(bytes(refName).length, bs, written);
+            writeUint(bytes(refName).length, data, written);
             written += 32;
-            writeBytes(bytes(refName), bs, written);
+            writeBytes(bytes(refName), data, written);
             written += bytes(refName).length;
 
-            writeUint(bytes(commit).length, bs, written);
+            writeUint(bytes(commit).length, data, written);
             written += 32;
-            writeBytes(bytes(commit), bs, written);
+            writeBytes(bytes(commit), data, written);
             written += bytes(commit).length;
         }
 
-        return bs;
+        return (repo.refs.size(), data);
     }
 
-    function writeUint(uint x, bytes memory bs, uint offset) private pure {
+    enum UserType {
+        ADMIN, PULLER, PUSHER
+    }
+
+    function getRepoUsers(string repoID, UserType whichUsers, uint pageSize, uint page) public view returns (uint total, bytes data) {
+        Repo storage repo = repositories[hashString(repoID)];
+        require(repo.exists);
+
+        StringSetLib.StringSet storage users;
+        if (whichUsers == UserType.ADMIN) {
+            users = repo.admins;
+        } else if (whichUsers == UserType.PULLER) {
+            users = repo.pullers;
+        } else if (whichUsers == UserType.PUSHER) {
+            users = repo.pushers;
+        }
+
+        string memory user;
+        uint len = 0;
+        uint start = page * pageSize;
+        for (uint i = 0; i < pageSize && i + start < users.size(); i++) {
+            user = users.get(i + start);
+            len += 32 + bytes(user).length;
+        }
+
+        data = new bytes(len);
+        uint written = 0;
+        for (i = 0; i < pageSize && i + start < users.size(); i++) {
+            user = users.get(i + start);
+
+            writeUint(bytes(user).length, data, written);
+            written += 32;
+            writeBytes(bytes(user), data, written);
+            written += bytes(user).length;
+        }
+
+        return (users.size(), data);
+    }
+
+    function writeUint(uint x, bytes memory dest, uint offset) private pure {
         bytes32 b = bytes32(x);
         for (uint i = 0; i < 32; i++) {
-            bs[i + offset] = b[i];
+            dest[i + offset] = b[i];
         }
     }
 

@@ -275,7 +275,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 			}
 
 			// return r.ForEachObjectID(func(objectID []byte) error {
-			// 	return n.announceObject(ctx, repoID, objectID)
+			//  return n.announceObject(ctx, repoID, objectID)
 			// })
 			return nil
 		})
@@ -301,7 +301,7 @@ func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	}
 
 	// return repo.ForEachObjectID(func(objectID []byte) error {
-	// 	return n.announceObject(ctx, repoID, objectID)
+	//  return n.announceObject(ctx, repoID, objectID)
 	// })
 	return nil
 }
@@ -586,12 +586,16 @@ func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
 	return n.eth.GetNumRefs(ctx, repoID)
 }
 
-func (n *Node) GetRefs(ctx context.Context, repoID string, page int64) (map[string]Ref, error) {
-	return n.eth.GetRefs(ctx, repoID, page)
+func (n *Node) GetRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]Ref, uint64, error) {
+	return n.eth.GetRefs(ctx, repoID, pageSize, page)
 }
 
 func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*nodeeth.Transaction, error) {
 	return n.eth.UpdateRef(ctx, repoID, refName, commitHash)
+}
+
+func (n *Node) GetRepoUsers(ctx context.Context, repoID string, userType nodeeth.UserType, pageSize uint64, page uint64) ([]string, uint64, error) {
+	return n.eth.GetRepoUsers(ctx, repoID, userType, pageSize, page)
 }
 
 func (n *Node) GetBandwidthForPeer(p peer.ID) metrics.Stats {

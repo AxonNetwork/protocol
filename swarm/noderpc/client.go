@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 
 	"../../util"
+	"../nodeeth"
 	"../wire"
 	"./pb"
 )
@@ -149,17 +150,17 @@ func (c *Client) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	return errors.WithStack(err)
 }
 
-func (c *Client) GetRefs(ctx context.Context, repoID string, page uint64) (map[string]wire.Ref, uint64, error) {
-	resp, err := c.client.GetRefs(ctx, &pb.GetRefsRequest{RepoID: repoID, Page: page})
+func (c *Client) GetRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]wire.Ref, uint64, error) {
+	resp, err := c.client.GetRefs(ctx, &pb.GetRefsRequest{RepoID: repoID, PageSize: pageSize, Page: page})
 	if err != nil {
 		return nil, 0, errors.WithStack(err)
 	}
 
 	refMap := make(map[string]wire.Ref)
-	for _, ref := range resp.Ref {
+	for _, ref := range resp.Refs {
 		refMap[ref.RefName] = wire.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
 	}
-	return refMap, resp.NumRefs, nil
+	return refMap, resp.Total, nil
 }
 
 const (
@@ -175,7 +176,7 @@ func (c *Client) GetAllRefs(ctx context.Context, repoID string) (map[string]wire
 
 	for {
 		var refs map[string]wire.Ref
-		refs, numRefs, err = c.GetRefs(ctx, repoID, page)
+		refs, numRefs, err = c.GetRefs(ctx, repoID, REF_PAGE_SIZE, page)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -197,6 +198,14 @@ func (c *Client) GetAllRefs(ctx context.Context, repoID string) (map[string]wire
 func (c *Client) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) error {
 	_, err := c.client.UpdateRef(ctx, &pb.UpdateRefRequest{RepoID: repoID, RefName: refName, CommitHash: commitHash})
 	return errors.WithStack(err)
+}
+
+func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodeeth.UserType, pageSize uint64, page uint64) ([]string, uint64, error) {
+	resp, err := c.client.GetRepoUsers(ctx, &pb.GetRepoUsersRequest{RepoID: repoID, PageSize: pageSize, Page: page})
+	if err != nil {
+		return nil, 0, errors.WithStack(err)
+	}
+	return resp.Users, resp.Total, nil
 }
 
 func (c *Client) RequestReplication(ctx context.Context, repoID string) error {

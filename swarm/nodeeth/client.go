@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -177,31 +178,65 @@ func (n *Client) GetRef(ctx context.Context, repoID string, refName string) (str
 	return n.protocolContract.GetRef(n.callOpts(ctx), repoID, refName)
 }
 
-func (n *Client) GetRefs(ctx context.Context, repoID string, page int64) (map[string]wire.Ref, error) {
-	refs := map[string]wire.Ref{}
-	refsBytes, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(page))
+func (n *Client) GetRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]wire.Ref, uint64, error) {
+	x, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(0).SetUint64(pageSize), big.NewInt(0).SetUint64(page))
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), "abi: unmarshalling empty output") {
+			return map[string]wire.Ref{}, 0, nil
+		} else {
+			return nil, 0, err
+		}
 	}
 
+	refs := map[string]wire.Ref{}
+
 	var read int64
-	for read < int64(len(refsBytes)) {
+	for read < int64(len(x.Data)) {
 		ref := wire.Ref{}
 
-		nameLen := big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
+		nameLen := big.NewInt(0).SetBytes(x.Data[read : read+32]).Int64()
 		read += 32
-		ref.RefName = string(refsBytes[read : read+nameLen])
+		ref.RefName = string(x.Data[read : read+nameLen])
 		read += nameLen
 
-		commitLen := big.NewInt(0).SetBytes(refsBytes[read : read+32]).Int64()
+		commitLen := big.NewInt(0).SetBytes(x.Data[read : read+32]).Int64()
 		read += 32
-		ref.CommitHash = string(refsBytes[read : read+commitLen])
+		ref.CommitHash = string(x.Data[read : read+commitLen])
 		read += commitLen
 
 		refs[ref.RefName] = ref
 	}
 
-	return refs, nil
+	return refs, x.Total.Uint64(), nil
+}
+
+type UserType uint8
+
+const (
+	UserType_Admin  UserType = 0
+	UserType_Puller UserType = 0
+	UserType_Pusher UserType = 0
+)
+
+func (n *Client) GetRepoUsers(ctx context.Context, repoID string, whichUsers UserType, pageSize uint64, page uint64) ([]string, uint64, error) {
+	x, err := n.protocolContract.GetRepoUsers(n.callOpts(ctx), repoID, uint8(whichUsers), big.NewInt(0).SetUint64(pageSize), big.NewInt(0).SetUint64(page))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	users := []string{}
+
+	var read int64
+	for read < int64(len(x.Data)) {
+		nameLen := big.NewInt(0).SetBytes(x.Data[read : read+32]).Int64()
+		read += 32
+		user := string(x.Data[read : read+nameLen])
+		read += nameLen
+
+		users = append(users, user)
+	}
+
+	return users, x.Total.Uint64(), nil
 }
 
 func (n *Client) AddressHasPullAccess(ctx context.Context, user common.Address, repoID string) (bool, error) {

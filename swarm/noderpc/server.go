@@ -16,6 +16,7 @@ import (
 
 	swarm ".."
 	"../../repo"
+	"../nodeeth"
 	"../wire"
 	"./pb"
 )
@@ -169,12 +170,7 @@ func (s *Server) AnnounceRepoContent(ctx context.Context, req *pb.AnnounceRepoCo
 }
 
 func (s *Server) GetRefs(ctx context.Context, req *pb.GetRefsRequest) (*pb.GetRefsResponse, error) {
-	numRefs, err := s.node.GetNumRefs(ctx, req.RepoID)
-	if err != nil {
-		return nil, err
-	}
-
-	refMap, err := s.node.GetRefs(ctx, req.RepoID, int64(req.Page))
+	refMap, total, err := s.node.GetRefs(ctx, req.RepoID, req.PageSize, req.Page)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +180,7 @@ func (s *Server) GetRefs(ctx context.Context, req *pb.GetRefsRequest) (*pb.GetRe
 		refs = append(refs, &pb.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash})
 	}
 
-	return &pb.GetRefsResponse{NumRefs: numRefs, Ref: refs}, nil
+	return &pb.GetRefsResponse{Total: total, Refs: refs}, nil
 }
 
 func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.UpdateRefResponse, error) {
@@ -201,6 +197,15 @@ func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.U
 	}
 
 	return &pb.UpdateRefResponse{}, nil
+}
+
+func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) (*pb.GetRepoUsersResponse, error) {
+	users, total, err := s.node.GetRepoUsers(ctx, req.RepoID, nodeeth.UserType(req.Type), req.PageSize, req.Page)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.GetRepoUsersResponse{Total: total, Users: users}, nil
 }
 
 func (s *Server) RequestReplication(ctx context.Context, req *pb.ReplicationRequest) (*pb.ReplicationResponse, error) {
