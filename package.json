@@ -103,8 +103,7 @@
   "gxVersion": "0.12.1",
   "language": "go",
   "license": "",
-  "name": "p2pdht",
+  "name": "conscience-protocol",
   "releaseCmd": "git commit -a -m \"gx publish $VERSION\"",
   "version": "0.0.0"
 }
-
