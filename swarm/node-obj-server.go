@@ -2,7 +2,6 @@ package swarm
 
 import (
 	"context"
-	"encoding/hex"
 	"io"
 
 	log "github.com/sirupsen/logrus"
@@ -24,6 +23,8 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 		return
 	}
 
+	log.Debugf("[p2p object server] peer requested %v %0x", req.RepoID, req.ObjectID)
+
 	addr, err := n.eth.AddrFromSignedHash(req.ObjectID, req.Signature)
 	if err != nil {
 		log.Errorf("[p2p object server] %v", err)
@@ -37,9 +38,6 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 		log.Errorf("[p2p object server] %v", err)
 		return
 	}
-
-	log.Debugf("[p2p object server] peer requested %v %v", req.RepoID, hex.EncodeToString(req.ObjectID))
-	log.Debugf("[p2p object server] address 0x%s has pull access %t", hex.EncodeToString(addr.Bytes()), hasAccess)
 
 	//
 	// Send our response:
@@ -56,6 +54,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	//
 	r := n.RepoManager.Repo(req.RepoID)
 	if r == nil {
+		log.Warnf("[p2p object server] cannot find repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
 		if err != nil {
 			log.Errorf("[p2p object server] %v", err)
@@ -65,6 +64,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	}
 
 	if hasAccess == false {
+		log.Warnf("[p2p object server] address 0x%0x does not have pull access", addr.Bytes())
 		err := WriteStructPacket(stream, &GetObjectResponse{Unauthorized: true})
 		if err != nil {
 			log.Errorf("[p2p object server] %v", err)
@@ -75,7 +75,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 
 	objectStream, err := r.OpenObject(req.ObjectID)
 	if err != nil {
-		log.Debugf("[p2p object server] we don't have %v %v (err: %v)", req.RepoID, hex.EncodeToString(req.ObjectID), err)
+		log.Debugf("[p2p object server] we don't have %v %0x (err: %v)", req.RepoID, req.ObjectID, err)
 
 		// tell the peer we don't have the object and then close the connection
 		err := WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
@@ -105,5 +105,5 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 		log.Errorf("[p2p object server] terminated while sending")
 	}
 
-	log.Printf("[p2p object server] sent %v %v (%v bytes)", req.RepoID, hex.EncodeToString(req.ObjectID), sent)
+	log.Printf("[p2p object server] sent %v %0x (%v bytes)", req.RepoID, req.ObjectID, sent)
 }

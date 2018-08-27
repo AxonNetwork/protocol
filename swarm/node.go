@@ -274,9 +274,10 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 				return err
 			}
 
-			return r.ForEachObjectID(func(objectID []byte) error {
-				return n.announceObject(ctx, repoID, objectID)
-			})
+			// return r.ForEachObjectID(func(objectID []byte) error {
+			// 	return n.announceObject(ctx, repoID, objectID)
+			// })
+			return nil
 		})
 		if err != nil {
 			log.Errorf("[content announce] %+v", err)
@@ -299,9 +300,10 @@ func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 		return err
 	}
 
-	return repo.ForEachObjectID(func(objectID []byte) error {
-		return n.announceObject(ctx, repoID, objectID)
-	})
+	// return repo.ForEachObjectID(func(objectID []byte) error {
+	// 	return n.announceObject(ctx, repoID, objectID)
+	// })
+	return nil
 }
 
 // Announce to the swarm that this Node can provide objects from the given repository.
@@ -387,7 +389,12 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 		return r.OpenObject(objectID)
 	}
 
-	c, err := cidForObject(repoID, objectID)
+	// c, err := cidForObject(repoID, objectID)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	c, err := cidForString(repoID)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +420,7 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 			return objectReader, nil
 		}
 	}
-	return nil, errors.Errorf("could not find provider for %v : %v", repoID, objectID)
+	return nil, errors.Errorf("could not find provider for %v : %0x", repoID, objectID)
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
