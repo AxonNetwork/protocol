@@ -2,8 +2,8 @@
   {
     "name": "${container_name}",
     "image": "${image_url}",
-    "cpu": 256,
-    "memory": 256,
+    "cpu": 1024,
+    "memory": 1024,
     "entryPoint": [],
     "environment": [{ "name" : "${name}", "value" : "${value}" }],
     "networkMode": "awsvpc",
