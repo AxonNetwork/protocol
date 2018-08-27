@@ -9,6 +9,14 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
+var inflightLimiter = make(chan struct{}, 5)
+
+func init() {
+	for i := 0; i < 5; i++ {
+		inflightLimiter <- struct{}{}
+	}
+}
+
 func fetch(hash gitplumbing.Hash) error {
 	wg := &sync.WaitGroup{}
 	chErr := make(chan error)
@@ -18,8 +26,8 @@ func fetch(hash gitplumbing.Hash) error {
 
 	chDone := make(chan struct{})
 	go func() {
+		defer close(chDone)
 		wg.Wait()
-		close(chDone)
 	}()
 
 	select {
@@ -73,6 +81,9 @@ func recurseObject(hash gitplumbing.Hash, wg *sync.WaitGroup, chErr chan error) 
 }
 
 func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.ObjectType, error) {
+	<-inflightLimiter
+	defer func() { inflightLimiter <- struct{}{} }()
+
 	obj, err := Repo.Object(gitplumbing.AnyObject, hash)
 	// The object has already been downloaded
 	if err == nil {
