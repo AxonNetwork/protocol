@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/mitchellh/go-homedir"
+	log "github.com/sirupsen/logrus"
 )
 
 type Config struct {
@@ -79,16 +81,29 @@ func ReadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("home dir = %v", dir)
 
-	configPath := filepath.Join(dir, ".consciencerc")
+	configPath, err := filepath.Abs(filepath.Join(dir, ".consciencerc"))
+	if err != nil {
+		log.Printf("error filepath.Abs = %v", err)
+		return nil, err
+	}
 
 	return ReadConfigAtPath(configPath)
 }
 
 func ReadConfigAtPath(configPath string) (*Config, error) {
+	log.Warnf("reading config at %v", configPath)
 	cfg := DefaultConfig
 
-	_, err := toml.DecodeFile(configPath, &cfg)
+	bs, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		log.Errorf("could not read config!")
+	} else {
+		log.Printf("reaad config.  contents = %v", string(bs))
+	}
+
+	_, err = toml.DecodeFile(configPath, &cfg)
 	// If the file can't be found, we ignore the error.  Otherwise, return it.
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
