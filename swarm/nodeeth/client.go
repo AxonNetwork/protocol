@@ -214,8 +214,8 @@ type UserType uint8
 
 const (
 	UserType_Admin  UserType = 0
-	UserType_Puller UserType = 0
-	UserType_Pusher UserType = 0
+	UserType_Puller UserType = 1
+	UserType_Pusher UserType = 2
 )
 
 func (n *Client) GetRepoUsers(ctx context.Context, repoID string, whichUsers UserType, pageSize uint64, page uint64) ([]string, uint64, error) {
