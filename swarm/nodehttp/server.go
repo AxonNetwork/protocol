@@ -10,10 +10,10 @@ import (
 
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
-	swarm ".."
-	"../../repo"
-	"../../util"
-	"../logger"
+	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm"
+	"github.com/Conscience/protocol/swarm/logger"
+	"github.com/Conscience/protocol/util"
 )
 
 type Server struct {

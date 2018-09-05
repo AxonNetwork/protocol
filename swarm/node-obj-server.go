@@ -8,7 +8,7 @@ import (
 
 	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 
-	. "./wire"
+	. "github.com/Conscience/protocol/swarm/wire"
 )
 
 // Handles incoming requests for objects.

@@ -4,8 +4,7 @@ import (
 	"context"
 	"os"
 
-	"../repo"
-	// "gopkg.in/src-d/go-git.v4"
+	"github.com/Conscience/protocol/repo"
 )
 
 func initRepo(repoID string) error {

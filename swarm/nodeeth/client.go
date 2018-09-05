@@ -14,8 +14,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 
-	"../../config"
-	"../wire"
+	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/swarm/wire"
 )
 
 type Client struct {

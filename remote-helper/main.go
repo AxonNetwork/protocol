@@ -13,9 +13,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
-	"../config"
-	"../repo"
-	"../swarm/noderpc"
+	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm/noderpc"
 )
 
 var (

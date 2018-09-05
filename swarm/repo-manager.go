@@ -5,9 +5,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"../config"
-	"../repo"
-	"../util"
+	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/util"
 )
 
 type RepoManager struct {

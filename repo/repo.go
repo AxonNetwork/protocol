@@ -16,7 +16,7 @@ import (
 	gitconfigformat "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 
-	"../util"
+	"github.com/Conscience/protocol/util"
 )
 
 type Repo struct {

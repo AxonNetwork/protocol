@@ -6,8 +6,8 @@ import (
 	"os"
 	"strconv"
 
-	"../config"
-	"../swarm/noderpc"
+	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/swarm/noderpc"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"../swarm/wire"
+	"github.com/Conscience/protocol/swarm/wire"
 )
 
 func getAllRefs(repoID string) (map[string]wire.Ref, error) {

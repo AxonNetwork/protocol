@@ -8,10 +8,10 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"../../util"
-	"../nodeeth"
-	"../wire"
-	"./pb"
+	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/noderpc/pb"
+	"github.com/Conscience/protocol/swarm/wire"
+	"github.com/Conscience/protocol/util"
 )
 
 type Client struct {

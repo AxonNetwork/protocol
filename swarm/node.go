@@ -28,11 +28,11 @@ import (
 	dsync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
 	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
 
-	"../config"
-	"../repo"
-	"../util"
-	"./nodeeth"
-	. "./wire"
+	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm/nodeeth"
+	. "github.com/Conscience/protocol/swarm/wire"
+	"github.com/Conscience/protocol/util"
 )
 
 type Node struct {

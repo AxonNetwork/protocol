@@ -14,11 +14,11 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 
-	swarm ".."
-	"../../repo"
-	"../nodeeth"
-	"../wire"
-	"./pb"
+	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm"
+	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/noderpc/pb"
+	"github.com/Conscience/protocol/swarm/wire"
 )
 
 type Server struct {
@@ -252,7 +252,7 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
 	r := s.node.RepoManager.Repo(req.RepoID)
 	if r == nil {
-		return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
+		return nil, errors.Errorf("repo '%v' not found", req.RepoID)
 	}
 
 	commitHash := gitplumbing.NewHash(req.CommitHash)
