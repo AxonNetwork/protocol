@@ -21,6 +21,7 @@ type Config struct {
 
 type UserConfig struct {
 	Username string
+	JWT      string
 }
 
 type NodeConfig struct {
@@ -49,6 +50,7 @@ type RPCClientConfig struct {
 var DefaultConfig = Config{
 	User: &UserConfig{
 		Username: "nobody",
+		JWT:      "",
 	},
 	Node: &NodeConfig{
 		PrivateKeyFile:          filepath.Join(os.Getenv("HOME"), ".conscience.key"),

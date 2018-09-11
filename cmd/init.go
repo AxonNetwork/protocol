@@ -5,8 +5,7 @@ import (
 	"os"
 
 	"../repo"
-
-	"gopkg.in/src-d/go-git.v4"
+	// "gopkg.in/src-d/go-git.v4"
 )
 
 func initRepo(repoID string) error {
@@ -16,7 +15,7 @@ func initRepo(repoID string) error {
 	}
 
 	r, err := repo.Open(cwd)
-	if err == git.ErrRepositoryNotExists {
+	if err != nil {
 		r, err = repo.Init(cwd)
 	}
 	if err != nil {

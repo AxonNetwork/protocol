@@ -81,11 +81,8 @@ func main() {
 				if err != nil {
 					return err
 				}
-				for repo := range repos {
-					if repo.Error != nil {
-						return repo.Error
-					}
-					fmt.Fprintf(c.App.Writer, "%s %s\n", repo.RepoID, repo.Path)
+				for _, repo := range repos {
+					fmt.Fprintf(c.App.Writer, "%s\n", repo)
 				}
 
 				return nil
