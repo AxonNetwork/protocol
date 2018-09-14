@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	tm "github.com/buger/goterm"
+	// tm "github.com/buger/goterm"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -111,46 +111,46 @@ var replCommands = map[string]struct {
 	HelpText string
 	Handler  func(ctx context.Context, args []string, n *swarm.Node) error
 }{
-	"state": {
-		"show an overview of the current state of the node",
-		func(ctx context.Context, args []string, n *swarm.Node) error {
-			tm.Clear()
-			tm.MoveCursor(1, 1)
-			box := tm.NewBox(50|tm.PCT, 3, 0)
-			_, err := box.Write([]byte("Conscience"))
-			if err != nil {
-				panic(err)
-			}
-			tm.Println(box.String())
-			state, err := n.GetNodeState()
-			if err != nil {
-				tm.Println("There has been some error")
-				tm.Println(err.Error())
-				tm.Flush()
-				return err
-			}
-			tm.Printf("%v %v\n", tm.Bold("Username:"), state.User)
-			tm.Printf("%v %v\n", tm.Bold("Ethereum Address:"), state.EthAccount)
-			tm.Printf("\n%v\n", tm.Bold("Node ('addrs' for more info):"))
-			tm.Println(state.Addrs[1])
-			tm.Printf("\n%v ('peers' for more info):\n", tm.Bold("Peers"))
-			if len(state.Peers) < 2 {
-				tm.Printf("  No peers at the moment\n")
-			}
-			for peer, addrs := range state.Peers {
-				if len(addrs) > 1 {
-					tm.Printf("  -%s/ipfs/%s\n", addrs[1], peer)
-				}
-			}
-			tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
-			for repo := range state.LocalRepos {
-				tm.Printf("  - %s\n", repo)
-			}
-
-			tm.Flush()
-			return nil
-		},
-	},
+	//  "state": {
+	//      "show an overview of the current state of the node",
+	//      func(ctx context.Context, args []string, n *swarm.Node) error {
+	//          tm.Clear()
+	//          tm.MoveCursor(1, 1)
+	//          box := tm.NewBox(50|tm.PCT, 3, 0)
+	//          _, err := box.Write([]byte("Conscience"))
+	//          if err != nil {
+	//              panic(err)
+	//          }
+	//          tm.Println(box.String())
+	//          state, err := n.GetNodeState()
+	//          if err != nil {
+	//              tm.Println("There has been some error")
+	//              tm.Println(err.Error())
+	//              tm.Flush()
+	//              return err
+	//          }
+	//          tm.Printf("%v %v\n", tm.Bold("Username:"), state.User)
+	//          tm.Printf("%v %v\n", tm.Bold("Ethereum Address:"), state.EthAccount)
+	//          tm.Printf("\n%v\n", tm.Bold("Node ('addrs' for more info):"))
+	//          tm.Println(state.Addrs[1])
+	//          tm.Printf("\n%v ('peers' for more info):\n", tm.Bold("Peers"))
+	//          if len(state.Peers) < 2 {
+	//              tm.Printf("  No peers at the moment\n")
+	//          }
+	//          for peer, addrs := range state.Peers {
+	//              if len(addrs) > 1 {
+	//                  tm.Printf("  -%s/ipfs/%s\n", addrs[1], peer)
+	//              }
+	//          }
+	//          tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
+	//          for repo := range state.LocalRepos {
+	//              tm.Printf("  - %s\n", repo)
+	//          }
+	//
+	//          tm.Flush()
+	//          return nil
+	//      },
+	//  },
 
 	"addrs": {
 		"list the p2p addresses this node is using to communicate with its swarm",

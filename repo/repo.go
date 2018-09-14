@@ -108,42 +108,6 @@ func (r *Repo) HeadHash() (string, error) {
 	return head.Hash().String(), nil
 }
 
-type RepoInfo struct {
-	RepoID  string
-	Path    string
-	Head    string
-	Objects []string
-}
-
-func (r *Repo) GetInfo() (RepoInfo, error) {
-	repoID, err := r.RepoID()
-	if err != nil {
-		return RepoInfo{}, err
-	}
-
-	path := r.Path
-	head, err := r.HeadHash()
-	if err != nil {
-		head = ""
-	}
-
-	objects := make([]string, 0)
-	err = r.ForEachObjectID(func(objectID []byte) error {
-		objects = append(objects, hex.EncodeToString(objectID))
-		return nil
-	})
-	if err != nil {
-		return RepoInfo{}, err
-	}
-
-	return RepoInfo{
-		RepoID:  repoID,
-		Path:    path,
-		Head:    head,
-		Objects: objects,
-	}, nil
-}
-
 func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
 	// First crawl the Git objects
 	oIter, err := r.Repository.Objects()

@@ -170,66 +170,6 @@ func (n *Node) Close() error {
 	return nil
 }
 
-func (n *Node) ID() peer.ID {
-	return n.host.ID()
-}
-
-func (n *Node) Addrs() []ma.Multiaddr {
-	return n.host.Addrs()
-}
-
-func (n *Node) Peers() []pstore.PeerInfo {
-	return pstore.PeerInfos(n.host.Peerstore(), n.host.Peerstore().Peers())
-}
-
-func (n *Node) Conns() []netp2p.Conn {
-	return n.host.Network().Conns()
-}
-
-type NodeState struct {
-	User       string
-	EthAccount string
-	Addrs      []string
-	Peers      map[string][]string
-	LocalRepos map[string]repo.RepoInfo
-}
-
-func (n *Node) GetNodeState() (*NodeState, error) {
-	user := n.Config.User.Username
-	ethAccount := n.eth.Address().Hex()
-
-	addrs := make([]string, 0)
-	for _, addr := range n.host.Addrs() {
-		addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), n.host.ID().Pretty()))
-	}
-
-	peers := make(map[string][]string)
-	for _, peerID := range n.host.Peerstore().Peers() {
-		if peerID == n.host.ID() {
-			continue
-		}
-
-		pid := peerID.Pretty()
-		peers[pid] = make([]string, 0)
-		for _, addr := range n.host.Peerstore().Addrs(peerID) {
-			peers[pid] = append(peers[pid], addr.String())
-		}
-	}
-
-	repos, err := n.RepoManager.GetReposInfo()
-	if err != nil {
-		return nil, err
-	}
-
-	return &NodeState{
-		User:       user,
-		EthAccount: ethAccount,
-		Addrs:      addrs,
-		Peers:      peers,
-		LocalRepos: repos,
-	}, nil
-}
-
 func (n *Node) periodicallyRequestContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.ContentRequestInterval))
 	for range c {
@@ -572,6 +512,26 @@ func (n *Node) pullRepo(repoID string) error {
 	}
 
 	return nil
+}
+
+func (n *Node) ID() peer.ID {
+	return n.host.ID()
+}
+
+func (n *Node) Addrs() []ma.Multiaddr {
+	return n.host.Addrs()
+}
+
+func (n *Node) Peers() []pstore.PeerInfo {
+	return pstore.PeerInfos(n.host.Peerstore(), n.host.Peerstore().Peers())
+}
+
+func (n *Node) Conns() []netp2p.Conn {
+	return n.host.Network().Conns()
+}
+
+func (n *Node) EthAddress() nodeeth.Address {
+	return n.eth.Address()
 }
 
 func (n *Node) EnsureUsername(ctx context.Context, username string) (*nodeeth.Transaction, error) {

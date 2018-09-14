@@ -2,6 +2,7 @@ package nodehttp
 
 import (
 	"expvar"
+	"fmt"
 	"html/template"
 	"net/http"
 
@@ -112,13 +113,18 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		Message string
 	}
 
+	type RepoInfo struct {
+		RepoID string
+		Path   string
+	}
+
 	type State struct {
 		Username        string
 		EthAddress      string
 		RPCListenAddr   string
 		Addrs           []string
 		Peers           []Peer
-		LocalRepos      []repo.RepoInfo
+		LocalRepos      []RepoInfo
 		ReplicateRepos  []string
 		Logs            []Log
 		GlobalConnStats struct {
@@ -130,18 +136,17 @@ func (s *Server) handleIndex() http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		nodeState, err := s.node.GetNodeState()
-		if err != nil {
-			die500(w, err)
-			return
+		addrs := make([]string, 0)
+		for _, addr := range s.node.Addrs() {
+			addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), s.node.ID().Pretty()))
 		}
 
 		var state State
 
-		state.Username = nodeState.User
-		state.EthAddress = nodeState.EthAccount
+		state.Username = s.node.Config.User.Username
+		state.EthAddress = s.node.EthAddress().Hex()
 		state.RPCListenAddr = s.node.Config.Node.RPCListenNetwork + ":" + s.node.Config.Node.RPCListenHost
-		state.Addrs = nodeState.Addrs
+		state.Addrs = addrs
 
 		for _, pinfo := range s.node.Peers() {
 			p := Peer{PrettyName: pinfo.ID.String(), Name: peer.IDB58Encode(pinfo.ID)}
@@ -151,8 +156,18 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			state.Peers = append(state.Peers, p)
 		}
 
-		for _, repo := range nodeState.LocalRepos {
-			state.LocalRepos = append(state.LocalRepos, repo)
+		err := s.node.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+			repoID, err := r.RepoID()
+			if err != nil {
+				return err
+			}
+
+			state.LocalRepos = append(state.LocalRepos, RepoInfo{RepoID: repoID, Path: r.Path})
+			return nil
+		})
+		if err != nil {
+			die500(w, err)
+			return
 		}
 
 		state.ReplicateRepos = s.node.Config.Node.ReplicateRepos
@@ -167,207 +182,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		state.GlobalConnStats.RateIn = util.HumanizeBytes(stats.RateIn)
 		state.GlobalConnStats.RateOut = util.HumanizeBytes(stats.RateOut)
 
-		tpl, err := template.New("indexpage").Parse(`
-            <html>
-            <head>
-                <title>Conscience node stats</title>
-                <style>
-                    body {
-                        font-family: Consolas, 'Courier New', sans-serif;
-                        padding: 20px;
-                    }
-
-                    header {
-                        display: flex;
-                    }
-
-                    header .logo svg {
-                        width: 80px;
-                        height: 80px;
-                    }
-
-                    header .text {
-                        font-family: 'Roboto Condensed', sans-serif;
-                        font-size: 2.3rem;
-                    }
-
-                    section {
-                        margin-bottom: 30px;
-                        border: 1px solid #eaeaea;
-                        padding: 30px;
-                        border-radius: 10px;
-                    }
-
-                    label {
-                        font-weight: bold;
-                    }
-
-                    section.section-peers ul li form {
-                        display: inline;
-                    }
-
-                    .log.error {
-                        color: red;
-                    }
-
-                    .log.warning {
-                        color: orange;
-                    }
-
-                    .log.info {
-                        color: black;
-                    }
-
-                    .log.debug {
-                        color: grey;
-                    }
-                </style>
-            </head>
-            <body>
-                <header>
-                    <div class="logo">` + logoSVG + `</div>
-                    <div class="text">conscience p2p node</div>
-                </header>
-
-                <section>
-                    <div><label>Username:</label> {{ .Username }}</div>
-                    <div><label>ETH account:</label> {{ .EthAddress }}</div>
-                    <div><label>RPC listen addr:</label> {{ .RPCListenAddr }}</div>
-                    <div>
-                        <label>Listen addrs:</label>
-                        <ul>
-                            {{ range .Addrs }}
-                                <li>{{ . }}</li>
-                            {{ end }}
-                        </ul>
-                    </div>
-                </section>
-
-                <section class="section-peers">
-                    <label>Network stats:</label>
-                    <div>
-                        <div>In: {{ .GlobalConnStats.TotalIn }} ({{ .GlobalConnStats.RateIn }} / s)</div>
-                        <div>Out: {{ .GlobalConnStats.TotalOut }} ({{ .GlobalConnStats.RateOut }} / s)</div>
-                    </div>
-                    <br />
-
-                    <label>Peers:</label>
-                    <ul>
-                        {{ range .Peers }}
-                            <li>
-                                <div>
-                                    {{ .PrettyName }} ({{ .Name }})
-                                    <form method="post" action="/remove-peer">
-                                        <input type="hidden" name="peerid" value="{{ .Name }}" />
-                                        <input type="submit" value="Disconnect" />
-                                    </form>
-                                </div>
-
-                                <ul>
-                                    {{ range .Addrs }}
-                                        <li>
-                                            {{ . }}
-                                        </li>
-                                    {{ end }}
-                                </ul>
-                            </li>
-                        {{ end }}
-                    </ul>
-                </section>
-
-                <section>
-                    <label>Replicating repos:</label>
-                    <ul>
-                        {{ range .ReplicateRepos }}
-                            <li>{{ . }}</li>
-                        {{ end }}
-                    </ul>
-
-                    <div><label>Set replication policy</label></div>
-                    <form action="/set-replication-policy" method="post">
-                        <div>Repo ID: <input type="text" name="repo" /></div>
-                        <div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
-                        <div><input type="submit" value="Set" /></div>
-                    </form>
-
-                    <br />
-
-                    <label>Local repos:</label>
-                    <ul>
-                        {{ range .LocalRepos }}
-                            <li>{{ .RepoID }} ({{ .Path }})</li>
-                        {{ end }}
-                    </ul>
-                </section>
-
-                <section class="section-logs">
-                    <div>Debug <input type="checkbox" data-level="debug" value="on" checked /></div>
-                    <div>Info  <input type="checkbox" data-level="info"  value="on" checked /></div>
-                    <div>Warn  <input type="checkbox" data-level="warn"  value="on" checked /></div>
-                    <div>Error <input type="checkbox" data-level="error" value="on" checked /></div>
-                    <label>Logs:</label>
-                    <ul></ul>
-                </section>
-
-                <script>
-                    var logs = [
-                        {{ range .Logs }}
-                            { level: {{ .Level }}, message: "{{ .Message }}" },
-                        {{ end }}
-                    ]
-
-                    function attachListeners() {
-                        var checkboxes = document.querySelectorAll('section.section-logs input[type=checkbox]')
-                        for (var i = 0; i < checkboxes.length; i++) {
-                            checkboxes[i].addEventListener('click', updateLogs)
-                        }
-                    }
-
-                    function getFilters() {
-                        var checkboxes = document.querySelectorAll('section.section-logs input[type=checkbox]')
-                        var filters = {
-                            debug: true,
-                            info: true,
-                            warn: true,
-                            error: true,
-                        }
-                        for (var i = 0; i < checkboxes.length; i++) {
-                            filters[ checkboxes[i].dataset.level ] = checkboxes[i].checked
-                        }
-                        return filters
-                    }
-
-                    function updateLogs() {
-                        var filters = getFilters()
-
-                        var ul = document.querySelector('section.section-logs ul')
-                        ul.innerHTML = ''
-
-                        for (var i = 0; i < logs.length; i++) {
-                            if (filters[ logs[i].level ] === false) {
-                                continue
-                            }
-
-                            var li = document.createElement('li')
-                            li.innerHTML = logs[i].message
-                            li.classList.add('log')
-                            li.classList.add(logs[i].level)
-                            ul.appendChild(li)
-                        }
-                    }
-
-                    updateLogs()
-                    attachListeners()
-                </script>
-            </body>
-            </html>
-        `)
-		if err != nil {
-			die500(w, err)
-			return
-		}
-
-		err = tpl.Execute(w, state)
+		err = tplIndex.Execute(w, state)
 		if err != nil {
 			die500(w, err)
 			return
@@ -380,6 +195,202 @@ func die500(w http.ResponseWriter, err error) {
 	w.WriteHeader(500)
 	w.Write([]byte("Internal server error: " + err.Error()))
 }
+
+var tplIndex = template.Must(template.New("indexpage").Parse(`
+    <html>
+    <head>
+        <title>Conscience node stats</title>
+        <style>
+            body {
+                font-family: Consolas, 'Courier New', sans-serif;
+                padding: 20px;
+            }
+
+            header {
+                display: flex;
+            }
+
+            header .logo svg {
+                width: 80px;
+                height: 80px;
+            }
+
+            header .text {
+                font-family: 'Roboto Condensed', sans-serif;
+                font-size: 2.3rem;
+            }
+
+            section {
+                margin-bottom: 30px;
+                border: 1px solid #eaeaea;
+                padding: 30px;
+                border-radius: 10px;
+            }
+
+            label {
+                font-weight: bold;
+            }
+
+            section.section-peers ul li form {
+                display: inline;
+            }
+
+            .log.error {
+                color: red;
+            }
+
+            .log.warning {
+                color: orange;
+            }
+
+            .log.info {
+                color: black;
+            }
+
+            .log.debug {
+                color: grey;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div class="logo">` + logoSVG + `</div>
+            <div class="text">conscience p2p node</div>
+        </header>
+
+        <section>
+            <div><label>Username:</label> {{ .Username }}</div>
+            <div><label>ETH account:</label> {{ .EthAddress }}</div>
+            <div><label>RPC listen addr:</label> {{ .RPCListenAddr }}</div>
+            <div>
+                <label>Listen addrs:</label>
+                <ul>
+                    {{ range .Addrs }}
+                        <li>{{ . }}</li>
+                    {{ end }}
+                </ul>
+            </div>
+        </section>
+
+        <section class="section-peers">
+            <label>Network stats:</label>
+            <div>
+                <div>In: {{ .GlobalConnStats.TotalIn }} ({{ .GlobalConnStats.RateIn }} / s)</div>
+                <div>Out: {{ .GlobalConnStats.TotalOut }} ({{ .GlobalConnStats.RateOut }} / s)</div>
+            </div>
+            <br />
+
+            <label>Peers:</label>
+            <ul>
+                {{ range .Peers }}
+                    <li>
+                        <div>
+                            {{ .PrettyName }} ({{ .Name }})
+                            <form method="post" action="/remove-peer">
+                                <input type="hidden" name="peerid" value="{{ .Name }}" />
+                                <input type="submit" value="Disconnect" />
+                            </form>
+                        </div>
+
+                        <ul>
+                            {{ range .Addrs }}
+                                <li>
+                                    {{ . }}
+                                </li>
+                            {{ end }}
+                        </ul>
+                    </li>
+                {{ end }}
+            </ul>
+        </section>
+
+        <section>
+            <label>Replicating repos:</label>
+            <ul>
+                {{ range .ReplicateRepos }}
+                    <li>{{ . }}</li>
+                {{ end }}
+            </ul>
+
+            <div><label>Set replication policy</label></div>
+            <form action="/set-replication-policy" method="post">
+                <div>Repo ID: <input type="text" name="repo" /></div>
+                <div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
+                <div><input type="submit" value="Set" /></div>
+            </form>
+
+            <br />
+
+            <label>Local repos:</label>
+            <ul>
+                {{ range .LocalRepos }}
+                    <li>{{ .RepoID }} ({{ .Path }})</li>
+                {{ end }}
+            </ul>
+        </section>
+
+        <section class="section-logs">
+            <div>Debug <input type="checkbox" data-level="debug" value="on" checked /></div>
+            <div>Info  <input type="checkbox" data-level="info"  value="on" checked /></div>
+            <div>Warn  <input type="checkbox" data-level="warn"  value="on" checked /></div>
+            <div>Error <input type="checkbox" data-level="error" value="on" checked /></div>
+            <label>Logs:</label>
+            <ul></ul>
+        </section>
+
+        <script>
+            var logs = [
+                {{ range .Logs }}
+                    { level: {{ .Level }}, message: "{{ .Message }}" },
+                {{ end }}
+            ]
+
+            function attachListeners() {
+                var checkboxes = document.querySelectorAll('section.section-logs input[type=checkbox]')
+                for (var i = 0; i < checkboxes.length; i++) {
+                    checkboxes[i].addEventListener('click', updateLogs)
+                }
+            }
+
+            function getFilters() {
+                var checkboxes = document.querySelectorAll('section.section-logs input[type=checkbox]')
+                var filters = {
+                    debug: true,
+                    info: true,
+                    warn: true,
+                    error: true,
+                }
+                for (var i = 0; i < checkboxes.length; i++) {
+                    filters[ checkboxes[i].dataset.level ] = checkboxes[i].checked
+                }
+                return filters
+            }
+
+            function updateLogs() {
+                var filters = getFilters()
+
+                var ul = document.querySelector('section.section-logs ul')
+                ul.innerHTML = ''
+
+                for (var i = 0; i < logs.length; i++) {
+                    if (filters[ logs[i].level ] === false) {
+                        continue
+                    }
+
+                    var li = document.createElement('li')
+                    li.innerHTML = logs[i].message
+                    li.classList.add('log')
+                    li.classList.add(logs[i].level)
+                    ul.appendChild(li)
+                }
+            }
+
+            updateLogs()
+            attachListeners()
+        </script>
+    </body>
+    </html>
+`))
 
 var logoSVG = `
     <svg width="200px" height="200px" viewBox="100,100,500,300" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:xlink="http://www.w3.org/1999/xlink">

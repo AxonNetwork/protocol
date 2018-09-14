@@ -27,6 +27,8 @@ type Client struct {
 	wallet           *Wallet
 }
 
+type Address = common.Address
+
 func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 	ethClient, err := ethclient.DialContext(ctx, cfg.Node.EthereumHost)
 	if err != nil {
