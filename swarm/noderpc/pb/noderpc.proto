@@ -137,7 +137,7 @@ message GetRepoHistoryResponse {
 
 message GetRepoFilesRequest {
     string repoID = 1;
-    string commitHash = 2;
+    string path = 2;
 }
 
 message File {

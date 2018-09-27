@@ -364,9 +364,22 @@ func parseGitLSFilesLine(line string) (*pb.File, error) {
 }
 
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
-	r := s.node.RepoManager.Repo(req.RepoID)
-	if r == nil {
-		return nil, errors.Errorf("repo '%v' not found", req.RepoID)
+	var r *repo.Repo
+
+	if len(req.Path) > 0 {
+		r = s.node.RepoManager.RepoAtPath(req.Path)
+		if r == nil {
+			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
+		}
+
+	} else if len(req.RepoID) > 0 {
+		r = s.node.RepoManager.Repo(req.RepoID)
+		if r == nil {
+			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
+		}
+
+	} else {
+		return nil, errors.Errorf("must provide either 'path' or 'repoID'")
 	}
 
 	files := map[string]*pb.File{}
@@ -453,47 +466,4 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	}
 
 	return &pb.GetRepoFilesResponse{Files: fileList}, nil
-
-	// r := s.node.RepoManager.Repo(req.RepoID)
-	// if r == nil {
-	//  return nil, errors.Errorf("repo '%v' not found", req.RepoID)
-	// }
-
-	// commitHash := gitplumbing.NewHash(req.CommitHash)
-	// if commitHash.IsZero() {
-	//  return nil, errors.Errorf("invalid commit hash '%v'", req.CommitHash)
-	// }
-
-	// commit, err := r.CommitObject(commitHash)
-	// if err != nil {
-	//  return nil, err
-	// }
-
-	// tree, err := r.TreeObject(commit.TreeHash)
-	// if err != nil {
-	//  return nil, err
-	// }
-
-	// pbfiles := []*pb.File{}
-	// for _, e := range tree.Entries {
-	//  size := uint64(0)
-
-	//  if e.Mode.IsFile() {
-	//      file, err := tree.TreeEntryFile(&e)
-	//      if err != nil {
-	//          return nil, err
-	//      }
-
-	//      size = uint64(file.Blob.Size)
-	//  }
-
-	//  pbfiles = append(pbfiles, &pb.File{
-	//      Name: e.Name,
-	//      Hash: e.Hash[:],
-	//      Mode: uint32(e.Mode),
-	//      Size: size,
-	//  })
-	// }
-
-	// return &pb.GetRepoFilesResponse{Files: pbfiles}, nil
 }

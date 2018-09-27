@@ -11,14 +11,16 @@ import (
 )
 
 type RepoManager struct {
-	repos  map[string]*repo.Repo
-	config *config.Config
+	repos       map[string]*repo.Repo
+	reposByPath map[string]*repo.Repo
+	config      *config.Config
 }
 
 func NewRepoManager(config *config.Config) *RepoManager {
 	rm := &RepoManager{
-		repos:  make(map[string]*repo.Repo),
-		config: config,
+		repos:       map[string]*repo.Repo{},
+		reposByPath: map[string]*repo.Repo{},
+		config:      config,
 	}
 
 	for _, path := range rm.config.Node.LocalRepos {
@@ -104,6 +106,7 @@ func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
 	}
 
 	rm.repos[repoID] = r
+	rm.reposByPath[repoPath] = r
 
 	return r, nil
 }
@@ -120,6 +123,7 @@ func (rm *RepoManager) UntrackRepo(repoPath string) error {
 	}
 
 	delete(rm.repos, repoID)
+	delete(rm.reposByPath, repoPath)
 
 	return rm.config.Update(func() error {
 		rm.config.Node.LocalRepos = util.StringSetRemove(rm.config.Node.LocalRepos, repoPath)
@@ -135,8 +139,16 @@ func (rm *RepoManager) Repo(repoID string) *repo.Repo {
 	return repo
 }
 
+func (rm *RepoManager) RepoAtPath(repoPath string) *repo.Repo {
+	repo, ok := rm.reposByPath[repoPath]
+	if !ok {
+		return nil
+	}
+	return repo
+}
+
 func (rm *RepoManager) ForEachRepo(fn func(*repo.Repo) error) error {
-	for _, entry := range rm.repos {
+	for _, entry := range rm.reposByPath {
 		err := fn(entry)
 		if err != nil {
 			return err
