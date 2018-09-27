@@ -7,6 +7,7 @@ option go_package = "pb";
 
 service NodeRPC {
   rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse) {}
+  rpc InitRepo(InitRepoRequest) returns (InitRepoResponse) {}
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
@@ -27,6 +28,13 @@ message SetUsernameRequest {
 }
 
 message SetUsernameResponse {}
+
+message InitRepoRequest {
+    string repoID = 1;
+    string path = 2;
+}
+
+message InitRepoResponse {}
 
 message GetObjectRequest {
     string repoID = 1;
@@ -137,6 +145,8 @@ message File {
     bytes hash = 2;
     uint32 mode = 3;
     uint64 size = 4;
+    string unstagedStatus = 5;
+    string stagedStatus = 6;
 }
 
 message GetRepoFilesResponse {

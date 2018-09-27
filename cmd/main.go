@@ -20,7 +20,7 @@ func main() {
 
 	app.Version = "0.0.1"
 	app.Copyright = "(c) 2018 Conscience"
-	app.Usage = "Utility for interacting with the Consience network"
+	app.Usage = "Utility for interacting with the Conscience network"
 
 	app.Commands = []cli.Command{
 		{
@@ -34,7 +34,16 @@ func main() {
 				if repoID == "" {
 					return ErrNotEnoughArgs
 				}
-				return initRepo(repoID)
+				path := c.Args().Get(1)
+				if path == "" {
+					cwd, err := os.Getwd()
+					if err != nil {
+						return err
+					}
+					path = cwd
+				}
+
+				return initRepo(repoID, path)
 			},
 		},
 		{

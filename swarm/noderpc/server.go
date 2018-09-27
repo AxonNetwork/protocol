@@ -1,10 +1,17 @@
 package noderpc
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -46,6 +53,7 @@ func (s *Server) Start() {
 }
 
 func (s *Server) Close() error {
+	// This closes the net.Listener as well.
 	s.server.GracefulStop()
 	return nil
 }
@@ -65,6 +73,54 @@ func (s *Server) SetUsername(ctx context.Context, req *pb.SetUsernameRequest) (*
 		}
 	}
 	return &pb.SetUsernameResponse{}, nil
+}
+
+func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.InitRepoResponse, error) {
+	if req.RepoID == "" {
+		return nil, errors.New("empty repoID")
+	}
+
+	// Before anything else, try to claim the repoID in the smart contract
+	tx, err := s.node.EnsureRepoIDRegistered(ctx, req.RepoID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if tx != nil {
+		log.Printf("[rpc] create repo tx sent: %s", tx.Hash().Hex())
+		txResult := <-tx.Await(ctx)
+		if txResult.Err != nil {
+			return nil, errors.WithStack(txResult.Err)
+		}
+		log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
+	}
+
+	// If no path was specified, create the repo in the ReplicationRoot
+	path := req.Path
+	if path == "" {
+		path = filepath.Join(s.node.Config.Node.ReplicationRoot, req.RepoID)
+	}
+
+	// Open or create the git repo
+	r, err := repo.Open(path)
+	if err != nil {
+		r, err = repo.Init(path)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+
+	// Setup the Conscience plugins, etc.
+	err = r.SetupConfig(req.RepoID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	// Have the node track the local repo
+	_, err = s.node.RepoManager.TrackRepo(path)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return &pb.InitRepoResponse{}, nil
 }
 
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
@@ -249,47 +305,195 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
 }
 
+func parseGitStatusLine(line string) (*pb.File, error) {
+	parts := strings.Split(line, " ")
+	file := &pb.File{}
+
+	switch parts[0] {
+	case "1":
+		mode, err := strconv.ParseUint(parts[3], 8, 32)
+		if err != nil {
+			return nil, err
+		}
+
+		hash, err := hex.DecodeString(parts[6])
+		if err != nil {
+			return nil, err
+		}
+
+		file.Name = parts[8]
+		file.Hash = hash
+		file.Mode = uint32(mode)
+		file.UnstagedStatus = parts[1][:1]
+		file.StagedStatus = parts[1][1:]
+
+	case "2":
+		// @@TODO: these are renames
+
+	case "?":
+		file.Name = parts[1]
+		file.UnstagedStatus = "?"
+		file.StagedStatus = "?"
+	}
+
+	return file, nil
+}
+
+func parseGitLSFilesLine(line string) (*pb.File, error) {
+	parts := strings.Split(line, " ")
+	moarParts := strings.Split(parts[2], "\t")
+
+	mode, err := strconv.ParseUint(parts[3], 8, 32)
+	if err != nil {
+		return nil, err
+	}
+
+	hash, err := hex.DecodeString(parts[1])
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.File{
+		Name:           moarParts[1],
+		Hash:           hash,
+		Mode:           uint32(mode),
+		Size:           0,
+		UnstagedStatus: ".",
+		StagedStatus:   ".",
+	}, nil
+}
+
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
 	r := s.node.RepoManager.Repo(req.RepoID)
 	if r == nil {
 		return nil, errors.Errorf("repo '%v' not found", req.RepoID)
 	}
 
-	commitHash := gitplumbing.NewHash(req.CommitHash)
-	if commitHash.IsZero() {
-		return nil, errors.Errorf("invalid commit hash '%v'", req.CommitHash)
-	}
+	files := map[string]*pb.File{}
 
-	commit, err := r.CommitObject(commitHash)
-	if err != nil {
-		return nil, err
-	}
+	// Start by taking the output of `git ls-files --stage`
+	{
+		cmd := exec.CommandContext(ctx, "git", "ls-files", "--stage")
+		cmd.Path = r.Path
 
-	tree, err := r.TreeObject(commit.TreeHash)
-	if err != nil {
-		return nil, err
-	}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, err
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return nil, err
+		}
 
-	pbfiles := []*pb.File{}
-	for _, e := range tree.Entries {
-		size := uint64(0)
-
-		if e.Mode.IsFile() {
-			file, err := tree.TreeEntryFile(&e)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			file, err := parseGitLSFilesLine(line)
 			if err != nil {
 				return nil, err
 			}
-
-			size = uint64(file.Blob.Size)
+			files[file.Name] = file
+		}
+		if err = scanner.Err(); err != nil {
+			return nil, err
 		}
 
-		pbfiles = append(pbfiles, &pb.File{
-			Name: e.Name,
-			Hash: e.Hash[:],
-			Mode: uint32(e.Mode),
-			Size: size,
-		})
+		err = cmd.Wait()
+		if err != nil {
+			stderrString, err := ioutil.ReadAll(stderr)
+			if err != nil {
+				return nil, err
+			}
+			return nil, errors.Errorf("error running git ls-files: %v", stderrString)
+		}
 	}
 
-	return &pb.GetRepoFilesResponse{Files: pbfiles}, nil
+	// Then, overlay the output of `git status --porcelain`
+	{
+		cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+		cmd.Path = r.Path
+
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, err
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return nil, err
+		}
+
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			file, err := parseGitStatusLine(line)
+			if err != nil {
+				return nil, err
+			}
+			files[file.Name] = file
+		}
+		if err = scanner.Err(); err != nil {
+			return nil, err
+		}
+
+		err = cmd.Wait()
+		if err != nil {
+			stderrString, err := ioutil.ReadAll(stderr)
+			if err != nil {
+				return nil, err
+			}
+			return nil, errors.Errorf("error running git ls-files: %v", stderrString)
+		}
+	}
+
+	fileList := make([]*pb.File, len(files))
+	i := 0
+	for _, file := range files {
+		fileList[i] = file
+		i++
+	}
+
+	return &pb.GetRepoFilesResponse{Files: fileList}, nil
+
+	// r := s.node.RepoManager.Repo(req.RepoID)
+	// if r == nil {
+	//  return nil, errors.Errorf("repo '%v' not found", req.RepoID)
+	// }
+
+	// commitHash := gitplumbing.NewHash(req.CommitHash)
+	// if commitHash.IsZero() {
+	//  return nil, errors.Errorf("invalid commit hash '%v'", req.CommitHash)
+	// }
+
+	// commit, err := r.CommitObject(commitHash)
+	// if err != nil {
+	//  return nil, err
+	// }
+
+	// tree, err := r.TreeObject(commit.TreeHash)
+	// if err != nil {
+	//  return nil, err
+	// }
+
+	// pbfiles := []*pb.File{}
+	// for _, e := range tree.Entries {
+	//  size := uint64(0)
+
+	//  if e.Mode.IsFile() {
+	//      file, err := tree.TreeEntryFile(&e)
+	//      if err != nil {
+	//          return nil, err
+	//      }
+
+	//      size = uint64(file.Blob.Size)
+	//  }
+
+	//  pbfiles = append(pbfiles, &pb.File{
+	//      Name: e.Name,
+	//      Hash: e.Hash[:],
+	//      Mode: uint32(e.Mode),
+	//      Size: size,
+	//  })
+	// }
+
+	// return &pb.GetRepoFilesResponse{Files: pbfiles}, nil
 }

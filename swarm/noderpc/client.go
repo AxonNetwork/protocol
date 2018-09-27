@@ -42,6 +42,11 @@ func (c *Client) SetUsername(ctx context.Context, username string) error {
 	return errors.WithStack(err)
 }
 
+func (c *Client) InitRepo(ctx context.Context, repoID string, path string) error {
+	_, err := c.client.InitRepo(ctx, &pb.InitRepoRequest{RepoID: repoID, Path: path})
+	return errors.WithStack(err)
+}
+
 func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
 	getObjectClient, err := c.client.GetObject(ctx, &pb.GetObjectRequest{RepoID: repoID, ObjectID: objectID})
 	if err != nil {
