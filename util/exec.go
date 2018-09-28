@@ -26,7 +26,6 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 	if err != nil {
 		return
 	}
-
 	defer func() {
 		if err != nil {
 			stderr, _ := ioutil.ReadAll(stderr)
@@ -34,6 +33,7 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 		}
 	}()
 
+	cmd.Start()
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		line := scanner.Text()

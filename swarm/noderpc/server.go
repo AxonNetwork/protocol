@@ -358,7 +358,7 @@ func parseGitLSFilesLine(line string) (*pb.File, error) {
 	parts := strings.Split(line, " ")
 	moarParts := strings.Split(parts[2], "\t")
 
-	mode, err := strconv.ParseUint(parts[3], 8, 32)
+	mode, err := strconv.ParseUint(moarParts[0], 8, 32)
 	if err != nil {
 		return nil, err
 	}
