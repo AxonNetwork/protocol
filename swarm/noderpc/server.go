@@ -224,7 +224,7 @@ func (s *Server) AnnounceRepoContent(ctx context.Context, req *pb.AnnounceRepoCo
 }
 
 func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) (*pb.GetLocalRefsResponse, error) {
-	refs, err := s.node.GetLocalRefs(ctx, req.RepoID, req.Path)
+	refs, repoPath, err := s.node.GetLocalRefs(ctx, req.RepoID, req.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) 
 		refsList[i] = &pb.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
 		i++
 	}
-	return &pb.GetLocalRefsResponse{Refs: refsList}, nil
+	return &pb.GetLocalRefsResponse{Path: repoPath, Refs: refsList}, nil
 }
 
 func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest) (*pb.GetRemoteRefsResponse, error) {

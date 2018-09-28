@@ -92,7 +92,8 @@ message GetLocalRefsRequest {
 }
 
 message GetLocalRefsResponse {
-    repeated Ref refs = 1;
+    string path = 1;
+    repeated Ref refs = 2;
 }
 
 message GetRemoteRefsRequest {

@@ -542,26 +542,30 @@ func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*node
 	return n.eth.EnsureRepoIDRegistered(ctx, repoID)
 }
 
-func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]Ref, error) {
+func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]Ref, string, error) {
 	var r *repo.Repo
 
 	if len(path) > 0 {
 		r = n.RepoManager.RepoAtPath(path)
 		if r == nil {
-			return nil, errors.Errorf("repo at path '%v' not found", path)
+			return nil, "", errors.Errorf("repo at path '%v' not found", path)
 		}
 
 	} else if len(repoID) > 0 {
 		r = n.RepoManager.Repo(repoID)
 		if r == nil {
-			return nil, errors.Errorf("repo '%v' not found", repoID)
+			return nil, "", errors.Errorf("repo '%v' not found", repoID)
 		}
 
 	} else {
-		return nil, errors.Errorf("must provide either 'path' or 'repoID'")
+		return nil, "", errors.Errorf("must provide either 'path' or 'repoID'")
 	}
 
-	return r.GetLocalRefs(ctx)
+	refs, err := r.GetLocalRefs(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return refs, r.Path, nil
 }
 
 func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
