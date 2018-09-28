@@ -120,7 +120,7 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return &pb.InitRepoResponse{}, nil
+	return &pb.InitRepoResponse{Path: path}, nil
 }
 
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {

@@ -34,7 +34,9 @@ message InitRepoRequest {
     string path = 2;
 }
 
-message InitRepoResponse {}
+message InitRepoResponse {
+    string path = 1;
+}
 
 message GetObjectRequest {
     string repoID = 1;
