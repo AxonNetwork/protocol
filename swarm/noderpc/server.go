@@ -1,14 +1,11 @@
 package noderpc
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,6 +23,7 @@ import (
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
+	"github.com/Conscience/protocol/util"
 )
 
 type Server struct {
@@ -225,8 +223,13 @@ func (s *Server) AnnounceRepoContent(ctx context.Context, req *pb.AnnounceRepoCo
 	return &pb.AnnounceRepoContentResponse{}, nil
 }
 
-func (s *Server) GetRefs(ctx context.Context, req *pb.GetRefsRequest) (*pb.GetRefsResponse, error) {
-	refMap, total, err := s.node.GetRefs(ctx, req.RepoID, req.PageSize, req.Page)
+func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) (*pb.GetLocalRefsResponse, error) {
+	// @@TODO: stub
+	return nil, nil
+}
+
+func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest) (*pb.GetRemoteRefsResponse, error) {
+	refMap, total, err := s.node.GetRemoteRefs(ctx, req.RepoID, req.PageSize, req.Page)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +239,7 @@ func (s *Server) GetRefs(ctx context.Context, req *pb.GetRefsRequest) (*pb.GetRe
 		refs = append(refs, &pb.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash})
 	}
 
-	return &pb.GetRefsResponse{Total: total, Refs: refs}, nil
+	return &pb.GetRemoteRefsResponse{Total: total, Refs: refs}, nil
 }
 
 func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.UpdateRefResponse, error) {
@@ -260,7 +263,6 @@ func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) 
 	if err != nil {
 		return nil, err
 	}
-
 	return &pb.GetRepoUsersResponse{Total: total, Users: users}, nil
 }
 
@@ -399,77 +401,29 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	files := map[string]*pb.File{}
 
 	// Start by taking the output of `git ls-files --stage`
-	{
-		cmd := exec.CommandContext(ctx, "git", "ls-files", "--stage")
-		cmd.Path = r.Path
-
-		stdout, err := cmd.StdoutPipe()
+	err := util.ExecAndScanStdout(ctx, []string{"git", "ls-files", "--stage"}, r.Path, func(line string) error {
+		file, err := parseGitLSFilesLine(line)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			return nil, err
-		}
-
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			file, err := parseGitLSFilesLine(line)
-			if err != nil {
-				return nil, err
-			}
-			files[file.Name] = file
-		}
-		if err = scanner.Err(); err != nil {
-			return nil, err
-		}
-
-		err = cmd.Wait()
-		if err != nil {
-			stderrString, err := ioutil.ReadAll(stderr)
-			if err != nil {
-				return nil, err
-			}
-			return nil, errors.Errorf("error running git ls-files: %v", stderrString)
-		}
+		files[file.Name] = file
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Then, overlay the output of `git status --porcelain`
-	{
-		cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
-		cmd.Path = r.Path
-
-		stdout, err := cmd.StdoutPipe()
+	err = util.ExecAndScanStdout(ctx, []string{"git", "status", "--porcelain"}, r.Path, func(line string) error {
+		file, err := parseGitStatusLine(line)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			return nil, err
-		}
-
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			file, err := parseGitStatusLine(line)
-			if err != nil {
-				return nil, err
-			}
-			files[file.Name] = file
-		}
-		if err = scanner.Err(); err != nil {
-			return nil, err
-		}
-
-		err = cmd.Wait()
-		if err != nil {
-			stderrString, err := ioutil.ReadAll(stderr)
-			if err != nil {
-				return nil, err
-			}
-			return nil, errors.Errorf("error running git ls-files: %v", stderrString)
-		}
+		files[file.Name] = file
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	fileList := make([]*pb.File, len(files))

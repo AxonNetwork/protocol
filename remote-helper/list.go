@@ -7,7 +7,7 @@ import (
 
 func getRefs() ([]string, error) {
 	// @@TODO: give context a timeout and make it configurable
-	refs, err := client.GetAllRefs(context.Background(), repoID)
+	refs, err := client.GetAllRemoteRefs(context.Background(), repoID)
 	if err != nil {
 		return nil, err
 	}

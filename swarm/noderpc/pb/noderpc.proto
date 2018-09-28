@@ -14,7 +14,8 @@ service NodeRPC {
   rpc GetLocalRepos(GetLocalReposRequest) returns (stream GetLocalReposResponsePacket) {}
   rpc SetReplicationPolicy(SetReplicationPolicyRequest) returns (SetReplicationPolicyResponse) {}
   rpc AnnounceRepoContent(AnnounceRepoContentRequest) returns (AnnounceRepoContentResponse) {}
-  rpc GetRefs(GetRefsRequest) returns (GetRefsResponse) {}
+  rpc GetLocalRefs(GetLocalRefsRequest) returns (GetLocalRefsResponse) {}
+  rpc GetRemoteRefs(GetRemoteRefsRequest) returns (GetRemoteRefsResponse) {}
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
   rpc RequestReplication(ReplicationRequest) returns (ReplicationResponse) {}
@@ -85,13 +86,24 @@ message Ref {
     string commitHash = 2;
 }
 
-message GetRefsRequest {
+message GetLocalRefsRequest {
     string repoID = 1;
     uint64 pageSize = 2;
     uint64 page = 3;
 }
 
-message GetRefsResponse {
+message GetLocalRefsResponse {
+    uint64 total = 1;
+    repeated Ref refs = 2;
+}
+
+message GetRemoteRefsRequest {
+    string repoID = 1;
+    uint64 pageSize = 2;
+    uint64 page = 3;
+}
+
+message GetRemoteRefsResponse {
     uint64 total = 1;
     repeated Ref refs = 2;
 }

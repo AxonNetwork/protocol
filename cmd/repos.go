@@ -15,7 +15,7 @@ func getAllRefs(repoID string) (map[string]wire.Ref, error) {
 	defer client.Close()
 
 	// @@TODO: give context a timeout and make it configurable
-	return client.GetAllRefs(context.Background(), repoID)
+	return client.GetAllRemoteRefs(context.Background(), repoID)
 }
 
 type Repo struct {

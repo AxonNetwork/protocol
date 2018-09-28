@@ -34,7 +34,7 @@ func (m *SetUsernameRequest) Reset()         { *m = SetUsernameRequest{} }
 func (m *SetUsernameRequest) String() string { return proto.CompactTextString(m) }
 func (*SetUsernameRequest) ProtoMessage()    {}
 func (*SetUsernameRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{0}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{0}
 }
 func (m *SetUsernameRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SetUsernameRequest.Unmarshal(m, b)
@@ -71,7 +71,7 @@ func (m *SetUsernameResponse) Reset()         { *m = SetUsernameResponse{} }
 func (m *SetUsernameResponse) String() string { return proto.CompactTextString(m) }
 func (*SetUsernameResponse) ProtoMessage()    {}
 func (*SetUsernameResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{1}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{1}
 }
 func (m *SetUsernameResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SetUsernameResponse.Unmarshal(m, b)
@@ -103,7 +103,7 @@ func (m *InitRepoRequest) Reset()         { *m = InitRepoRequest{} }
 func (m *InitRepoRequest) String() string { return proto.CompactTextString(m) }
 func (*InitRepoRequest) ProtoMessage()    {}
 func (*InitRepoRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{2}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{2}
 }
 func (m *InitRepoRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_InitRepoRequest.Unmarshal(m, b)
@@ -148,7 +148,7 @@ func (m *InitRepoResponse) Reset()         { *m = InitRepoResponse{} }
 func (m *InitRepoResponse) String() string { return proto.CompactTextString(m) }
 func (*InitRepoResponse) ProtoMessage()    {}
 func (*InitRepoResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{3}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{3}
 }
 func (m *InitRepoResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_InitRepoResponse.Unmarshal(m, b)
@@ -187,7 +187,7 @@ func (m *GetObjectRequest) Reset()         { *m = GetObjectRequest{} }
 func (m *GetObjectRequest) String() string { return proto.CompactTextString(m) }
 func (*GetObjectRequest) ProtoMessage()    {}
 func (*GetObjectRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{4}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{4}
 }
 func (m *GetObjectRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetObjectRequest.Unmarshal(m, b)
@@ -232,7 +232,7 @@ func (m *GetObjectResponsePacket) Reset()         { *m = GetObjectResponsePacket
 func (m *GetObjectResponsePacket) String() string { return proto.CompactTextString(m) }
 func (*GetObjectResponsePacket) ProtoMessage()    {}
 func (*GetObjectResponsePacket) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{5}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{5}
 }
 func (m *GetObjectResponsePacket) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetObjectResponsePacket.Unmarshal(m, b)
@@ -270,7 +270,7 @@ func (m *RegisterRepoIDRequest) Reset()         { *m = RegisterRepoIDRequest{} }
 func (m *RegisterRepoIDRequest) String() string { return proto.CompactTextString(m) }
 func (*RegisterRepoIDRequest) ProtoMessage()    {}
 func (*RegisterRepoIDRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{6}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{6}
 }
 func (m *RegisterRepoIDRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RegisterRepoIDRequest.Unmarshal(m, b)
@@ -307,7 +307,7 @@ func (m *RegisterRepoIDResponse) Reset()         { *m = RegisterRepoIDResponse{}
 func (m *RegisterRepoIDResponse) String() string { return proto.CompactTextString(m) }
 func (*RegisterRepoIDResponse) ProtoMessage()    {}
 func (*RegisterRepoIDResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{7}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{7}
 }
 func (m *RegisterRepoIDResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RegisterRepoIDResponse.Unmarshal(m, b)
@@ -338,7 +338,7 @@ func (m *TrackLocalRepoRequest) Reset()         { *m = TrackLocalRepoRequest{} }
 func (m *TrackLocalRepoRequest) String() string { return proto.CompactTextString(m) }
 func (*TrackLocalRepoRequest) ProtoMessage()    {}
 func (*TrackLocalRepoRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{8}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{8}
 }
 func (m *TrackLocalRepoRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_TrackLocalRepoRequest.Unmarshal(m, b)
@@ -375,7 +375,7 @@ func (m *TrackLocalRepoResponse) Reset()         { *m = TrackLocalRepoResponse{}
 func (m *TrackLocalRepoResponse) String() string { return proto.CompactTextString(m) }
 func (*TrackLocalRepoResponse) ProtoMessage()    {}
 func (*TrackLocalRepoResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{9}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{9}
 }
 func (m *TrackLocalRepoResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_TrackLocalRepoResponse.Unmarshal(m, b)
@@ -405,7 +405,7 @@ func (m *GetLocalReposRequest) Reset()         { *m = GetLocalReposRequest{} }
 func (m *GetLocalReposRequest) String() string { return proto.CompactTextString(m) }
 func (*GetLocalReposRequest) ProtoMessage()    {}
 func (*GetLocalReposRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{10}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{10}
 }
 func (m *GetLocalReposRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetLocalReposRequest.Unmarshal(m, b)
@@ -437,7 +437,7 @@ func (m *GetLocalReposResponsePacket) Reset()         { *m = GetLocalReposRespon
 func (m *GetLocalReposResponsePacket) String() string { return proto.CompactTextString(m) }
 func (*GetLocalReposResponsePacket) ProtoMessage()    {}
 func (*GetLocalReposResponsePacket) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{11}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{11}
 }
 func (m *GetLocalReposResponsePacket) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetLocalReposResponsePacket.Unmarshal(m, b)
@@ -483,7 +483,7 @@ func (m *SetReplicationPolicyRequest) Reset()         { *m = SetReplicationPolic
 func (m *SetReplicationPolicyRequest) String() string { return proto.CompactTextString(m) }
 func (*SetReplicationPolicyRequest) ProtoMessage()    {}
 func (*SetReplicationPolicyRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{12}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{12}
 }
 func (m *SetReplicationPolicyRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SetReplicationPolicyRequest.Unmarshal(m, b)
@@ -527,7 +527,7 @@ func (m *SetReplicationPolicyResponse) Reset()         { *m = SetReplicationPoli
 func (m *SetReplicationPolicyResponse) String() string { return proto.CompactTextString(m) }
 func (*SetReplicationPolicyResponse) ProtoMessage()    {}
 func (*SetReplicationPolicyResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{13}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{13}
 }
 func (m *SetReplicationPolicyResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SetReplicationPolicyResponse.Unmarshal(m, b)
@@ -558,7 +558,7 @@ func (m *AnnounceRepoContentRequest) Reset()         { *m = AnnounceRepoContentR
 func (m *AnnounceRepoContentRequest) String() string { return proto.CompactTextString(m) }
 func (*AnnounceRepoContentRequest) ProtoMessage()    {}
 func (*AnnounceRepoContentRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{14}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{14}
 }
 func (m *AnnounceRepoContentRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AnnounceRepoContentRequest.Unmarshal(m, b)
@@ -595,7 +595,7 @@ func (m *AnnounceRepoContentResponse) Reset()         { *m = AnnounceRepoContent
 func (m *AnnounceRepoContentResponse) String() string { return proto.CompactTextString(m) }
 func (*AnnounceRepoContentResponse) ProtoMessage()    {}
 func (*AnnounceRepoContentResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{15}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{15}
 }
 func (m *AnnounceRepoContentResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AnnounceRepoContentResponse.Unmarshal(m, b)
@@ -627,7 +627,7 @@ func (m *Ref) Reset()         { *m = Ref{} }
 func (m *Ref) String() string { return proto.CompactTextString(m) }
 func (*Ref) ProtoMessage()    {}
 func (*Ref) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{16}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{16}
 }
 func (m *Ref) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Ref.Unmarshal(m, b)
@@ -661,7 +661,7 @@ func (m *Ref) GetCommitHash() string {
 	return ""
 }
 
-type GetRefsRequest struct {
+type GetLocalRefsRequest struct {
 	RepoID               string   `protobuf:"bytes,1,opt,name=repoID,proto3" json:"repoID,omitempty"`
 	PageSize             uint64   `protobuf:"varint,2,opt,name=pageSize,proto3" json:"pageSize,omitempty"`
 	Page                 uint64   `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
@@ -670,52 +670,52 @@ type GetRefsRequest struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *GetRefsRequest) Reset()         { *m = GetRefsRequest{} }
-func (m *GetRefsRequest) String() string { return proto.CompactTextString(m) }
-func (*GetRefsRequest) ProtoMessage()    {}
-func (*GetRefsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{17}
+func (m *GetLocalRefsRequest) Reset()         { *m = GetLocalRefsRequest{} }
+func (m *GetLocalRefsRequest) String() string { return proto.CompactTextString(m) }
+func (*GetLocalRefsRequest) ProtoMessage()    {}
+func (*GetLocalRefsRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{17}
 }
-func (m *GetRefsRequest) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_GetRefsRequest.Unmarshal(m, b)
+func (m *GetLocalRefsRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GetLocalRefsRequest.Unmarshal(m, b)
 }
-func (m *GetRefsRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_GetRefsRequest.Marshal(b, m, deterministic)
+func (m *GetLocalRefsRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GetLocalRefsRequest.Marshal(b, m, deterministic)
 }
-func (dst *GetRefsRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetRefsRequest.Merge(dst, src)
+func (dst *GetLocalRefsRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetLocalRefsRequest.Merge(dst, src)
 }
-func (m *GetRefsRequest) XXX_Size() int {
-	return xxx_messageInfo_GetRefsRequest.Size(m)
+func (m *GetLocalRefsRequest) XXX_Size() int {
+	return xxx_messageInfo_GetLocalRefsRequest.Size(m)
 }
-func (m *GetRefsRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetRefsRequest.DiscardUnknown(m)
+func (m *GetLocalRefsRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetLocalRefsRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetRefsRequest proto.InternalMessageInfo
+var xxx_messageInfo_GetLocalRefsRequest proto.InternalMessageInfo
 
-func (m *GetRefsRequest) GetRepoID() string {
+func (m *GetLocalRefsRequest) GetRepoID() string {
 	if m != nil {
 		return m.RepoID
 	}
 	return ""
 }
 
-func (m *GetRefsRequest) GetPageSize() uint64 {
+func (m *GetLocalRefsRequest) GetPageSize() uint64 {
 	if m != nil {
 		return m.PageSize
 	}
 	return 0
 }
 
-func (m *GetRefsRequest) GetPage() uint64 {
+func (m *GetLocalRefsRequest) GetPage() uint64 {
 	if m != nil {
 		return m.Page
 	}
 	return 0
 }
 
-type GetRefsResponse struct {
+type GetLocalRefsResponse struct {
 	Total                uint64   `protobuf:"varint,1,opt,name=total,proto3" json:"total,omitempty"`
 	Refs                 []*Ref   `protobuf:"bytes,2,rep,name=refs,proto3" json:"refs,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -723,38 +723,138 @@ type GetRefsResponse struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *GetRefsResponse) Reset()         { *m = GetRefsResponse{} }
-func (m *GetRefsResponse) String() string { return proto.CompactTextString(m) }
-func (*GetRefsResponse) ProtoMessage()    {}
-func (*GetRefsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{18}
+func (m *GetLocalRefsResponse) Reset()         { *m = GetLocalRefsResponse{} }
+func (m *GetLocalRefsResponse) String() string { return proto.CompactTextString(m) }
+func (*GetLocalRefsResponse) ProtoMessage()    {}
+func (*GetLocalRefsResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{18}
 }
-func (m *GetRefsResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_GetRefsResponse.Unmarshal(m, b)
+func (m *GetLocalRefsResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GetLocalRefsResponse.Unmarshal(m, b)
 }
-func (m *GetRefsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_GetRefsResponse.Marshal(b, m, deterministic)
+func (m *GetLocalRefsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GetLocalRefsResponse.Marshal(b, m, deterministic)
 }
-func (dst *GetRefsResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetRefsResponse.Merge(dst, src)
+func (dst *GetLocalRefsResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetLocalRefsResponse.Merge(dst, src)
 }
-func (m *GetRefsResponse) XXX_Size() int {
-	return xxx_messageInfo_GetRefsResponse.Size(m)
+func (m *GetLocalRefsResponse) XXX_Size() int {
+	return xxx_messageInfo_GetLocalRefsResponse.Size(m)
 }
-func (m *GetRefsResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetRefsResponse.DiscardUnknown(m)
+func (m *GetLocalRefsResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetLocalRefsResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetRefsResponse proto.InternalMessageInfo
+var xxx_messageInfo_GetLocalRefsResponse proto.InternalMessageInfo
 
-func (m *GetRefsResponse) GetTotal() uint64 {
+func (m *GetLocalRefsResponse) GetTotal() uint64 {
 	if m != nil {
 		return m.Total
 	}
 	return 0
 }
 
-func (m *GetRefsResponse) GetRefs() []*Ref {
+func (m *GetLocalRefsResponse) GetRefs() []*Ref {
+	if m != nil {
+		return m.Refs
+	}
+	return nil
+}
+
+type GetRemoteRefsRequest struct {
+	RepoID               string   `protobuf:"bytes,1,opt,name=repoID,proto3" json:"repoID,omitempty"`
+	PageSize             uint64   `protobuf:"varint,2,opt,name=pageSize,proto3" json:"pageSize,omitempty"`
+	Page                 uint64   `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *GetRemoteRefsRequest) Reset()         { *m = GetRemoteRefsRequest{} }
+func (m *GetRemoteRefsRequest) String() string { return proto.CompactTextString(m) }
+func (*GetRemoteRefsRequest) ProtoMessage()    {}
+func (*GetRemoteRefsRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{19}
+}
+func (m *GetRemoteRefsRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GetRemoteRefsRequest.Unmarshal(m, b)
+}
+func (m *GetRemoteRefsRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GetRemoteRefsRequest.Marshal(b, m, deterministic)
+}
+func (dst *GetRemoteRefsRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetRemoteRefsRequest.Merge(dst, src)
+}
+func (m *GetRemoteRefsRequest) XXX_Size() int {
+	return xxx_messageInfo_GetRemoteRefsRequest.Size(m)
+}
+func (m *GetRemoteRefsRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetRemoteRefsRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetRemoteRefsRequest proto.InternalMessageInfo
+
+func (m *GetRemoteRefsRequest) GetRepoID() string {
+	if m != nil {
+		return m.RepoID
+	}
+	return ""
+}
+
+func (m *GetRemoteRefsRequest) GetPageSize() uint64 {
+	if m != nil {
+		return m.PageSize
+	}
+	return 0
+}
+
+func (m *GetRemoteRefsRequest) GetPage() uint64 {
+	if m != nil {
+		return m.Page
+	}
+	return 0
+}
+
+type GetRemoteRefsResponse struct {
+	Total                uint64   `protobuf:"varint,1,opt,name=total,proto3" json:"total,omitempty"`
+	Refs                 []*Ref   `protobuf:"bytes,2,rep,name=refs,proto3" json:"refs,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *GetRemoteRefsResponse) Reset()         { *m = GetRemoteRefsResponse{} }
+func (m *GetRemoteRefsResponse) String() string { return proto.CompactTextString(m) }
+func (*GetRemoteRefsResponse) ProtoMessage()    {}
+func (*GetRemoteRefsResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{20}
+}
+func (m *GetRemoteRefsResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GetRemoteRefsResponse.Unmarshal(m, b)
+}
+func (m *GetRemoteRefsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GetRemoteRefsResponse.Marshal(b, m, deterministic)
+}
+func (dst *GetRemoteRefsResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetRemoteRefsResponse.Merge(dst, src)
+}
+func (m *GetRemoteRefsResponse) XXX_Size() int {
+	return xxx_messageInfo_GetRemoteRefsResponse.Size(m)
+}
+func (m *GetRemoteRefsResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetRemoteRefsResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetRemoteRefsResponse proto.InternalMessageInfo
+
+func (m *GetRemoteRefsResponse) GetTotal() uint64 {
+	if m != nil {
+		return m.Total
+	}
+	return 0
+}
+
+func (m *GetRemoteRefsResponse) GetRefs() []*Ref {
 	if m != nil {
 		return m.Refs
 	}
@@ -774,7 +874,7 @@ func (m *UpdateRefRequest) Reset()         { *m = UpdateRefRequest{} }
 func (m *UpdateRefRequest) String() string { return proto.CompactTextString(m) }
 func (*UpdateRefRequest) ProtoMessage()    {}
 func (*UpdateRefRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{19}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{21}
 }
 func (m *UpdateRefRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_UpdateRefRequest.Unmarshal(m, b)
@@ -825,7 +925,7 @@ func (m *UpdateRefResponse) Reset()         { *m = UpdateRefResponse{} }
 func (m *UpdateRefResponse) String() string { return proto.CompactTextString(m) }
 func (*UpdateRefResponse) ProtoMessage()    {}
 func (*UpdateRefResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{20}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{22}
 }
 func (m *UpdateRefResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_UpdateRefResponse.Unmarshal(m, b)
@@ -859,7 +959,7 @@ func (m *GetRepoUsersRequest) Reset()         { *m = GetRepoUsersRequest{} }
 func (m *GetRepoUsersRequest) String() string { return proto.CompactTextString(m) }
 func (*GetRepoUsersRequest) ProtoMessage()    {}
 func (*GetRepoUsersRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{21}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{23}
 }
 func (m *GetRepoUsersRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetRepoUsersRequest.Unmarshal(m, b)
@@ -919,7 +1019,7 @@ func (m *GetRepoUsersResponse) Reset()         { *m = GetRepoUsersResponse{} }
 func (m *GetRepoUsersResponse) String() string { return proto.CompactTextString(m) }
 func (*GetRepoUsersResponse) ProtoMessage()    {}
 func (*GetRepoUsersResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{22}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{24}
 }
 func (m *GetRepoUsersResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetRepoUsersResponse.Unmarshal(m, b)
@@ -964,7 +1064,7 @@ func (m *ReplicationRequest) Reset()         { *m = ReplicationRequest{} }
 func (m *ReplicationRequest) String() string { return proto.CompactTextString(m) }
 func (*ReplicationRequest) ProtoMessage()    {}
 func (*ReplicationRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{23}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{25}
 }
 func (m *ReplicationRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ReplicationRequest.Unmarshal(m, b)
@@ -1001,7 +1101,7 @@ func (m *ReplicationResponse) Reset()         { *m = ReplicationResponse{} }
 func (m *ReplicationResponse) String() string { return proto.CompactTextString(m) }
 func (*ReplicationResponse) ProtoMessage()    {}
 func (*ReplicationResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{24}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{26}
 }
 func (m *ReplicationResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ReplicationResponse.Unmarshal(m, b)
@@ -1034,7 +1134,7 @@ func (m *GetRepoHistoryRequest) Reset()         { *m = GetRepoHistoryRequest{} }
 func (m *GetRepoHistoryRequest) String() string { return proto.CompactTextString(m) }
 func (*GetRepoHistoryRequest) ProtoMessage()    {}
 func (*GetRepoHistoryRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{25}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{27}
 }
 func (m *GetRepoHistoryRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetRepoHistoryRequest.Unmarshal(m, b)
@@ -1089,7 +1189,7 @@ func (m *Commit) Reset()         { *m = Commit{} }
 func (m *Commit) String() string { return proto.CompactTextString(m) }
 func (*Commit) ProtoMessage()    {}
 func (*Commit) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{26}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{28}
 }
 func (m *Commit) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Commit.Unmarshal(m, b)
@@ -1148,7 +1248,7 @@ func (m *GetRepoHistoryResponse) Reset()         { *m = GetRepoHistoryResponse{}
 func (m *GetRepoHistoryResponse) String() string { return proto.CompactTextString(m) }
 func (*GetRepoHistoryResponse) ProtoMessage()    {}
 func (*GetRepoHistoryResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{27}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{29}
 }
 func (m *GetRepoHistoryResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetRepoHistoryResponse.Unmarshal(m, b)
@@ -1187,7 +1287,7 @@ func (m *GetRepoFilesRequest) Reset()         { *m = GetRepoFilesRequest{} }
 func (m *GetRepoFilesRequest) String() string { return proto.CompactTextString(m) }
 func (*GetRepoFilesRequest) ProtoMessage()    {}
 func (*GetRepoFilesRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{28}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{30}
 }
 func (m *GetRepoFilesRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetRepoFilesRequest.Unmarshal(m, b)
@@ -1237,7 +1337,7 @@ func (m *File) Reset()         { *m = File{} }
 func (m *File) String() string { return proto.CompactTextString(m) }
 func (*File) ProtoMessage()    {}
 func (*File) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{29}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{31}
 }
 func (m *File) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_File.Unmarshal(m, b)
@@ -1310,7 +1410,7 @@ func (m *GetRepoFilesResponse) Reset()         { *m = GetRepoFilesResponse{} }
 func (m *GetRepoFilesResponse) String() string { return proto.CompactTextString(m) }
 func (*GetRepoFilesResponse) ProtoMessage()    {}
 func (*GetRepoFilesResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{30}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{32}
 }
 func (m *GetRepoFilesResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetRepoFilesResponse.Unmarshal(m, b)
@@ -1350,7 +1450,7 @@ func (m *RepoHasObjectRequest) Reset()         { *m = RepoHasObjectRequest{} }
 func (m *RepoHasObjectRequest) String() string { return proto.CompactTextString(m) }
 func (*RepoHasObjectRequest) ProtoMessage()    {}
 func (*RepoHasObjectRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{31}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{33}
 }
 func (m *RepoHasObjectRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RepoHasObjectRequest.Unmarshal(m, b)
@@ -1402,7 +1502,7 @@ func (m *RepoHasObjectResponse) Reset()         { *m = RepoHasObjectResponse{} }
 func (m *RepoHasObjectResponse) String() string { return proto.CompactTextString(m) }
 func (*RepoHasObjectResponse) ProtoMessage()    {}
 func (*RepoHasObjectResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_noderpc_c4fab966fcc7ff5d, []int{32}
+	return fileDescriptor_noderpc_a59e585ae115d9ee, []int{34}
 }
 func (m *RepoHasObjectResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RepoHasObjectResponse.Unmarshal(m, b)
@@ -1447,8 +1547,10 @@ func init() {
 	proto.RegisterType((*AnnounceRepoContentRequest)(nil), "noderpc.AnnounceRepoContentRequest")
 	proto.RegisterType((*AnnounceRepoContentResponse)(nil), "noderpc.AnnounceRepoContentResponse")
 	proto.RegisterType((*Ref)(nil), "noderpc.Ref")
-	proto.RegisterType((*GetRefsRequest)(nil), "noderpc.GetRefsRequest")
-	proto.RegisterType((*GetRefsResponse)(nil), "noderpc.GetRefsResponse")
+	proto.RegisterType((*GetLocalRefsRequest)(nil), "noderpc.GetLocalRefsRequest")
+	proto.RegisterType((*GetLocalRefsResponse)(nil), "noderpc.GetLocalRefsResponse")
+	proto.RegisterType((*GetRemoteRefsRequest)(nil), "noderpc.GetRemoteRefsRequest")
+	proto.RegisterType((*GetRemoteRefsResponse)(nil), "noderpc.GetRemoteRefsResponse")
 	proto.RegisterType((*UpdateRefRequest)(nil), "noderpc.UpdateRefRequest")
 	proto.RegisterType((*UpdateRefResponse)(nil), "noderpc.UpdateRefResponse")
 	proto.RegisterType((*GetRepoUsersRequest)(nil), "noderpc.GetRepoUsersRequest")
@@ -1485,7 +1587,8 @@ type NodeRPCClient interface {
 	GetLocalRepos(ctx context.Context, in *GetLocalReposRequest, opts ...grpc.CallOption) (NodeRPC_GetLocalReposClient, error)
 	SetReplicationPolicy(ctx context.Context, in *SetReplicationPolicyRequest, opts ...grpc.CallOption) (*SetReplicationPolicyResponse, error)
 	AnnounceRepoContent(ctx context.Context, in *AnnounceRepoContentRequest, opts ...grpc.CallOption) (*AnnounceRepoContentResponse, error)
-	GetRefs(ctx context.Context, in *GetRefsRequest, opts ...grpc.CallOption) (*GetRefsResponse, error)
+	GetLocalRefs(ctx context.Context, in *GetLocalRefsRequest, opts ...grpc.CallOption) (*GetLocalRefsResponse, error)
+	GetRemoteRefs(ctx context.Context, in *GetRemoteRefsRequest, opts ...grpc.CallOption) (*GetRemoteRefsResponse, error)
 	GetRepoUsers(ctx context.Context, in *GetRepoUsersRequest, opts ...grpc.CallOption) (*GetRepoUsersResponse, error)
 	UpdateRef(ctx context.Context, in *UpdateRefRequest, opts ...grpc.CallOption) (*UpdateRefResponse, error)
 	RequestReplication(ctx context.Context, in *ReplicationRequest, opts ...grpc.CallOption) (*ReplicationResponse, error)
@@ -1620,9 +1723,18 @@ func (c *nodeRPCClient) AnnounceRepoContent(ctx context.Context, in *AnnounceRep
 	return out, nil
 }
 
-func (c *nodeRPCClient) GetRefs(ctx context.Context, in *GetRefsRequest, opts ...grpc.CallOption) (*GetRefsResponse, error) {
-	out := new(GetRefsResponse)
-	err := c.cc.Invoke(ctx, "/noderpc.NodeRPC/GetRefs", in, out, opts...)
+func (c *nodeRPCClient) GetLocalRefs(ctx context.Context, in *GetLocalRefsRequest, opts ...grpc.CallOption) (*GetLocalRefsResponse, error) {
+	out := new(GetLocalRefsResponse)
+	err := c.cc.Invoke(ctx, "/noderpc.NodeRPC/GetLocalRefs", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeRPCClient) GetRemoteRefs(ctx context.Context, in *GetRemoteRefsRequest, opts ...grpc.CallOption) (*GetRemoteRefsResponse, error) {
+	out := new(GetRemoteRefsResponse)
+	err := c.cc.Invoke(ctx, "/noderpc.NodeRPC/GetRemoteRefs", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1693,7 +1805,8 @@ type NodeRPCServer interface {
 	GetLocalRepos(*GetLocalReposRequest, NodeRPC_GetLocalReposServer) error
 	SetReplicationPolicy(context.Context, *SetReplicationPolicyRequest) (*SetReplicationPolicyResponse, error)
 	AnnounceRepoContent(context.Context, *AnnounceRepoContentRequest) (*AnnounceRepoContentResponse, error)
-	GetRefs(context.Context, *GetRefsRequest) (*GetRefsResponse, error)
+	GetLocalRefs(context.Context, *GetLocalRefsRequest) (*GetLocalRefsResponse, error)
+	GetRemoteRefs(context.Context, *GetRemoteRefsRequest) (*GetRemoteRefsResponse, error)
 	GetRepoUsers(context.Context, *GetRepoUsersRequest) (*GetRepoUsersResponse, error)
 	UpdateRef(context.Context, *UpdateRefRequest) (*UpdateRefResponse, error)
 	RequestReplication(context.Context, *ReplicationRequest) (*ReplicationResponse, error)
@@ -1856,20 +1969,38 @@ func _NodeRPC_AnnounceRepoContent_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NodeRPC_GetRefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetRefsRequest)
+func _NodeRPC_GetLocalRefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLocalRefsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NodeRPCServer).GetRefs(ctx, in)
+		return srv.(NodeRPCServer).GetLocalRefs(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/noderpc.NodeRPC/GetRefs",
+		FullMethod: "/noderpc.NodeRPC/GetLocalRefs",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NodeRPCServer).GetRefs(ctx, req.(*GetRefsRequest))
+		return srv.(NodeRPCServer).GetLocalRefs(ctx, req.(*GetLocalRefsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeRPC_GetRemoteRefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRemoteRefsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRPCServer).GetRemoteRefs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/noderpc.NodeRPC/GetRemoteRefs",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRPCServer).GetRemoteRefs(ctx, req.(*GetRemoteRefsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2011,8 +2142,12 @@ var _NodeRPC_serviceDesc = grpc.ServiceDesc{
 			Handler:    _NodeRPC_AnnounceRepoContent_Handler,
 		},
 		{
-			MethodName: "GetRefs",
-			Handler:    _NodeRPC_GetRefs_Handler,
+			MethodName: "GetLocalRefs",
+			Handler:    _NodeRPC_GetLocalRefs_Handler,
+		},
+		{
+			MethodName: "GetRemoteRefs",
+			Handler:    _NodeRPC_GetRemoteRefs_Handler,
 		},
 		{
 			MethodName: "GetRepoUsers",
@@ -2054,73 +2189,75 @@ var _NodeRPC_serviceDesc = grpc.ServiceDesc{
 	Metadata: "noderpc.proto",
 }
 
-func init() { proto.RegisterFile("noderpc.proto", fileDescriptor_noderpc_c4fab966fcc7ff5d) }
+func init() { proto.RegisterFile("noderpc.proto", fileDescriptor_noderpc_a59e585ae115d9ee) }
 
-var fileDescriptor_noderpc_c4fab966fcc7ff5d = []byte{
-	// 1033 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x57, 0xe1, 0x72, 0x1b, 0x35,
-	0x10, 0xb6, 0x63, 0x27, 0xb6, 0xb7, 0x76, 0x12, 0x64, 0x3b, 0x3d, 0x2e, 0x4e, 0xc8, 0xa8, 0xa5,
-	0x13, 0x66, 0xa0, 0x74, 0x5a, 0xf8, 0xc5, 0x00, 0x93, 0x26, 0xd3, 0xd4, 0x4c, 0x29, 0x46, 0xa6,
-	0x43, 0x87, 0x1f, 0x30, 0x8a, 0x2d, 0xc7, 0x47, 0xed, 0xd3, 0xf5, 0x24, 0xcf, 0x10, 0x1e, 0x87,
-	0x57, 0xe2, 0x85, 0x18, 0xe9, 0x74, 0xb2, 0xee, 0x7c, 0x8e, 0x43, 0xff, 0x49, 0xbb, 0xab, 0x6f,
-	0x6f, 0x3f, 0xad, 0xf4, 0xe9, 0xa0, 0x15, 0xf2, 0x31, 0x8b, 0xa3, 0xd1, 0xe3, 0x28, 0xe6, 0x92,
-	0xa3, 0x9a, 0x99, 0xe2, 0x27, 0x80, 0x86, 0x4c, 0xbe, 0x11, 0x2c, 0x0e, 0xe9, 0x9c, 0x11, 0xf6,
-	0x7e, 0xc1, 0x84, 0x44, 0x3e, 0xd4, 0x17, 0xc6, 0xe4, 0x95, 0x4f, 0xca, 0xa7, 0x0d, 0x62, 0xe7,
-	0xb8, 0x0b, 0xed, 0xcc, 0x0a, 0x11, 0xf1, 0x50, 0x30, 0xfc, 0x2d, 0xec, 0xf5, 0xc3, 0x40, 0x12,
-	0x16, 0xf1, 0x14, 0xe5, 0x00, 0x76, 0x62, 0x16, 0xf1, 0xfe, 0x85, 0xc1, 0x30, 0x33, 0x84, 0xa0,
-	0x1a, 0x51, 0x39, 0xf5, 0xb6, 0xb4, 0x55, 0x8f, 0xf1, 0x23, 0xd8, 0x5f, 0x2e, 0x4f, 0x20, 0x6d,
-	0x5c, 0xd9, 0x89, 0x7b, 0x01, 0xfb, 0x97, 0x4c, 0xfe, 0x74, 0xf5, 0x27, 0x1b, 0xc9, 0x4d, 0x79,
-	0x7c, 0xa8, 0x73, 0x1d, 0xd8, 0xbf, 0xd0, 0xb9, 0x9a, 0xc4, 0xce, 0xf1, 0x17, 0x70, 0xdf, 0xc1,
-	0x49, 0x12, 0x0e, 0xe8, 0xe8, 0x1d, 0x93, 0x2a, 0xed, 0x98, 0x4a, 0xaa, 0xc1, 0x9a, 0x44, 0x8f,
-	0xf1, 0x97, 0xd0, 0x25, 0xec, 0x3a, 0x10, 0x92, 0xc5, 0x44, 0x83, 0x6f, 0xc8, 0x8d, 0x3d, 0x38,
-	0xc8, 0x2f, 0x30, 0x44, 0x3d, 0x83, 0xee, 0x2f, 0x31, 0x1d, 0xbd, 0x7b, 0xc5, 0x47, 0x74, 0xe6,
-	0xd2, 0xe5, 0x43, 0x5d, 0x2d, 0x1e, 0x2c, 0x4b, 0xb6, 0x73, 0x05, 0x97, 0x5f, 0x64, 0xe0, 0x0e,
-	0xa0, 0x73, 0xc9, 0xa4, 0xb5, 0x0b, 0x83, 0x86, 0xfb, 0x70, 0x98, 0xb3, 0x67, 0x8a, 0xfc, 0x3f,
-	0x7b, 0xf3, 0x07, 0x1c, 0x0e, 0x99, 0xda, 0x9a, 0x59, 0x30, 0xa2, 0x32, 0xe0, 0xe1, 0x80, 0xcf,
-	0x82, 0xd1, 0xcd, 0x26, 0xfa, 0x4f, 0x61, 0x4f, 0x4c, 0xf9, 0x62, 0x36, 0x4e, 0x57, 0x32, 0x8d,
-	0x5a, 0x27, 0x79, 0x33, 0x3e, 0x86, 0x5e, 0x71, 0x02, 0x53, 0xe3, 0x57, 0xe0, 0x9f, 0x85, 0x21,
-	0x5f, 0x84, 0x23, 0xa6, 0x6a, 0x39, 0xe7, 0xa1, 0x64, 0xe1, 0xa6, 0xed, 0xc7, 0x47, 0x70, 0x58,
-	0xb8, 0xca, 0x80, 0x7e, 0x0f, 0x15, 0xc2, 0x26, 0xc8, 0x83, 0x5a, 0xcc, 0x26, 0xaf, 0x97, 0x9d,
-	0x9e, 0x4e, 0xd1, 0x31, 0xc0, 0x88, 0xcf, 0xe7, 0x81, 0x7c, 0x49, 0x45, 0x4a, 0x88, 0x63, 0xc1,
-	0x6f, 0x61, 0xf7, 0x52, 0x7d, 0xf5, 0x44, 0xdc, 0xa1, 0x11, 0x23, 0x7a, 0xcd, 0x86, 0xc1, 0xdf,
-	0x09, 0x05, 0x55, 0x62, 0xe7, 0x09, 0xe1, 0xd7, 0xcc, 0xab, 0x68, 0xbb, 0x1e, 0xe3, 0x3e, 0xec,
-	0x59, 0x64, 0x73, 0x16, 0x3a, 0xb0, 0x2d, 0xb9, 0xa4, 0x33, 0x8d, 0x5c, 0x25, 0xc9, 0x04, 0x9d,
-	0x40, 0x35, 0x66, 0x13, 0xe1, 0x6d, 0x9d, 0x54, 0x4e, 0xef, 0x3d, 0x6d, 0x3e, 0x4e, 0x0f, 0x39,
-	0x61, 0x13, 0xa2, 0x3d, 0x78, 0x0c, 0xfb, 0x6f, 0xa2, 0x31, 0x95, 0x4c, 0x99, 0x36, 0x7c, 0xa6,
-	0x43, 0xc5, 0xd6, 0x6d, 0x54, 0x54, 0x56, 0xa8, 0x68, 0xc3, 0x47, 0x4e, 0x16, 0x43, 0xf0, 0x7b,
-	0x68, 0xeb, 0x2a, 0x22, 0xae, 0x2e, 0x0b, 0x71, 0x87, 0x5b, 0x41, 0xde, 0x44, 0x29, 0x41, 0x7a,
-	0x9c, 0x21, 0xae, 0xb2, 0x86, 0xb8, 0xaa, 0x43, 0xdc, 0x73, 0x7d, 0x18, 0x9c, 0x94, 0xb7, 0xb2,
-	0xd7, 0x81, 0x6d, 0x75, 0xab, 0x25, 0xf4, 0x35, 0x48, 0x32, 0xc1, 0x9f, 0x03, 0x72, 0x3a, 0x71,
-	0x53, 0x93, 0x75, 0xa1, 0x9d, 0x89, 0x36, 0xb5, 0xff, 0x0a, 0x5d, 0xf3, 0x21, 0x2f, 0x03, 0x21,
-	0x79, 0x7c, 0xf3, 0x01, 0x77, 0x62, 0x61, 0x6b, 0xfc, 0x05, 0x3b, 0xe7, 0x9a, 0xf7, 0xdc, 0x9e,
-	0x94, 0xf3, 0x7b, 0xa2, 0x32, 0xd1, 0x85, 0x9c, 0xf2, 0xd8, 0x60, 0x9a, 0x99, 0xda, 0xe5, 0x39,
-	0x13, 0x22, 0x05, 0x6e, 0x90, 0x74, 0x8a, 0x7a, 0xd0, 0x90, 0xc1, 0x9c, 0x09, 0x49, 0xe7, 0x91,
-	0xa1, 0x75, 0x69, 0xc0, 0xe7, 0x70, 0x90, 0x2f, 0xc9, 0xb0, 0xfb, 0x19, 0xd4, 0x92, 0xbc, 0xc2,
-	0x2b, 0xeb, 0x46, 0xdc, 0xb3, 0x8d, 0x98, 0x7c, 0x2b, 0x49, 0xfd, 0xf8, 0xcc, 0xf6, 0xc4, 0x8b,
-	0x60, 0xc6, 0xc4, 0x87, 0x28, 0xc5, 0x3f, 0x65, 0xa8, 0xaa, 0xc5, 0xca, 0xe9, 0x08, 0x94, 0x1e,
-	0x2b, 0xdb, 0x34, 0x3d, 0xad, 0x4d, 0xa2, 0xc7, 0xca, 0x36, 0xe7, 0xe3, 0xa4, 0xda, 0x16, 0xd1,
-	0x63, 0x65, 0x13, 0xaa, 0xa9, 0x4c, 0xf3, 0xa8, 0x31, 0x7a, 0x04, 0xbb, 0x8b, 0x50, 0x48, 0x7a,
-	0xcd, 0xc6, 0x43, 0x49, 0xe5, 0x42, 0x78, 0xdb, 0x1a, 0x39, 0x67, 0x45, 0x18, 0x9a, 0x99, 0xa8,
-	0x1d, 0x1d, 0x95, 0xb1, 0xe1, 0x6f, 0x6c, 0x23, 0x9a, 0x3a, 0x0d, 0x55, 0x0f, 0x60, 0x7b, 0xa2,
-	0x0c, 0x86, 0xa8, 0x96, 0x25, 0x4a, 0x85, 0x91, 0xc4, 0x87, 0x7f, 0x87, 0x8e, 0xa6, 0x99, 0x8a,
-	0xbb, 0xe9, 0x5c, 0x51, 0xef, 0xb8, 0xda, 0x57, 0xc9, 0x69, 0xdf, 0xd7, 0x4a, 0xcc, 0x32, 0xf8,
-	0xe6, 0xeb, 0x7a, 0xd0, 0x98, 0xa6, 0x46, 0x9d, 0xa3, 0x4e, 0x96, 0x86, 0xa7, 0xff, 0x36, 0xa0,
-	0xf6, 0x9a, 0x8f, 0x19, 0x19, 0x9c, 0xa3, 0x1f, 0xe0, 0x9e, 0xf3, 0x08, 0x40, 0x87, 0xb6, 0x8e,
-	0xd5, 0xc7, 0x84, 0xdf, 0x2b, 0x76, 0x9a, 0x93, 0x52, 0x42, 0x67, 0x50, 0x4f, 0xa5, 0x1f, 0x79,
-	0x36, 0x36, 0xf7, 0x98, 0xf0, 0x3f, 0x2e, 0xf0, 0x58, 0x88, 0x57, 0xd0, 0xb0, 0x6a, 0x8e, 0x96,
-	0x91, 0xf9, 0x97, 0x82, 0x7f, 0x52, 0xe4, 0x72, 0x75, 0x11, 0x97, 0x9e, 0x94, 0xd1, 0x10, 0x76,
-	0xb3, 0xda, 0x8d, 0x8e, 0x9d, 0x9b, 0xb5, 0xe0, 0x15, 0xe0, 0x7f, 0xb2, 0xd6, 0x6f, 0x3f, 0x71,
-	0x08, 0xbb, 0x59, 0x05, 0x77, 0x40, 0x0b, 0xdf, 0x03, 0x0e, 0xe8, 0x1a, 0xe9, 0x2f, 0xa1, 0xb7,
-	0xd0, 0xca, 0x88, 0x3c, 0x3a, 0x72, 0x0b, 0x5c, 0x79, 0x14, 0xf8, 0x0f, 0xd7, 0xb9, 0x57, 0x38,
-	0x60, 0xd0, 0x29, 0x92, 0x64, 0xf4, 0xd0, 0xdd, 0xcc, 0x75, 0x4f, 0x02, 0xff, 0xd3, 0x0d, 0x51,
-	0xb6, 0x80, 0x2b, 0x68, 0x17, 0x68, 0x34, 0x7a, 0x60, 0xd7, 0xaf, 0xd7, 0x7d, 0xa7, 0x98, 0xdb,
-	0x64, 0xbe, 0x84, 0xbe, 0x83, 0x9a, 0x51, 0x53, 0x74, 0xdf, 0xad, 0xdf, 0x51, 0x6e, 0xdf, 0x5b,
-	0x75, 0xd8, 0xf5, 0x3f, 0x42, 0xd3, 0x15, 0x15, 0xd4, 0xcb, 0xc6, 0x66, 0xe5, 0xcd, 0x3f, 0x5a,
-	0xe3, 0xb5, 0x70, 0x17, 0xd0, 0xb0, 0x5a, 0xe9, 0xf4, 0x6a, 0x5e, 0xa5, 0x7d, 0xbf, 0xc8, 0x65,
-	0x51, 0x7e, 0x56, 0x2a, 0xa5, 0x03, 0x1d, 0x7a, 0x9d, 0x73, 0xb8, 0x2a, 0x61, 0xce, 0x39, 0x2c,
-	0x52, 0x2c, 0xdd, 0xa1, 0xd9, 0x0b, 0xde, 0xe9, 0xd0, 0x42, 0x31, 0x73, 0x3a, 0xb4, 0x58, 0x19,
-	0x32, 0xe4, 0xe9, 0x8b, 0x70, 0x95, 0x3c, 0x57, 0x07, 0x56, 0xc9, 0xcb, 0xdc, 0x9e, 0xb8, 0x84,
-	0x06, 0xd0, 0xca, 0x5c, 0x5d, 0x4e, 0xc3, 0x17, 0x5d, 0x99, 0xfe, 0xf1, 0x3a, 0x77, 0x8a, 0xf8,
-	0xbc, 0xfa, 0xdb, 0x56, 0x74, 0x75, 0xb5, 0xa3, 0x7f, 0x8b, 0x9e, 0xfd, 0x17, 0x00, 0x00, 0xff,
-	0xff, 0xef, 0x2c, 0x33, 0x36, 0x27, 0x0d, 0x00, 0x00,
+var fileDescriptor_noderpc_a59e585ae115d9ee = []byte{
+	// 1066 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x57, 0x6f, 0x6f, 0xdb, 0x36,
+	0x13, 0x8f, 0x63, 0x27, 0xb1, 0xaf, 0xce, 0x9f, 0x87, 0x8e, 0xf3, 0x68, 0x8a, 0xe3, 0x05, 0x6c,
+	0x57, 0x64, 0xc0, 0xd6, 0x15, 0xed, 0xf6, 0x6a, 0x18, 0x86, 0x34, 0x41, 0xdb, 0x0c, 0x5d, 0xea,
+	0xd1, 0x2b, 0x36, 0x0c, 0xd8, 0x06, 0x45, 0xa6, 0x63, 0xad, 0xb6, 0xa8, 0x8a, 0x34, 0xb0, 0xec,
+	0xe3, 0xec, 0x33, 0xec, 0x03, 0x0e, 0xa4, 0x28, 0x9a, 0x94, 0xa5, 0x38, 0xeb, 0xb0, 0x77, 0xe2,
+	0x1d, 0xf9, 0x3b, 0xde, 0xef, 0x8e, 0x77, 0x27, 0xd8, 0x8e, 0xd9, 0x88, 0xa6, 0x49, 0xf8, 0x28,
+	0x49, 0x99, 0x60, 0x68, 0x4b, 0x2f, 0xf1, 0x63, 0x40, 0x43, 0x2a, 0xde, 0x70, 0x9a, 0xc6, 0xc1,
+	0x8c, 0x12, 0xfa, 0x6e, 0x4e, 0xb9, 0x40, 0x3e, 0x34, 0xe7, 0x5a, 0xe4, 0xd5, 0x8e, 0x6b, 0x27,
+	0x2d, 0x62, 0xd6, 0xb8, 0x0b, 0x1d, 0xe7, 0x04, 0x4f, 0x58, 0xcc, 0x29, 0xfe, 0x0a, 0x76, 0x2f,
+	0xe2, 0x48, 0x10, 0x9a, 0xb0, 0x1c, 0xe5, 0x00, 0x36, 0x53, 0x9a, 0xb0, 0x8b, 0x73, 0x8d, 0xa1,
+	0x57, 0x08, 0x41, 0x23, 0x09, 0xc4, 0xc4, 0x5b, 0x57, 0x52, 0xf5, 0x8d, 0x1f, 0xc2, 0xde, 0xe2,
+	0x78, 0x06, 0x69, 0xf6, 0xd5, 0xac, 0x7d, 0xcf, 0x61, 0xef, 0x05, 0x15, 0xaf, 0xaf, 0x7e, 0xa3,
+	0xa1, 0x58, 0x65, 0xc7, 0x87, 0x26, 0x53, 0x1b, 0x2f, 0xce, 0x95, 0xad, 0x36, 0x31, 0x6b, 0xfc,
+	0x29, 0xfc, 0xdf, 0xc2, 0xc9, 0x0c, 0x0e, 0x82, 0xf0, 0x2d, 0x15, 0xd2, 0xec, 0x28, 0x10, 0x81,
+	0x02, 0x6b, 0x13, 0xf5, 0x8d, 0x3f, 0x83, 0x2e, 0xa1, 0xd7, 0x11, 0x17, 0x34, 0x25, 0x0a, 0x7c,
+	0x85, 0x6d, 0xec, 0xc1, 0x41, 0xf1, 0x80, 0x26, 0xea, 0x29, 0x74, 0xbf, 0x4f, 0x83, 0xf0, 0xed,
+	0x2b, 0x16, 0x06, 0x53, 0x9b, 0x2e, 0x1f, 0x9a, 0xf2, 0xf0, 0x60, 0xe1, 0xb2, 0x59, 0x4b, 0xb8,
+	0xe2, 0x21, 0x0d, 0x77, 0x00, 0xfb, 0x2f, 0xa8, 0x30, 0x72, 0xae, 0xd1, 0xf0, 0x05, 0x1c, 0x16,
+	0xe4, 0x8e, 0x93, 0xff, 0x24, 0x36, 0xbf, 0xc2, 0xe1, 0x90, 0xca, 0xd0, 0x4c, 0xa3, 0x30, 0x10,
+	0x11, 0x8b, 0x07, 0x6c, 0x1a, 0x85, 0x37, 0xab, 0xe8, 0x3f, 0x81, 0x5d, 0x3e, 0x61, 0xf3, 0xe9,
+	0x28, 0x3f, 0x49, 0x15, 0x6a, 0x93, 0x14, 0xc5, 0xb8, 0x0f, 0xbd, 0x72, 0x03, 0xda, 0xc7, 0xcf,
+	0xc1, 0x3f, 0x8d, 0x63, 0x36, 0x8f, 0x43, 0x2a, 0x7d, 0x39, 0x63, 0xb1, 0xa0, 0xf1, 0xaa, 0xf0,
+	0xe3, 0x23, 0x38, 0x2c, 0x3d, 0xa5, 0x41, 0xbf, 0x86, 0x3a, 0xa1, 0x63, 0xe4, 0xc1, 0x56, 0x4a,
+	0xc7, 0x97, 0x8b, 0x4c, 0xcf, 0x97, 0xa8, 0x0f, 0x10, 0xb2, 0xd9, 0x2c, 0x12, 0x2f, 0x03, 0x9e,
+	0x13, 0x62, 0x49, 0xf0, 0xcf, 0xd0, 0x59, 0x30, 0x3c, 0xe6, 0x77, 0xc8, 0xc6, 0x24, 0xb8, 0xa6,
+	0xc3, 0xe8, 0x8f, 0x8c, 0x87, 0x06, 0x31, 0xeb, 0x8c, 0xf5, 0x6b, 0xea, 0xd5, 0x95, 0x5c, 0x7d,
+	0xe3, 0x4b, 0x3b, 0xb0, 0x63, 0x13, 0x3f, 0xb4, 0x0f, 0x1b, 0x82, 0x89, 0x60, 0xaa, 0xe0, 0x1b,
+	0x24, 0x5b, 0xa0, 0x63, 0x68, 0xa4, 0x74, 0xcc, 0xbd, 0xf5, 0xe3, 0xfa, 0xc9, 0xbd, 0x27, 0xed,
+	0x47, 0xf9, 0x73, 0x27, 0x74, 0x4c, 0x94, 0x06, 0xff, 0xa2, 0xf0, 0x08, 0x9d, 0x31, 0x41, 0xff,
+	0x8b, 0xfb, 0xbe, 0x86, 0x6e, 0x01, 0xff, 0x5f, 0x5e, 0x78, 0x04, 0x7b, 0x6f, 0x92, 0x51, 0xa0,
+	0xd0, 0x56, 0x5d, 0xd6, 0x8a, 0xe2, 0xfa, 0x6d, 0x51, 0xac, 0x2f, 0x45, 0xb1, 0x03, 0xff, 0xb3,
+	0xac, 0xe8, 0xdc, 0x78, 0xa7, 0x42, 0x2b, 0xb3, 0x46, 0xd6, 0x39, 0x7e, 0x87, 0x82, 0x26, 0x6e,
+	0x92, 0x9c, 0x26, 0xf5, 0xed, 0xd0, 0x57, 0xaf, 0xa0, 0xaf, 0x61, 0xd1, 0xf7, 0x4c, 0x87, 0xc7,
+	0x98, 0xbc, 0x95, 0xbd, 0x7d, 0xd8, 0x90, 0x05, 0x39, 0xa3, 0xaf, 0x45, 0xb2, 0x05, 0xfe, 0x04,
+	0x90, 0xf5, 0x88, 0x56, 0xbd, 0x8f, 0x2e, 0x74, 0x9c, 0xdd, 0xda, 0xf7, 0x1f, 0x74, 0x1c, 0x13,
+	0xf6, 0x32, 0xe2, 0x82, 0xa5, 0x37, 0xef, 0x51, 0xce, 0x4b, 0x13, 0xe4, 0x77, 0xd8, 0x3c, 0x53,
+	0xbc, 0x17, 0x62, 0x52, 0x2b, 0xc6, 0x44, 0x5a, 0x0a, 0xe6, 0x62, 0xc2, 0x52, 0x8d, 0xa9, 0x57,
+	0x32, 0xca, 0x33, 0xca, 0x79, 0x0e, 0xdc, 0x22, 0xf9, 0x12, 0xf5, 0xa0, 0x25, 0xa2, 0x19, 0xe5,
+	0x22, 0x98, 0x25, 0x9a, 0xd6, 0x85, 0x00, 0x9f, 0xc1, 0x41, 0xd1, 0x25, 0xcd, 0xee, 0xc7, 0xb0,
+	0x95, 0xd9, 0xe5, 0x5e, 0x4d, 0x25, 0xe2, 0xae, 0x49, 0xc4, 0xec, 0xae, 0x24, 0xd7, 0xe3, 0x53,
+	0x93, 0x13, 0xcf, 0xa3, 0x29, 0xe5, 0xef, 0xd3, 0xe4, 0xfe, 0xac, 0x41, 0x43, 0x1e, 0x96, 0x4a,
+	0xab, 0xb7, 0xaa, 0x6f, 0x29, 0x9b, 0xe4, 0x85, 0xa6, 0x4d, 0xd4, 0xb7, 0x94, 0xcd, 0xd8, 0x28,
+	0xf3, 0x76, 0x9b, 0xa8, 0x6f, 0x29, 0xe3, 0x32, 0xa9, 0x74, 0xf2, 0xc8, 0x6f, 0xf4, 0x10, 0x76,
+	0xe6, 0x31, 0x17, 0xc1, 0x35, 0x1d, 0x0d, 0x45, 0x20, 0xe6, 0xdc, 0xdb, 0x50, 0xc8, 0x05, 0x29,
+	0xc2, 0xd0, 0x76, 0x76, 0x6d, 0xaa, 0x5d, 0x8e, 0x0c, 0x7f, 0x69, 0x12, 0x51, 0xfb, 0xa9, 0xa9,
+	0xba, 0x0f, 0x1b, 0x63, 0x29, 0xd0, 0x44, 0x6d, 0x1b, 0xa2, 0xe4, 0x36, 0x92, 0xe9, 0x64, 0x91,
+	0x51, 0x34, 0x07, 0xfc, 0x6e, 0x2d, 0xba, 0x2c, 0x77, 0xec, 0xb6, 0x5d, 0x2f, 0xb4, 0xed, 0x2f,
+	0x64, 0x1f, 0x76, 0xf0, 0xf5, 0xed, 0x7a, 0xd0, 0x9a, 0xe4, 0x42, 0x65, 0xa3, 0x49, 0x16, 0x82,
+	0x27, 0x7f, 0x01, 0x6c, 0x5d, 0xb2, 0x11, 0x25, 0x83, 0x33, 0xf4, 0x0d, 0xdc, 0xb3, 0xe6, 0x17,
+	0x74, 0x68, 0xfc, 0x58, 0x9e, 0x83, 0xfc, 0x5e, 0xb9, 0x52, 0xbf, 0x94, 0x35, 0x74, 0x0a, 0xcd,
+	0x7c, 0x6a, 0x41, 0x9e, 0xd9, 0x5b, 0x98, 0x83, 0xfc, 0x0f, 0x4a, 0x34, 0x06, 0xe2, 0x15, 0xb4,
+	0xcc, 0x20, 0x82, 0x16, 0x3b, 0x8b, 0x43, 0x8e, 0x7f, 0x5c, 0xa6, 0xb2, 0x5b, 0x3a, 0x5e, 0x7b,
+	0x5c, 0x43, 0x43, 0xd8, 0x71, 0xc7, 0x0e, 0xd4, 0xb7, 0x2a, 0x6b, 0xc9, 0x00, 0xe3, 0x7f, 0x58,
+	0xa9, 0x37, 0x57, 0x1c, 0xc2, 0x8e, 0x3b, 0x7c, 0x58, 0xa0, 0xa5, 0xa3, 0x8c, 0x05, 0x5a, 0x31,
+	0xb5, 0xac, 0xa1, 0x1f, 0x61, 0xdb, 0x99, 0x4f, 0xd0, 0x91, 0xed, 0xe0, 0xd2, 0x3c, 0xe3, 0x3f,
+	0xa8, 0x52, 0x2f, 0x71, 0x40, 0x61, 0xbf, 0x6c, 0x9a, 0x40, 0x0f, 0xec, 0x60, 0x56, 0x4d, 0x33,
+	0xfe, 0x47, 0x2b, 0x76, 0x19, 0x07, 0xae, 0xa0, 0x53, 0x32, 0x5e, 0xa0, 0xfb, 0xe6, 0x7c, 0xf5,
+	0xc8, 0x62, 0x39, 0x73, 0xdb, 0x84, 0xb2, 0x86, 0xbe, 0x85, 0xb6, 0x3d, 0x03, 0xa0, 0x5e, 0x09,
+	0x09, 0xa6, 0x93, 0xfb, 0x47, 0x15, 0x5a, 0x03, 0x37, 0x50, 0x9c, 0x2f, 0x5a, 0xb4, 0xcb, 0xf9,
+	0xd2, 0x68, 0xe0, 0xf7, 0xab, 0xd4, 0x85, 0x0b, 0x9a, 0xae, 0xe5, 0x5e, 0xb0, 0xd8, 0x3f, 0xfd,
+	0xa3, 0x0a, 0xad, 0x81, 0x3b, 0x87, 0x96, 0x69, 0xc6, 0xd6, 0x63, 0x28, 0x8e, 0x01, 0xbe, 0x5f,
+	0xa6, 0x32, 0x28, 0xdf, 0xc9, 0x36, 0xa8, 0x36, 0x5a, 0xf1, 0xb3, 0x1e, 0xfa, 0x72, 0x8f, 0xb4,
+	0x1e, 0x7a, 0x59, 0x4b, 0x54, 0x4f, 0xc0, 0xed, 0x20, 0xa8, 0x5f, 0xf4, 0xc5, 0xed, 0x96, 0xd6,
+	0x13, 0x28, 0x6f, 0x3d, 0x0e, 0x79, 0xaa, 0xd2, 0x2e, 0x93, 0x67, 0x37, 0x9a, 0x65, 0xf2, 0x9c,
+	0xf2, 0x9c, 0x45, 0xd7, 0xa9, 0x8d, 0x56, 0x74, 0xcb, 0x6a, 0xb2, 0xdf, 0xaf, 0x52, 0xe7, 0x88,
+	0xcf, 0x1a, 0x3f, 0xad, 0x27, 0x57, 0x57, 0x9b, 0xea, 0x97, 0xf1, 0xe9, 0xdf, 0x01, 0x00, 0x00,
+	0xff, 0xff, 0xbc, 0x9d, 0x53, 0x8e, 0x43, 0x0e, 0x00, 0x00,
 }

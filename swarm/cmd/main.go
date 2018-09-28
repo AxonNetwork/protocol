@@ -287,8 +287,8 @@ var replCommands = map[string]struct {
 		},
 	},
 
-	"get-refs": {
-		"show the list of git refs for the given repository",
+	"remote-refs": {
+		"show the list of remote git refs for the given repository",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
 			if len(args) < 3 {
 				return fmt.Errorf("not enough args")
@@ -304,7 +304,7 @@ var replCommands = map[string]struct {
 				return err
 			}
 
-			refs, total, err := n.GetRefs(ctx, args[0], pageSize, page)
+			refs, total, err := n.GetRemoteRefs(ctx, args[0], pageSize, page)
 			if err != nil {
 				return err
 			}

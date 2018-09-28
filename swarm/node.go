@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -542,11 +543,25 @@ func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*node
 	return n.eth.EnsureRepoIDRegistered(ctx, repoID)
 }
 
+func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]Ref, error) {
+	refs := map[string]Ref{}
+
+	err := util.ExecAndScanStdout(ctx, []string{"git", "show-ref"}, path, func(line string) error {
+		parts := strings.Split(line, " ")
+		refs[parts[1]] = Ref{RefName: parts[1], CommitHash: parts[0]}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return refs, nil
+}
+
 func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
 	return n.eth.GetNumRefs(ctx, repoID)
 }
 
-func (n *Node) GetRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]Ref, uint64, error) {
+func (n *Node) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]Ref, uint64, error) {
 	return n.eth.GetRefs(ctx, repoID, pageSize, page)
 }
 

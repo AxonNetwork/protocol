@@ -155,8 +155,8 @@ func (c *Client) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	return errors.WithStack(err)
 }
 
-func (c *Client) GetRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]wire.Ref, uint64, error) {
-	resp, err := c.client.GetRefs(ctx, &pb.GetRefsRequest{RepoID: repoID, PageSize: pageSize, Page: page})
+func (c *Client) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]wire.Ref, uint64, error) {
+	resp, err := c.client.GetRemoteRefs(ctx, &pb.GetRemoteRefsRequest{RepoID: repoID, PageSize: pageSize, Page: page})
 	if err != nil {
 		return nil, 0, errors.WithStack(err)
 	}
@@ -172,7 +172,7 @@ const (
 	REF_PAGE_SIZE = 10 // @@TODO: make configurable
 )
 
-func (c *Client) GetAllRefs(ctx context.Context, repoID string) (map[string]wire.Ref, error) {
+func (c *Client) GetAllRemoteRefs(ctx context.Context, repoID string) (map[string]wire.Ref, error) {
 	var page uint64
 	var numRefs uint64
 	var err error
@@ -181,7 +181,7 @@ func (c *Client) GetAllRefs(ctx context.Context, repoID string) (map[string]wire
 
 	for {
 		var refs map[string]wire.Ref
-		refs, numRefs, err = c.GetRefs(ctx, repoID, REF_PAGE_SIZE, page)
+		refs, numRefs, err = c.GetRemoteRefs(ctx, repoID, REF_PAGE_SIZE, page)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
