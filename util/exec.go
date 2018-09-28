@@ -33,7 +33,11 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 		}
 	}()
 
-	cmd.Start()
+	err = cmd.Start()
+	if err != nil {
+		return err
+	}
+
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		line := scanner.Text()
