@@ -123,7 +123,8 @@ message ReplicationResponse {}
 
 message GetRepoHistoryRequest {
     string repoID = 1;
-    uint64 page = 2;
+    string path = 2;
+    uint64 page = 3;
 }
 
 message Commit {
