@@ -224,8 +224,18 @@ func (s *Server) AnnounceRepoContent(ctx context.Context, req *pb.AnnounceRepoCo
 }
 
 func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) (*pb.GetLocalRefsResponse, error) {
-	// @@TODO: stub
-	return nil, nil
+	refs, err := s.node.GetLocalRefs(ctx, req.RepoID, req.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	refsList := make([]*pb.Ref, len(refs))
+	i := 0
+	for _, ref := range refs {
+		refsList[i] = &pb.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
+		i++
+	}
+	return &pb.GetLocalRefsResponse{Refs: refsList}, nil
 }
 
 func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest) (*pb.GetRemoteRefsResponse, error) {

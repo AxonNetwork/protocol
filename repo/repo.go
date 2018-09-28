@@ -1,11 +1,13 @@
 package repo
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -16,6 +18,7 @@ import (
 	gitconfigformat "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 
+	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -226,6 +229,20 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 	} else {
 		return nil, errors.Errorf("objectID is wrong size (%v)", len(objectID))
 	}
+}
+
+func (r *Repo) GetLocalRefs(ctx context.Context) (map[string]wire.Ref, error) {
+	refs := map[string]wire.Ref{}
+
+	err := util.ExecAndScanStdout(ctx, []string{"git", "show-ref"}, r.Path, func(line string) error {
+		parts := strings.Split(line, " ")
+		refs[parts[1]] = wire.Ref{RefName: parts[1], CommitHash: parts[0]}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return refs, nil
 }
 
 func (r *Repo) SetupConfig(repoID string) error {

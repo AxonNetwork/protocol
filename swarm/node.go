@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
@@ -544,17 +543,25 @@ func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*node
 }
 
 func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]Ref, error) {
-	refs := map[string]Ref{}
+	var r *repo.Repo
 
-	err := util.ExecAndScanStdout(ctx, []string{"git", "show-ref"}, path, func(line string) error {
-		parts := strings.Split(line, " ")
-		refs[parts[1]] = Ref{RefName: parts[1], CommitHash: parts[0]}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+	if len(path) > 0 {
+		r = n.RepoManager.RepoAtPath(path)
+		if r == nil {
+			return nil, errors.Errorf("repo at path '%v' not found", path)
+		}
+
+	} else if len(repoID) > 0 {
+		r = n.RepoManager.Repo(repoID)
+		if r == nil {
+			return nil, errors.Errorf("repo '%v' not found", repoID)
+		}
+
+	} else {
+		return nil, errors.Errorf("must provide either 'path' or 'repoID'")
 	}
-	return refs, nil
+
+	return r.GetLocalRefs(ctx)
 }
 
 func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {

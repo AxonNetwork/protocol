@@ -88,13 +88,11 @@ message Ref {
 
 message GetLocalRefsRequest {
     string repoID = 1;
-    uint64 pageSize = 2;
-    uint64 page = 3;
+    string path = 2;
 }
 
 message GetLocalRefsResponse {
-    uint64 total = 1;
-    repeated Ref refs = 2;
+    repeated Ref refs = 1;
 }
 
 message GetRemoteRefsRequest {
