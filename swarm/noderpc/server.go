@@ -414,7 +414,7 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	}
 
 	// Then, overlay the output of `git status --porcelain`
-	err = util.ExecAndScanStdout(ctx, []string{"git", "status", "--porcelain"}, r.Path, func(line string) error {
+	err = util.ExecAndScanStdout(ctx, []string{"git", "status", "--porcelain=2"}, r.Path, func(line string) error {
 		file, err := parseGitStatusLine(line)
 		if err != nil {
 			return err
