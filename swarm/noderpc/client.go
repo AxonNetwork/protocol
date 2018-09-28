@@ -217,3 +217,11 @@ func (c *Client) RequestReplication(ctx context.Context, repoID string) error {
 	_, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
 	return errors.WithStack(err)
 }
+
+func (c *Client) RepoHasObject(ctx context.Context, repoID string, objectID []byte) (bool, error) {
+	resp, err := c.client.RepoHasObject(ctx, &pb.RepoHasObjectRequest{RepoID: repoID, ObjectID: objectID})
+	if err != nil {
+		return false, err
+	}
+	return resp.HasObject, nil
+}

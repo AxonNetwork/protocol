@@ -481,3 +481,27 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 
 	return &pb.GetRepoFilesResponse{Files: fileList}, nil
 }
+
+func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest) (*pb.RepoHasObjectResponse, error) {
+	var r *repo.Repo
+
+	if len(req.Path) > 0 {
+		r = s.node.RepoManager.RepoAtPath(req.Path)
+		if r == nil {
+			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
+		}
+
+	} else if len(req.RepoID) > 0 {
+		r = s.node.RepoManager.Repo(req.RepoID)
+		if r == nil {
+			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
+		}
+
+	} else {
+		return nil, errors.Errorf("must provide either 'path' or 'repoID'")
+	}
+
+	return &pb.RepoHasObjectResponse{
+		HasObject: r.HasObject(req.ObjectID),
+	}, nil
+}

@@ -325,7 +325,7 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 	r := n.RepoManager.Repo(repoID)
 
 	// If we detect that we already have the object locally, just open a regular file stream
-	if r != nil && r.HasObject(repoID, objectID) {
+	if r != nil && r.HasObject(objectID) {
 		return r.OpenObject(objectID)
 	}
 

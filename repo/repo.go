@@ -159,7 +159,7 @@ func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
 }
 
 // Returns true if the object is known, false otherwise.
-func (r *Repo) HasObject(repoID string, objectID []byte) bool {
+func (r *Repo) HasObject(objectID []byte) bool {
 	if len(objectID) == CONSCIENCE_HASH_LENGTH {
 		p := filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		_, err := os.Stat(p)
