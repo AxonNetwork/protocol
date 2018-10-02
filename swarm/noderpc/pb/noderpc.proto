@@ -160,8 +160,9 @@ message File {
     bytes hash = 2;
     uint32 mode = 3;
     uint64 size = 4;
-    string unstagedStatus = 5;
-    string stagedStatus = 6;
+    uint32 modified = 5;
+    string unstagedStatus = 6;
+    string stagedStatus = 7;
 }
 
 message GetRepoFilesResponse {
