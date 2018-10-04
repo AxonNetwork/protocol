@@ -389,18 +389,14 @@ func parseGitLSFilesLine(line string) (*pb.File, error) {
 	}, nil
 }
 
-func getMTime(path string) (uint32, error) {
+func getStats(path string) (os.FileInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer f.Close()
 	stat, err := f.Stat()
-	if err != nil {
-		return 0, err
-	}
-	mtime := stat.ModTime().Unix()
-	return uint32(mtime), nil
+	return stat, err
 }
 
 // @@TODO: move this into the Node
@@ -454,11 +450,12 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	fileList := make([]*pb.File, len(files))
 	i := 0
 	for _, file := range files {
-		mtime, err := getMTime(filepath.Join(r.Path, file.Name))
+		stat, err := getStats(filepath.Join(r.Path, file.Name))
 		if err != nil {
 			return nil, err
 		}
-		file.Modified = mtime
+		file.Modified = uint32(stat.ModTime().Unix())
+		file.Size = uint64(stat.Size())
 		fileList[i] = file
 		i++
 	}
