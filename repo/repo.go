@@ -245,6 +245,21 @@ func (r *Repo) GetLocalRefs(ctx context.Context) (map[string]wire.Ref, error) {
 	return refs, nil
 }
 
+func (r *Repo) IsBehindRemote(ctx context.Context, remote string) (bool, error) {
+	commitIter, err := r.CommitObjects()
+	if err != nil {
+		return false, err
+	}
+	defer commitIter.Close()
+
+	hasRemoteLocal := false
+	err = commitIter.ForEach(func(c *gitobject.Commit) error {
+		hasRemoteLocal = hasRemoteLocal || c.Hash.String() == remote
+		return nil
+	})
+	return !hasRemoteLocal, err
+}
+
 func (r *Repo) SetupConfig(repoID string) error {
 	cfg, err := r.Config()
 	if err != nil {

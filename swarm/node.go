@@ -543,22 +543,9 @@ func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*node
 }
 
 func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]Ref, string, error) {
-	var r *repo.Repo
-
-	if len(path) > 0 {
-		r = n.RepoManager.RepoAtPath(path)
-		if r == nil {
-			return nil, "", errors.Errorf("repo at path '%v' not found", path)
-		}
-
-	} else if len(repoID) > 0 {
-		r = n.RepoManager.Repo(repoID)
-		if r == nil {
-			return nil, "", errors.Errorf("repo '%v' not found", repoID)
-		}
-
-	} else {
-		return nil, "", errors.Errorf("must provide either 'path' or 'repoID'")
+	r, err := n.RepoManager.RepoAtPathOrID(path, repoID)
+	if err != nil {
+		return nil, "", err
 	}
 
 	refs, err := r.GetLocalRefs(ctx)
@@ -566,6 +553,28 @@ func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (ma
 		return nil, "", err
 	}
 	return refs, r.Path, nil
+}
+
+func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (bool, error) {
+	r, err := n.RepoManager.RepoAtPathOrID(path, repoID)
+	if err != nil {
+		return false, err
+	}
+	var remote string
+	var page uint64
+	for len(remote) == 0 {
+		refs, count, err := n.GetRemoteRefs(ctx, repoID, 10, page)
+		if err != nil {
+			return false, err
+		}
+		remote = refs["refs/heads/master"].CommitHash
+		if len(remote) == 0 && count < 10 {
+			return false, errors.Errorf("Could not find master ref in protocol contract")
+		}
+		page += 1
+	}
+	isBehindRemote, err := r.IsBehindRemote(ctx, remote)
+	return isBehindRemote, err
 }
 
 func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {

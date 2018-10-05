@@ -181,6 +181,14 @@ func (c *Client) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint
 	return refMap, resp.Total, nil
 }
 
+func (c *Client) IsBehindRemote(ctx context.Context, repoID string, path string) (string, bool, error) {
+	resp, err := c.client.IsBehindRemote(ctx, &pb.IsBehindRemoteRequest{RepoID: repoID, Path: path})
+	if err != nil {
+		return "", false, errors.WithStack(err)
+	}
+	return resp.RepoID, resp.IsBehindRemote, nil
+}
+
 const (
 	REF_PAGE_SIZE = 10 // @@TODO: make configurable
 )

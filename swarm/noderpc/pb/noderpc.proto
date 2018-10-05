@@ -16,6 +16,7 @@ service NodeRPC {
   rpc AnnounceRepoContent(AnnounceRepoContentRequest) returns (AnnounceRepoContentResponse) {}
   rpc GetLocalRefs(GetLocalRefsRequest) returns (GetLocalRefsResponse) {}
   rpc GetRemoteRefs(GetRemoteRefsRequest) returns (GetRemoteRefsResponse) {}
+  rpc IsBehindRemote(IsBehindRemoteRequest) returns (IsBehindRemoteResponse) {}
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
   rpc RequestReplication(ReplicationRequest) returns (ReplicationResponse) {}
@@ -105,6 +106,16 @@ message GetRemoteRefsRequest {
 message GetRemoteRefsResponse {
     uint64 total = 1;
     repeated Ref refs = 2;
+}
+
+message IsBehindRemoteRequest {
+    string repoID = 1;
+    string path = 2;
+}
+
+message IsBehindRemoteResponse {
+    string repoID = 1;
+    bool isBehindRemote = 2;
 }
 
 message UpdateRefRequest {

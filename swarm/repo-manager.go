@@ -3,6 +3,7 @@ package swarm
 import (
 	"path/filepath"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/Conscience/protocol/config"
@@ -145,6 +146,27 @@ func (rm *RepoManager) RepoAtPath(repoPath string) *repo.Repo {
 		return nil
 	}
 	return repo
+}
+
+func (rm *RepoManager) RepoAtPathOrID(path string, repoID string) (*repo.Repo, error) {
+	if len(path) > 0 {
+		r := rm.RepoAtPath(path)
+		if r == nil {
+			return nil, errors.Errorf("repo at path '%v' not found", path)
+		} else {
+			return r, nil
+		}
+	}
+	if len(repoID) > 0 {
+		r := rm.Repo(repoID)
+		if r == nil {
+			return nil, errors.Errorf("repo '%v' not found", repoID)
+		} else {
+			return r, nil
+		}
+	}
+
+	return nil, errors.Errorf("must provide either 'path' or 'repoID'")
 }
 
 func (rm *RepoManager) ForEachRepo(fn func(*repo.Repo) error) error {

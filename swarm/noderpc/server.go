@@ -253,6 +253,15 @@ func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest
 	return &pb.GetRemoteRefsResponse{Total: total, Refs: refs}, nil
 }
 
+func (s *Server) IsBehindRemote(ctx context.Context, req *pb.IsBehindRemoteRequest) (*pb.IsBehindRemoteResponse, error) {
+	isBehindRemote, err := s.node.IsBehindRemote(ctx, req.RepoID, req.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.IsBehindRemoteResponse{RepoID: req.RepoID, IsBehindRemote: isBehindRemote}, nil
+}
+
 func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.UpdateRefResponse, error) {
 	tx, err := s.node.UpdateRef(ctx, req.RepoID, req.RefName, req.CommitHash)
 	if err != nil {
