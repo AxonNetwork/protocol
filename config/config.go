@@ -67,6 +67,7 @@ var DefaultConfig = Config{
 		ContentAnnounceInterval: Duration(15 * time.Second),
 		ContentRequestInterval:  Duration(15 * time.Second),
 		FindProviderTimeout:     Duration(10 * time.Second),
+		LocalRepos:              []string{},
 		ReplicationRoot:         "/tmp/repos", // @@TODO: probably a better choice for this
 		ReplicateRepos:          []string{},
 		BootstrapPeers:          []string{},

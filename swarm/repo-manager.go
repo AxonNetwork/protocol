@@ -94,7 +94,10 @@ func (rm *RepoManager) TrackRepo(repoPath string) (*repo.Repo, error) {
 func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
 	r, err := repo.Open(repoPath)
 	if err != nil {
-		return nil, err
+		err = rm.removeLocalRepoFromConfig(repoPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	repoID, err := r.RepoID()
@@ -126,6 +129,10 @@ func (rm *RepoManager) UntrackRepo(repoPath string) error {
 	delete(rm.repos, repoID)
 	delete(rm.reposByPath, repoPath)
 
+	return rm.removeLocalRepoFromConfig(repoPath)
+}
+
+func (rm *RepoManager) removeLocalRepoFromConfig(repoPath string) error {
 	return rm.config.Update(func() error {
 		rm.config.Node.LocalRepos = util.StringSetRemove(rm.config.Node.LocalRepos, repoPath)
 		return nil
