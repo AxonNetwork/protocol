@@ -571,7 +571,7 @@ func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (
 	if err != nil {
 		return false, err
 	}
-	return r.HasObject(remoteHash), nil
+	return !r.HasObject(remoteHash), nil
 }
 
 func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
