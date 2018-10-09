@@ -122,6 +122,60 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	return &pb.InitRepoResponse{Path: path}, nil
 }
 
+func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoRequest) (*pb.CheckpointRepoResponse, error) {
+	err := util.ExecAndScanStdout(ctx, []string{"git", "add", "."}, req.Path, func(line string) error {
+		return nil
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	err = util.ExecAndScanStdout(ctx, []string{"git", "commit", "-m", req.Message}, req.Path, func(line string) error {
+		return nil
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	err = util.ExecAndScanStdout(ctx, []string{"git", "push", "origin", "master"}, req.Path, func(line string) error {
+		return nil
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return &pb.CheckpointRepoResponse{Ok: true}, nil
+}
+
+func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.PullRepoResponse, error) {
+	err := util.ExecAndScanStdout(ctx, []string{"git", "pull", "origin", "master"}, req.Path, func(line string) error {
+		return nil
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return &pb.PullRepoResponse{Ok: true}, nil
+}
+
+func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.CloneRepoResponse, error) {
+	location := req.Path
+	if len(location) == 0 {
+		location = s.node.Config.Node.ReplicationRoot
+	}
+	remote := fmt.Sprintf("conscience://%s", req.RepoID)
+	err := util.ExecAndScanStdout(ctx, []string{"git", "clone", remote}, location, func(line string) error {
+		return nil
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	name := req.RepoID
+	if strings.Contains(name, "/") {
+		name = strings.Split(name, "/")[1]
+	}
+	return &pb.CloneRepoResponse{Path: filepath.Join(location, name)}, nil
+}
+
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
 	objectReader, err := s.node.GetObjectReader(server.Context(), req.RepoID, req.ObjectID)
 	if err != nil {

@@ -339,15 +339,7 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 	defer cancel()
 
 	for provider := range n.dht.FindProvidersAsync(ctxTimeout, c, 10) {
-		if provider.ID == n.host.ID() {
-			// We have the object locally (perhaps in another clone of the same repository)
-			objectReader, err := r.OpenObject(objectID)
-			if err != nil {
-				continue
-			}
-			return objectReader, nil
-
-		} else {
+		if provider.ID != n.host.ID() {
 			// We found a peer with the object
 			objectReader, err := n.requestObject(ctx, provider.ID, repoID, objectID)
 			if err != nil {

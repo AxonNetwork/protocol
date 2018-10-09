@@ -8,6 +8,9 @@ option go_package = "pb";
 service NodeRPC {
   rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse) {}
   rpc InitRepo(InitRepoRequest) returns (InitRepoResponse) {}
+  rpc CheckpointRepo(CheckpointRepoRequest) returns (CheckpointRepoResponse) {}
+  rpc PullRepo(PullRepoRequest) returns (PullRepoResponse) {}
+  rpc CloneRepo(CloneRepoRequest) returns (CloneRepoResponse) {}
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
@@ -38,6 +41,32 @@ message InitRepoRequest {
 }
 
 message InitRepoResponse {
+    string path = 1;
+}
+
+message CheckpointRepoRequest {
+    string path = 1;
+    string message = 2;
+}
+
+message CheckpointRepoResponse {
+    bool ok = 1;
+}
+
+message PullRepoRequest {
+    string path = 1;
+}
+
+message PullRepoResponse {
+    bool ok = 1;
+}
+
+message CloneRepoRequest {
+    string repoID = 1;
+    string path = 2;
+}
+
+message CloneRepoResponse {
     string path = 1;
 }
 
