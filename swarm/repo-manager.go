@@ -77,7 +77,7 @@ func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, err
 
 func (rm *RepoManager) TrackRepo(repoPath string) (*repo.Repo, error) {
 	r, err := rm.openRepo(repoPath)
-	if err != nil {
+	if r == nil {
 		return nil, err
 	}
 
@@ -95,9 +95,7 @@ func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
 	r, err := repo.Open(repoPath)
 	if err != nil {
 		err = rm.removeLocalRepoFromConfig(repoPath)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	repoID, err := r.RepoID()
