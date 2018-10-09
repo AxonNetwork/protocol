@@ -245,30 +245,6 @@ func (r *Repo) GetLocalRefs(ctx context.Context) (map[string]wire.Ref, error) {
 	return refs, nil
 }
 
-func (r *Repo) IsBehindRemote(ctx context.Context, remoteHash string) (bool, error) {
-	commitIter, err := r.CommitObjects()
-	if err != nil {
-		return false, err
-	}
-	defer commitIter.Close()
-
-	hasCommitLocal := false
-	var errBreakLoopWhenFound = errors.New("break loop when found")
-	err = commitIter.ForEach(func(c *gitobject.Commit) error {
-		hasCommitLocal = hasCommitLocal || c.Hash.String() == remoteHash
-		if hasCommitLocal == true {
-			return errBreakLoopWhenFound
-		}
-		return nil
-	})
-	if err == errBreakLoopWhenFound {
-		// do nothing, this is expected
-	} else if err != nil {
-		return false, err
-	}
-	return !hasCommitLocal, nil
-}
-
 func (r *Repo) SetupConfig(repoID string) error {
 	cfg, err := r.Config()
 	if err != nil {

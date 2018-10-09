@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -560,21 +561,17 @@ func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (
 	if err != nil {
 		return false, err
 	}
-	var remote string
-	var page uint64
-	for len(remote) == 0 {
-		refs, count, err := n.GetRemoteRefs(ctx, repoID, 10, page)
-		if err != nil {
-			return false, err
-		}
-		remote = refs["refs/heads/master"].CommitHash
-		if len(remote) == 0 && count < 10 {
-			return false, errors.Errorf("Could not find master ref in protocol contract")
-		}
-		page += 1
+
+	remote, err := n.eth.GetRef(ctx, repoID, "refs/heads/master")
+	if err != nil {
+		return false, err
 	}
-	isBehindRemote, err := r.IsBehindRemote(ctx, remote)
-	return isBehindRemote, err
+
+	remoteHash, err := hex.DecodeString(remote)
+	if err != nil {
+		return false, err
+	}
+	return r.HasObject(remoteHash), nil
 }
 
 func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {

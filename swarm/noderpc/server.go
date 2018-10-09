@@ -294,18 +294,6 @@ func (s *Server) RequestReplication(ctx context.Context, req *pb.ReplicationRequ
 	return &pb.ReplicationResponse{}, nil
 }
 
-func getFilesForCommit(ctx context.Context, path string, commitHash string) ([]string, error) {
-	// Start by taking the output of `git ls-files --stage`
-	files := make([]string, 0)
-	err := util.ExecAndScanStdout(ctx, []string{"git", "show", "--name-only", "--pretty=format:\"\"", commitHash}, path, func(line string) error {
-		if len(line) > 0 {
-			files = append(files, line)
-		}
-		return nil
-	})
-	return files, err
-}
-
 func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryRequest) (*pb.GetRepoHistoryResponse, error) {
 	var r *repo.Repo
 
@@ -363,6 +351,18 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	}
 
 	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
+}
+
+func getFilesForCommit(ctx context.Context, path string, commitHash string) ([]string, error) {
+	// Start by taking the output of `git ls-files --stage`
+	files := make([]string, 0)
+	err := util.ExecAndScanStdout(ctx, []string{"git", "show", "--name-only", "--pretty=format:\"\"", commitHash}, path, func(line string) error {
+		if len(line) > 0 {
+			files = append(files, line)
+		}
+		return nil
+	})
+	return files, err
 }
 
 func parseGitStatusLine(line string) (*pb.File, error) {
