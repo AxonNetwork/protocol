@@ -155,6 +155,8 @@ message Commit {
     string author = 2;
     string message = 3;
     uint64 timestamp = 4;
+    repeated string files = 5;
+    uint64 verified = 6;
 }
 
 message GetRepoHistoryResponse {

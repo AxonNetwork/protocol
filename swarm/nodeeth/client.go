@@ -212,6 +212,34 @@ func (n *Client) GetRefs(ctx context.Context, repoID string, pageSize uint64, pa
 	return refs, x.Total.Uint64(), nil
 }
 
+type RefLog struct {
+	Commit string
+	Time   *big.Int
+}
+
+func (n *Client) GetRefLogs(ctx context.Context, repoID string) (map[string]uint64, error) {
+	opts := &bind.FilterOpts{Context: ctx}
+	users := []common.Address{}
+	repoIDs := []string{repoID}
+	refs := []string{}
+
+	iter, err := n.protocolContract.ProtocolFilterer.FilterLogUpdateRef(opts, users, repoIDs, refs)
+	if err != nil {
+		return map[string]uint64{}, err
+	}
+	defer iter.Close()
+
+	logs := make(map[string]uint64)
+	for iter.Next() {
+		block, err := n.ethClient.BlockByNumber(ctx, big.NewInt(int64(iter.Event.Raw.BlockNumber)))
+		if err != nil {
+			return map[string]uint64{}, err
+		}
+		logs[iter.Event.CommitHash] = block.Time().Uint64()
+	}
+	return logs, nil
+}
+
 type UserType uint8
 
 const (

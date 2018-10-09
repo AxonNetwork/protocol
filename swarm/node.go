@@ -593,6 +593,10 @@ func (n *Node) GetRepoUsers(ctx context.Context, repoID string, userType nodeeth
 	return n.eth.GetRepoUsers(ctx, repoID, userType, pageSize, page)
 }
 
+func (n *Node) GetRefLogs(ctx context.Context, repoID string) (map[string]uint64, error) {
+	return n.eth.GetRefLogs(ctx, repoID)
+}
+
 func (n *Node) GetBandwidthForPeer(p peer.ID) metrics.Stats {
 	return n.bandwidthCounter.GetBandwidthForPeer(p)
 }

@@ -294,6 +294,18 @@ func (s *Server) RequestReplication(ctx context.Context, req *pb.ReplicationRequ
 	return &pb.ReplicationResponse{}, nil
 }
 
+func getFilesForCommit(ctx context.Context, path string, commitHash string) ([]string, error) {
+	// Start by taking the output of `git ls-files --stage`
+	files := make([]string, 0)
+	err := util.ExecAndScanStdout(ctx, []string{"git", "show", "--name-only", "--pretty=format:\"\"", commitHash}, path, func(line string) error {
+		if len(line) > 0 {
+			files = append(files, line)
+		}
+		return nil
+	})
+	return files, err
+}
+
 func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryRequest) (*pb.GetRepoHistoryResponse, error) {
 	var r *repo.Repo
 
@@ -318,17 +330,30 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return nil, err
 	}
 
+	logs, err := s.node.GetRefLogs(ctx, req.RepoID)
+	if err != nil {
+		return nil, err
+	}
+
 	commits := []*pb.Commit{}
 	err = cIter.ForEach(func(commit *gitobject.Commit) error {
 		if commit == nil {
 			log.Warnf("[node] nil commit (repoID: %v)", req.RepoID)
 			return nil
 		}
+		commitHash := commit.Hash.String()
+		files, err := getFilesForCommit(ctx, r.Path, commitHash)
+		if err != nil {
+			return err
+		}
+		verified := logs[commitHash]
 		commits = append(commits, &pb.Commit{
-			CommitHash: commit.Hash.String(),
+			CommitHash: commitHash,
 			Author:     commit.Author.String(),
 			Message:    commit.Message,
 			Timestamp:  uint64(commit.Author.When.Unix()),
+			Files:      files,
+			Verified:   verified,
 		})
 
 		return nil
