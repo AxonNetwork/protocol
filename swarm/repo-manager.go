@@ -5,6 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/src-d/go-git.v4"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/repo"
@@ -24,13 +25,25 @@ func NewRepoManager(config *config.Config) *RepoManager {
 		config:      config,
 	}
 
+	foundRepos := []string{}
 	for _, path := range rm.config.Node.LocalRepos {
-		log.Infof("[repo manager] tracking local repo: %v", path)
 		_, err := rm.openRepo(path)
-		if err != nil {
-			log.Errorf("[repo manager] %v", err)
+		if errors.Cause(err) == git.ErrRepositoryNotExists {
+			log.Errorf("[repo manager] removing missing repo: %v", path)
+			continue
+		} else if err != nil {
+			log.Errorf("[repo manager] error opening repo, removing: %v", err)
 			continue
 		}
+		log.Infof("[repo manager] tracking local repo: %v", path)
+		foundRepos = append(foundRepos, path)
+	}
+
+	if len(foundRepos) != len(rm.config.Node.LocalRepos) {
+		rm.config.Update(func() error {
+			rm.config.Node.LocalRepos = foundRepos
+			return nil
+		})
 	}
 
 	// for _, repoID := range rm.config.Node.ReplicateRepos {
@@ -94,7 +107,6 @@ func (rm *RepoManager) TrackRepo(repoPath string) (*repo.Repo, error) {
 func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
 	r, err := repo.Open(repoPath)
 	if err != nil {
-		err = rm.removeLocalRepoFromConfig(repoPath)
 		return nil, err
 	}
 
