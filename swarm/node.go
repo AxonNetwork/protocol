@@ -586,6 +586,10 @@ func (n *Node) GetRefLogs(ctx context.Context, repoID string) (map[string]uint64
 	return n.eth.GetRefLogs(ctx, repoID)
 }
 
+func (n *Node) SignHash(data []byte) ([]byte, error) {
+	return n.eth.SignHash(data)
+}
+
 func (n *Node) GetBandwidthForPeer(p peer.ID) metrics.Stats {
 	return n.bandwidthCounter.GetBandwidthForPeer(p)
 }

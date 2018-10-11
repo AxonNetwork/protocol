@@ -27,6 +27,7 @@ service NodeRPC {
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
   rpc RepoHasObject(RepoHasObjectRequest) returns (RepoHasObjectResponse) {}
+  rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
 }
 
 message SetUsernameRequest {
@@ -219,4 +220,12 @@ message RepoHasObjectRequest {
 
 message RepoHasObjectResponse {
     bool hasObject = 1;
+}
+
+message SignMessageRequest {
+    bytes message = 1;
+}
+
+message SignMessageResponse {
+    bytes signature = 1;
 }

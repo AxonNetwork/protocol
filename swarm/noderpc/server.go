@@ -574,3 +574,11 @@ func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest
 		HasObject: r.HasObject(req.ObjectID),
 	}, nil
 }
+
+func (s *Server) SignMessage(ctx context.Context, req *pb.SignMessageRequest) (*pb.SignMessageResponse, error) {
+	signature, err := s.node.SignHash(req.Message)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.SignMessageResponse{Signature: signature}, nil
+}

@@ -246,3 +246,11 @@ func (c *Client) RepoHasObject(ctx context.Context, repoID string, objectID []by
 	}
 	return resp.HasObject, nil
 }
+
+func (c *Client) SignMessage(ctx context.Context, message []byte) ([]byte, error) {
+	resp, err := c.client.SignMessage(ctx, &pb.SignMessageRequest{Message: message})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Signature, nil
+}
