@@ -3,7 +3,9 @@ package nodeeth
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
+	"net/http"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -50,7 +52,10 @@ func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	log.Println(account.Address.String())
+
+	err = checkBalanceAndHitFaucet(ctx, ethClient, account.Address, cfg.Node.ConscienceAPI)
 
 	prv, err := wallet.PrivateKey(account)
 	if err != nil {
@@ -106,6 +111,26 @@ func initAccount(mnemonic string, password string) (accounts.Account, *Wallet, e
 	}
 
 	return account, wallet, nil
+}
+
+func checkBalanceAndHitFaucet(ctx context.Context, ethClient *ethclient.Client, address common.Address, conscienceAPI string) error {
+	balance, err := ethClient.BalanceAt(ctx, address, nil)
+	if err != nil {
+		return err
+	}
+	if balance.Uint64() > 1000000000000000000 {
+		// if balance > 1ETH, don't fund
+		return nil
+	}
+
+	amount := 10
+	reqURL := fmt.Sprintf("%s/faucet?address=%s&amount=%d", conscienceAPI, address.String(), amount)
+	rs, err := http.Get(reqURL)
+	if err != nil {
+		return err
+	}
+	defer rs.Body.Close()
+	return nil
 }
 
 func (n *Client) callOpts(ctx context.Context) *bind.CallOpts {
