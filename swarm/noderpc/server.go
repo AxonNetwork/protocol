@@ -113,6 +113,10 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	err = r.AddUserToConfig(req.Name, req.Email)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 
 	// Have the node track the local repo
 	_, err = s.node.RepoManager.TrackRepo(path)
@@ -173,7 +177,17 @@ func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.C
 	if strings.Contains(name, "/") {
 		name = strings.Split(name, "/")[1]
 	}
-	return &pb.CloneRepoResponse{Path: filepath.Join(location, name)}, nil
+
+	repoPath := filepath.Join(location, name)
+	r, err := repo.Open(repoPath)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	err = r.AddUserToConfig(req.Name, req.Email)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return &pb.CloneRepoResponse{Path: repoPath}, nil
 }
 
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {

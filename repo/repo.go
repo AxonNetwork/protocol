@@ -245,6 +245,24 @@ func (r *Repo) GetLocalRefs(ctx context.Context) (map[string]wire.Ref, error) {
 	return refs, nil
 }
 
+func writeConfig(path string, rawCfg *gitconfigformat.Config) error {
+	p := filepath.Join(path, ".git", "config")
+	f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
+	if err != nil {
+		return errors.Wrapf(err, "could not open .git/config (path: %v)", path)
+	}
+	defer f.Close()
+
+	w := io.Writer(f)
+
+	enc := gitconfigformat.NewEncoder(w)
+	err = enc.Encode(rawCfg)
+	if err != nil {
+		return errors.Wrapf(err, "could not encode git config (path: %v)", path)
+	}
+	return nil
+}
+
 func (r *Repo) SetupConfig(repoID string) error {
 	cfg, err := r.Config()
 	if err != nil {
@@ -271,20 +289,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 	}
 
 	if changed {
-		p := filepath.Join(r.Path, ".git", "config")
-		f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
-		if err != nil {
-			return errors.Wrapf(err, "could not open .git/config (path: %v)", r.Path)
-		}
-		defer f.Close()
-
-		w := io.Writer(f)
-
-		enc := gitconfigformat.NewEncoder(w)
-		err = enc.Encode(raw)
-		if err != nil {
-			return errors.Wrapf(err, "could not encode git config (repoID: %v, path: %v)", repoID, r.Path)
-		}
+		writeConfig(r.Path, raw)
 	}
 
 	// Check the remotes
@@ -330,5 +335,29 @@ func (r *Repo) SetupConfig(repoID string) error {
 		}
 	}
 
+	return nil
+}
+
+func (r *Repo) AddUserToConfig(name string, email string) error {
+	cfg, err := r.Config()
+	if err != nil {
+		return errors.Wrapf(err, "could not get repo config (path: %v)", r.Path)
+	}
+	raw := cfg.Raw
+	changed := false
+	if len(name) > 0 {
+		raw.SetOption("user", "", "name", name)
+		changed = true
+	}
+	if len(email) > 0 {
+		raw.SetOption("user", "", "email", email)
+		changed = true
+	}
+	if changed == true {
+		err = writeConfig(r.Path, raw)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
