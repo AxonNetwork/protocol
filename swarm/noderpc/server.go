@@ -582,3 +582,8 @@ func (s *Server) SignMessage(ctx context.Context, req *pb.SignMessageRequest) (*
 	}
 	return &pb.SignMessageResponse{Signature: signature}, nil
 }
+
+func (s *Server) EthAddress(ctx context.Context, req *pb.EthAddressRequest) (*pb.EthAddressResponse, error) {
+	addr := s.node.EthAddress()
+	return &pb.EthAddressResponse{Address: addr.String()}, nil
+}

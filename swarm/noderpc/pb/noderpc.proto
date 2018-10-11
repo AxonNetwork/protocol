@@ -28,6 +28,7 @@ service NodeRPC {
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
   rpc RepoHasObject(RepoHasObjectRequest) returns (RepoHasObjectResponse) {}
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
+  rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
 }
 
 message SetUsernameRequest {
@@ -228,4 +229,10 @@ message SignMessageRequest {
 
 message SignMessageResponse {
     bytes signature = 1;
+}
+
+message EthAddressRequest { }
+
+message EthAddressResponse {
+    string address = 1;
 }
