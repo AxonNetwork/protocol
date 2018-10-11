@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/tyler-smith/go-bip39"
 
 	"github.com/Conscience/protocol/config"
@@ -40,10 +41,16 @@ func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
-	account, wallet, err := initAccount(cfg.Node.EthereumBIP39Seed, "")
+	mnemonic, err := getOrCreateMnemonic(cfg)
 	if err != nil {
 		return nil, err
 	}
+
+	account, wallet, err := initAccount(mnemonic, "")
+	if err != nil {
+		return nil, err
+	}
+	log.Println(account.Address.String())
 
 	prv, err := wallet.PrivateKey(account)
 	if err != nil {
@@ -60,6 +67,29 @@ func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 		account:          account,
 		wallet:           wallet,
 	}, nil
+}
+
+func getOrCreateMnemonic(cfg *config.Config) (string, error) {
+	if len(cfg.Node.EthereumBIP39Seed) > 0 && bip39.IsMnemonicValid(cfg.Node.EthereumBIP39Seed) {
+		return cfg.Node.EthereumBIP39Seed, nil
+	}
+	entropy, err := bip39.NewEntropy(256)
+	if err != nil {
+		return "", err
+	}
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", err
+	}
+
+	err = cfg.Update(func() error {
+		cfg.Node.EthereumBIP39Seed = mnemonic
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return mnemonic, nil
 }
 
 func initAccount(mnemonic string, password string) (accounts.Account, *Wallet, error) {
