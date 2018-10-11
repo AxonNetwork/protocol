@@ -42,8 +42,13 @@ func (c *Client) SetUsername(ctx context.Context, username string) error {
 	return errors.WithStack(err)
 }
 
-func (c *Client) InitRepo(ctx context.Context, repoID string, path string) error {
-	_, err := c.client.InitRepo(ctx, &pb.InitRepoRequest{RepoID: repoID, Path: path})
+func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name string, email string) error {
+	_, err := c.client.InitRepo(ctx, &pb.InitRepoRequest{
+		RepoID: repoID,
+		Path:   path,
+		Name:   name,
+		Email:  email,
+	})
 	return errors.WithStack(err)
 }
 

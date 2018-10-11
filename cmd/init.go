@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-func initRepo(repoID string, path string) error {
+func initRepo(repoID string, path string, name string, email string) error {
 	client, err := getClient()
 	if err != nil {
 		return err
@@ -12,7 +12,7 @@ func initRepo(repoID string, path string) error {
 	defer client.Close()
 
 	// @@TODO: give context a timeout and make it configurable
-	err = client.InitRepo(context.Background(), repoID, path)
+	err = client.InitRepo(context.Background(), repoID, path, name, email)
 	if err != nil {
 		return err
 	}

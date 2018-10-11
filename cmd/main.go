@@ -22,6 +22,19 @@ func main() {
 	app.Copyright = "(c) 2018 Conscience"
 	app.Usage = "Utility for interacting with the Conscience network"
 
+	flags := []cli.Flag{
+		cli.StringFlag{
+			Name:  "name",
+			Value: "",
+			Usage: "name for local repo config",
+		},
+		cli.StringFlag{
+			Name:  "email",
+			Value: "",
+			Usage: "email for local repo config",
+		},
+	}
+
 	app.Commands = []cli.Command{
 		{
 			Name:      "init",
@@ -29,6 +42,7 @@ func main() {
 			UsageText: "conscience init <repo ID>",
 			Usage:     "initialize a git repo to interact with the Conscience network",
 			ArgsUsage: "[args usage]",
+			Flags:     flags,
 			Action: func(c *cli.Context) error {
 				repoID := c.Args().Get(0)
 				if repoID == "" {
@@ -42,8 +56,9 @@ func main() {
 					}
 					path = cwd
 				}
-
-				return initRepo(repoID, path)
+				name := c.String("name")
+				email := c.String("email")
+				return initRepo(repoID, path, name, email)
 			},
 		},
 		{
