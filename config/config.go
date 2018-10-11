@@ -34,7 +34,6 @@ type NodeConfig struct {
 	RPCListenNetwork        string
 	RPCListenHost           string
 	HTTPListenAddr          string
-	ConscienceAPI           string
 	EthereumHost            string
 	ProtocolContract        string
 	EthereumBIP39Seed       string
@@ -62,7 +61,6 @@ var DefaultConfig = Config{
 		RPCListenNetwork:        "unix",
 		RPCListenHost:           "/tmp/conscience.sock",
 		HTTPListenAddr:          ":8081",
-		ConscienceAPI:           "http://127.0.0.1:8080/api",
 		EthereumHost:            "http://127.0.0.1:8545",
 		ProtocolContract:        "",
 		EthereumBIP39Seed:       "",
