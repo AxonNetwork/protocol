@@ -29,17 +29,16 @@ contract Protocol
     event LogDeleteRepo(address indexed user, string indexed repoID);
     event LogUpdateRef(address indexed user, string indexed repoID, string indexed refName, string commitHash);
     event LogDeleteRef(address indexed user, string indexed repoID, string indexed refName);
-    event LogSetAdmin(address indexed user, string indexed username, string indexed repoID, bool isAdmin);
 
     constructor() public {
     }
 
     function setUsername(string username) public {
-        require(bytes(username).length > 0);
-        require(bytes(usernamesByAddress[msg.sender]).length == 0);
+        require(bytes(username).length > 0, "argument 'username' cannot be empty");
+        require(bytes(usernamesByAddress[msg.sender]).length == 0, "your address already belongs to a username");
 
         bytes32 usernameHash = hashString(username);
-        require(addressesByUsername[usernameHash] == 0x0);
+        require(addressesByUsername[usernameHash] == 0x0, "this username is already claimed");
 
         usernamesByAddress[msg.sender] = username;
         addressesByUsername[usernameHash] = msg.sender;
@@ -53,16 +52,16 @@ contract Protocol
 
     function createRepo(string repoID) public {
         // Ensure that repoID is nonempty
-        require(bytes(repoID).length > 0);
+        require(bytes(repoID).length > 0, "argument 'repoID' cannot be empty");
 
         // Ensure that the user has registered a username
         string memory username = usernamesByAddress[msg.sender];
-        require(bytes(username).length > 0);
+        require(bytes(username).length > 0, "you have not claimed a username");
 
         Repo storage repo = repositories[hashString(repoID)];
 
         // Ensure that the repo doesn't exist yet
-        require(repo.exists == false);
+        require(repo.exists == false, "this repoID has already been claimed");
 
         repo.exists = true;
         repo.pushers.add(username);
@@ -73,34 +72,22 @@ contract Protocol
     }
 
     function deleteRepo(string repoID) public {
-        require(addressIsAdmin(msg.sender, repoID));
+        require(addressIsAdmin(msg.sender, repoID), "you are not an admin of this repo");
 
         Repo storage repo = repositories[hashString(repoID)];
-        require(repo.exists);
+        require(repo.exists, "this repo does not exist");
 
         delete repositories[hashString(repoID)];
 
         emit LogDeleteRepo(msg.sender, repoID);
     }
 
-    function setAdmin(string username, string repoID, bool isAdmin) public returns (bool) {
-        require(userIsAdmin(usernamesByAddress[msg.sender], repoID) != isAdmin);
-
-        Repo storage repo = repositories[hashString(repoID)];
-        if (isAdmin) {
-            repo.admins.add(username);
-        } else {
-            repo.admins.remove(username);
-        }
-        emit LogSetAdmin(msg.sender, username, repoID, isAdmin);
-    }
-
     function updateRef(string repoID, string refName, string commitHash) public {
-        require(userHasPushAccess(usernamesByAddress[msg.sender], repoID));
-        require(bytes(commitHash).length == 40);
+        require(userHasPushAccess(usernamesByAddress[msg.sender], repoID), "you don't have push access");
+        require(bytes(commitHash).length == 40, "bad commit hash");
 
         Repo storage repo = repositories[hashString(repoID)];
-        require(repo.exists);
+        require(repo.exists, "repo does not exist");
 
         repo.refs.add(refName);
         repo.refsToCommits[hashString(refName)] = commitHash;
@@ -109,10 +96,10 @@ contract Protocol
     }
 
     function deleteRef(string repoID, string refName) public {
-        require(userHasPushAccess(usernamesByAddress[msg.sender], repoID));
+        require(userHasPushAccess(usernamesByAddress[msg.sender], repoID), "you don't have push access");
 
         Repo storage repo = repositories[hashString(repoID)];
-        require(repo.exists);
+        require(repo.exists, "repo does not exist");
 
         repo.refs.remove(refName);
         delete repo.refsToCommits[hashString(refName)];
@@ -152,20 +139,56 @@ contract Protocol
         return userHasPushAccess(usernamesByAddress[addr], repoID);
     }
 
+    function getUserPermissions(string repoID, string username) public view returns (bool puller, bool pusher, bool admin) {
+        Repo storage repo = repositories[hashString(repoID)];
+        require(repo.exists, "repo does not exist");
+
+        return (
+            repo.pullers.contains(username),
+            repo.pushers.contains(username),
+            repo.admins.contains(username)
+        );
+    }
+
+    function setUserPermissions(string repoID, string username, bool puller, bool pusher, bool admin) public {
+        require(addressIsAdmin(msg.sender, repoID), "you are not an admin");
+
+        Repo storage repo = repositories[hashString(repoID)];
+        require(repo.exists, "repo does not exist");
+
+        if (puller) {
+            repo.pullers.add(username);
+        } else {
+            repo.pullers.remove(username);
+        }
+
+        if (pusher) {
+            repo.pushers.add(username);
+        } else {
+            repo.pushers.remove(username);
+        }
+
+        if (admin) {
+            repo.admins.add(username);
+        } else {
+            repo.admins.remove(username);
+        }
+    }
+
     function numRefs(string repoID) public view returns (uint) {
         return repositories[hashString(repoID)].refs.size();
     }
 
     function getRef(string repoID, string refName) public view returns (string) {
         Repo storage repo = repositories[hashString(repoID)];
-        require(repo.exists);
+        require(repo.exists, "repo does not exist");
 
         return repo.refsToCommits[hashString(refName)];
     }
 
     function getRefs(string repoID, uint pageSize, uint page) public view returns (uint total, bytes data) {
         Repo storage repo = repositories[hashString(repoID)];
-        require(repo.exists);
+        require(repo.exists, "repo does not exist");
 
         string memory refName;
         string memory commit;
@@ -203,7 +226,7 @@ contract Protocol
 
     function getRepoUsers(string repoID, UserType whichUsers, uint pageSize, uint page) public view returns (uint total, bytes data) {
         Repo storage repo = repositories[hashString(repoID)];
-        require(repo.exists);
+        require(repo.exists, "repo does not exist");
 
         StringSetLib.StringSet storage users;
         if (whichUsers == UserType.ADMIN) {

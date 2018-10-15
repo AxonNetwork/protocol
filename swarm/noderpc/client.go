@@ -259,3 +259,8 @@ func (c *Client) SignMessage(ctx context.Context, message []byte) ([]byte, error
 	}
 	return resp.Signature, nil
 }
+
+func (c *Client) SetUserPermissions(ctx context.Context, repoID string, username string, perms nodeeth.UserPermissions) error {
+	_, err := c.client.SetUserPermissions(ctx, &pb.SetUserPermissionsRequest{RepoID: repoID, Username: username, Puller: perms.Puller, Pusher: perms.Pusher, Admin: perms.Admin})
+	return errors.WithStack(err)
+}

@@ -29,6 +29,7 @@ service NodeRPC {
   rpc RepoHasObject(RepoHasObjectRequest) returns (RepoHasObjectResponse) {}
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
   rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
+  rpc SetUserPermissions(SetUserPermissionsRequest) returns (SetUserPermissionsResponse) {}
 }
 
 message SetUsernameRequest {
@@ -235,8 +236,18 @@ message SignMessageResponse {
     bytes signature = 1;
 }
 
-message EthAddressRequest { }
+message EthAddressRequest {}
 
 message EthAddressResponse {
     string address = 1;
 }
+
+message SetUserPermissionsRequest {
+    string repoID = 1;
+    string username = 2;
+    bool puller = 3;
+    bool pusher = 4;
+    bool admin = 5;
+}
+
+message SetUserPermissionsResponse {}

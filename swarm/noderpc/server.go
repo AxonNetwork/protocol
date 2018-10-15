@@ -601,3 +601,18 @@ func (s *Server) EthAddress(ctx context.Context, req *pb.EthAddressRequest) (*pb
 	addr := s.node.EthAddress()
 	return &pb.EthAddressResponse{Address: addr.String()}, nil
 }
+
+func (s *Server) SetUserPermissions(ctx context.Context, req *pb.SetUserPermissionsRequest) (*pb.SetUserPermissionsResponse, error) {
+	tx, err := s.node.SetUserPermissions(ctx, req.RepoID, req.Username, nodeeth.UserPermissions{Puller: req.Puller, Pusher: req.Pusher, Admin: req.Admin})
+	if err != nil {
+		return nil, err
+	}
+
+	txResult := <-tx.Await(ctx)
+	if txResult.Err != nil {
+		return nil, txResult.Err
+	} else if txResult.Receipt.Status == 0 {
+		return nil, errors.New("transaction failed")
+	}
+	return &pb.SetUserPermissionsResponse{}, nil
+}

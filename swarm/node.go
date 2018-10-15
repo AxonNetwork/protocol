@@ -590,6 +590,10 @@ func (n *Node) SignHash(data []byte) ([]byte, error) {
 	return n.eth.SignHash(data)
 }
 
+func (n *Node) SetUserPermissions(ctx context.Context, repoID string, username string, perms nodeeth.UserPermissions) (*nodeeth.Transaction, error) {
+	return n.eth.SetUserPermissions(ctx, repoID, username, perms)
+}
+
 func (n *Node) GetBandwidthForPeer(p peer.ID) metrics.Stats {
 	return n.bandwidthCounter.GetBandwidthForPeer(p)
 }

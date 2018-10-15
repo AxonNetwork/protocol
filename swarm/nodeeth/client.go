@@ -301,3 +301,17 @@ func (n *Client) AddressHasPullAccess(ctx context.Context, user common.Address, 
 	hasAccess, err := n.protocolContract.AddressHasPullAccess(n.callOpts(ctx), user, repoID)
 	return hasAccess, err
 }
+
+type UserPermissions struct {
+	Puller bool
+	Pusher bool
+	Admin  bool
+}
+
+func (n *Client) SetUserPermissions(ctx context.Context, repoID string, username string, perms UserPermissions) (*Transaction, error) {
+	tx, err := n.protocolContract.SetUserPermissions(n.transactOpts(ctx), repoID, username, perms.Puller, perms.Pusher, perms.Admin)
+	if err != nil {
+		return nil, err
+	}
+	return &Transaction{tx, n.ethClient}, nil
+}
