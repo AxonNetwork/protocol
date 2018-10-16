@@ -7,6 +7,8 @@ option go_package = "pb";
 
 service NodeRPC {
   rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse) {}
+  rpc GetUsername(GetUsernameRequest) returns (GetUsernameResponse) {}
+
   rpc InitRepo(InitRepoRequest) returns (InitRepoResponse) {}
   rpc CheckpointRepo(CheckpointRepoRequest) returns (CheckpointRepoResponse) {}
   rpc PullRepo(PullRepoRequest) returns (PullRepoResponse) {}
@@ -36,7 +38,16 @@ message SetUsernameRequest {
     string username = 1;
 }
 
-message SetUsernameResponse {}
+message SetUsernameResponse {
+    bytes signature = 2;
+}
+
+message GetUsernameRequest {}
+
+message GetUsernameResponse {
+    string username = 1;
+    bytes signature = 2;
+}
 
 message InitRepoRequest {
     string repoID = 1;

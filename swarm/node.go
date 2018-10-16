@@ -527,6 +527,10 @@ func (n *Node) EthAddress() nodeeth.Address {
 	return n.eth.Address()
 }
 
+func (n *Node) GetUsername(ctx context.Context) (string, error) {
+	return n.eth.GetUsername(ctx)
+}
+
 func (n *Node) EnsureUsername(ctx context.Context, username string) (*nodeeth.Transaction, error) {
 	return n.eth.EnsureUsername(ctx, username)
 }

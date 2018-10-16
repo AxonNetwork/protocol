@@ -71,7 +71,24 @@ func (s *Server) SetUsername(ctx context.Context, req *pb.SetUsernameRequest) (*
 			return nil, errors.New("transaction failed")
 		}
 	}
-	return &pb.SetUsernameResponse{}, nil
+	signature, err := s.node.SignHash([]byte(req.Username))
+	if err != nil {
+		return nil, err
+	}
+	return &pb.SetUsernameResponse{Signature: signature}, nil
+}
+
+func (s *Server) GetUsername(ctx context.Context, req *pb.GetUsernameRequest) (*pb.GetUsernameResponse, error) {
+	un, err := s.node.GetUsername(ctx)
+	if err != nil {
+		return nil, err
+	}
+	signature, err := s.node.SignHash([]byte(un))
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.GetUsernameResponse{Username: un, Signature: signature}, nil
 }
 
 func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.InitRepoResponse, error) {
