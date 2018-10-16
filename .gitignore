@@ -1,4 +1,4 @@
-build/
+/build/
 vendor/
 node_modules/
 main
@@ -7,7 +7,6 @@ swarm/main
 testzone/original
 testzone/testing
 remote-helper/head
-eth/build
 
 eth/truffle.js
 
