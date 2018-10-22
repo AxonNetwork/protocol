@@ -16,6 +16,11 @@ deps:
 	go get gopkg.in/src-d/go-git.v4
 	go get github.com/buger/goterm
 	go get github.com/urfave/cli
+	go get github.com/brynbellomy/debugcharts
+	go get github.com/golang/protobuf/proto
+	go get google.golang.org/grpc
+	go get github.com/aclements/go-rabin/rabin
+	go get github.com/dustin/go-humanize
 
 gofmt:
 	gofmt -s -w .
