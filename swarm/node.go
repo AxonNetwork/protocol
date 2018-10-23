@@ -563,6 +563,10 @@ func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (
 		return false, err
 	}
 
+	if len(remote) == 0 {
+		return false, nil
+	}
+
 	remoteHash, err := hex.DecodeString(remote)
 	if err != nil {
 		return false, err
