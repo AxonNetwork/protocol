@@ -110,6 +110,11 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 		log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
 	}
 
+	err = s.node.RequestBecomeReplicator(ctx, req.RepoID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	// If no path was specified, create the repo in the ReplicationRoot
 	path := req.Path
 	if path == "" {

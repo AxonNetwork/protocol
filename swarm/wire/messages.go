@@ -18,6 +18,7 @@ const (
 	MessageType_GetRefs
 	MessageType_UpdateRef
 	MessageType_Replicate
+	MessageType_BecomeReplicator
 )
 
 type GetObjectRequest struct {
@@ -66,4 +67,14 @@ type Ref struct {
 type ObjectMetadata struct {
 	Type gitplumbing.ObjectType
 	Len  uint64
+}
+
+type BecomeReplicatorRequest struct {
+	RepoIDLen int `struc:"sizeof=RepoID"`
+	RepoID    string
+}
+
+type BecomeReplicatorResponse struct {
+	ErrorLen int64 `struc:"sizeof=Error"`
+	Error    string
 }

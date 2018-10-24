@@ -43,6 +43,8 @@ type NodeConfig struct {
 	LocalRepos              []string
 	ReplicationRoot         string
 	ReplicateRepos          []string
+	KnownReplicators        []string
+	ReplicateEverything     bool
 }
 
 type RPCClientConfig struct {
@@ -71,6 +73,8 @@ var DefaultConfig = Config{
 		ReplicationRoot:         "/tmp/repos", // @@TODO: probably a better choice for this
 		ReplicateRepos:          []string{},
 		BootstrapPeers:          []string{},
+		KnownReplicators:        []string{},
+		ReplicateEverything:     false,
 	},
 	RPCClient: &RPCClientConfig{
 		Host: "unix:///tmp/conscience.sock",

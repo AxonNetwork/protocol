@@ -48,8 +48,9 @@ type Node struct {
 }
 
 const (
-	OBJECT_PROTO      = "/conscience/object/1.0.0"
-	REPLICATION_PROTO = "/conscience/replication/1.0.0"
+	OBJECT_PROTO            = "/conscience/object/1.0.0"
+	REPLICATION_PROTO       = "/conscience/replication/1.0.0"
+	BECOME_REPLICATOR_PROTO = "/conscience/become-replicator/1.0.0"
 )
 
 func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
@@ -103,6 +104,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	// Set the handler function for when we get a new incoming object stream
 	n.host.SetStreamHandler(OBJECT_PROTO, n.handleObjectRequest)
 	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
+	n.host.SetStreamHandler(BECOME_REPLICATOR_PROTO, n.handleBecomeReplicatorRequest)
 
 	// Connect to our list of bootstrap peers
 	go func() {
@@ -362,6 +364,42 @@ func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 	})
 }
 
+func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {
+	for _, pubkeyStr := range n.Config.Node.KnownReplicators {
+		peerID, err := peer.IDB58Decode(pubkeyStr)
+		if err != nil {
+			log.Errorf("RequestBecomeReplicator: bad pubkey string '%v': %v", pubkeyStr, err)
+			continue
+		}
+
+		stream, err := n.host.NewStream(ctx, peerID, BECOME_REPLICATOR_PROTO)
+		if err != nil {
+			log.Errorf("RequestBecomeReplicator: error connecting to peer %v: %v", peerID, err)
+			continue
+		}
+
+		err = WriteStructPacket(stream, &BecomeReplicatorRequest{RepoID: repoID})
+		if err != nil {
+			log.Errorf("RequestBecomeReplicator: error writing request: %v", err)
+			continue
+		}
+
+		resp := BecomeReplicatorResponse{}
+		err = ReadStructPacket(stream, &resp)
+		if err != nil {
+			log.Errorf("RequestBecomeReplicator: error reading response: %v", err)
+			continue
+		}
+
+		if resp.Error == "" {
+			log.Infof("RequestBecomeReplicator: peer %v agreed to replicate %v", peerID, repoID)
+		} else {
+			log.Infof("RequestBecomeReplicator: peer %v refused to replicate %v (err: %v)", peerID, repoID, resp.Error)
+		}
+	}
+	return nil
+}
+
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
 func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
@@ -418,6 +456,42 @@ func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
 	wg.Wait()
 
 	return nil
+}
+
+func (n *Node) handleBecomeReplicatorRequest(stream netp2p.Stream) {
+	log.Printf("[become replicator] receiving 'become replicator' request")
+	defer stream.Close()
+
+	req := BecomeReplicatorRequest{}
+	err := ReadStructPacket(stream, &req)
+	if err != nil {
+		log.Errorf("[become replicator] error: %v", err)
+		return
+	}
+	log.Debugf("[become replicator] repoID: %v", req.RepoID)
+
+	if n.Config.Node.ReplicateEverything {
+		err = n.SetReplicationPolicy(req.RepoID, true)
+		if err != nil {
+			log.Errorf("[become replicator] error: %v", err)
+			WriteStructPacket(stream, &BecomeReplicatorResponse{Error: err.Error()})
+			return
+		}
+
+		// Acknowledge that we will now replicate the repo
+		err = WriteStructPacket(stream, &BecomeReplicatorResponse{Error: ""})
+		if err != nil {
+			log.Errorf("[become replicator] error: %v", err)
+			return
+		}
+
+	} else {
+		err = WriteStructPacket(stream, &BecomeReplicatorResponse{Error: "no"})
+		if err != nil {
+			log.Errorf("[become replicator] error: %v", err)
+			return
+		}
+	}
 }
 
 // Handles an incoming request to replicate (pull changes from) a given repository.
