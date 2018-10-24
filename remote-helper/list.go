@@ -10,8 +10,11 @@ func getRefs() ([]string, error) {
 	refs, err := client.GetAllRemoteRefs(context.Background(), repoID)
 	if err != nil {
 		return nil, err
+	} else if len(refs) == 0 {
+		return []string{}, nil
 	}
-	refsList := make([]string, 0)
+
+	refsList := []string{}
 	for _, ref := range refs {
 		refsList = append(refsList, fmt.Sprintf("%s %s", ref.CommitHash, ref.RefName))
 	}

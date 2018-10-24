@@ -61,7 +61,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		text := scanner.Text()
-		log.Println(text)
+		log.Println("[git]", text)
 
 		switch {
 

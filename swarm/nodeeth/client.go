@@ -205,13 +205,27 @@ func (n *Client) GetNumRefs(ctx context.Context, repoID string) (uint64, error) 
 }
 
 func (n *Client) GetRef(ctx context.Context, repoID string, refName string) (string, error) {
-	return n.protocolContract.GetRef(n.callOpts(ctx), repoID, refName)
+	ref, err := n.protocolContract.GetRef(n.callOpts(ctx), repoID, refName)
+	if err != nil {
+		// The geth codebase (which handles ABI unpacking) doesn't currently seem to understand a
+		// transaction/call return value containing a Solidity require/assert error message
+		// (as in `require(someCondition, "condition not met")`).  @@TODO?
+		if strings.Contains(err.Error(), "abi: unmarshalling empty output") || strings.Contains(err.Error(), "abi: improperly formatted output") {
+			return "", nil
+		} else {
+			return "", err
+		}
+	}
+	return ref, nil
 }
 
 func (n *Client) GetRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]wire.Ref, uint64, error) {
 	x, err := n.protocolContract.GetRefs(n.callOpts(ctx), repoID, big.NewInt(0).SetUint64(pageSize), big.NewInt(0).SetUint64(page))
 	if err != nil {
-		if strings.Contains(err.Error(), "abi: unmarshalling empty output") {
+		// The geth codebase (which handles ABI unpacking) doesn't currently seem to understand a
+		// transaction/call return value containing a Solidity require/assert error message
+		// (as in `require(someCondition, "condition not met")`).  @@TODO?
+		if strings.Contains(err.Error(), "abi: unmarshalling empty output") || strings.Contains(err.Error(), "abi: improperly formatted output") {
 			return map[string]wire.Ref{}, 0, nil
 		} else {
 			return nil, 0, err
