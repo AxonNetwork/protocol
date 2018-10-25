@@ -149,24 +149,37 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 }
 
 func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoRequest) (*pb.CheckpointRepoResponse, error) {
+	log.Debugln("[checkpoint] req.Path =", req.Path)
+	for _, v := range os.Environ() {
+		log.Debugf("[checkpoint] %v", v)
+	}
+	log.Debugln("[checkpoint] git add .")
 	err := util.ExecAndScanStdout(ctx, []string{"git", "add", "."}, req.Path, func(line string) error {
+		log.Debugln("[checkpoint]  -", line)
 		return nil
 	})
 	if err != nil {
+		log.Errorln("[checkpoint]  - error:", err)
 		return nil, errors.WithStack(err)
 	}
 
+	log.Debugln("[checkpoint] git commit -m " + req.Message)
 	err = util.ExecAndScanStdout(ctx, []string{"git", "commit", "-m", req.Message}, req.Path, func(line string) error {
+		log.Debugln("[checkpoint]  -", line)
 		return nil
 	})
 	if err != nil {
+		log.Errorln("[checkpoint]  - error:", err)
 		return nil, errors.WithStack(err)
 	}
 
+	log.Debugln("[checkpoint] git push origin master")
 	err = util.ExecAndScanStdout(ctx, []string{"git", "push", "origin", "master"}, req.Path, func(line string) error {
+		log.Debugln("[checkpoint]  -", line)
 		return nil
 	})
 	if err != nil {
+		log.Errorln("[checkpoint]  - error:", err)
 		return nil, errors.WithStack(err)
 	}
 

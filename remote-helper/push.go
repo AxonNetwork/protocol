@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -16,18 +17,32 @@ func push(srcRefName string, destRefName string) error {
 		srcRefName = srcRefName[1:]
 	}
 
-	// Tell the node to announce the new content so that replicator nodes can find and pull it.
-	// @@TODO: give context a timeout and make it configurable
-	log.Infof("announcing repo content")
-	ctx, cancel1 := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel1()
-	err := client.AnnounceRepoContent(context.Background(), repoID)
+	f, err := os.OpenFile("/tmp/conscience-push", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
+	for _, v := range os.Environ() {
+		f.WriteString("env: " + v + "\n")
+	}
+
+	// Tell the node to announce the new content so that replicator nodes can find and pull it.
+	// @@TODO: give context a timeout and make it configurable
+	log.Infof("announcing repo content")
+	f.WriteString("announcing repo content\n")
+	ctx, cancel1 := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel1()
+	err = client.AnnounceRepoContent(context.Background(), repoID)
+	if err != nil {
+		f.WriteString("announcing repo content / err: " + err.Error() + "\n")
+		return err
+	}
+
+	f.WriteString("repo.reference\n")
 	srcRef, err := Repo.Reference(gitplumbing.ReferenceName(srcRefName), false)
 	if err != nil {
+		f.WriteString("repo.reference / err: " + err.Error() + "\n")
 		return errors.WithStack(err)
 	}
 
@@ -37,8 +52,10 @@ func push(srcRefName string, destRefName string) error {
 	ctx, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel2()
 	log.Infof("updating ref")
+	f.WriteString("updating ref\n")
 	err = client.UpdateRef(ctx, repoID, destRefName, commitHash)
 	if err != nil {
+		f.WriteString("updating ref / err: " + err.Error() + "\n")
 		return err
 	}
 
@@ -46,7 +63,11 @@ func push(srcRefName string, destRefName string) error {
 	ctx, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel3()
 	log.Infof("requesting replication")
+	f.WriteString("requesting replication\n")
 	err = client.RequestReplication(ctx, repoID)
+	if err != nil {
+		f.WriteString("requesting replication / err: " + err.Error() + "\n")
+	}
 	log.Infof("done!")
 	return err
 }
