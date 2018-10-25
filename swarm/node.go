@@ -63,6 +63,11 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
+	err = os.MkdirAll(cfg.Node.ReplicationRoot, os.ModePerm)
+	if err != nil {
+		return nil, err
+	}
+
 	bandwidthCounter := metrics.NewBandwidthCounter()
 
 	// Initialize the p2p host
