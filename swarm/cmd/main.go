@@ -12,14 +12,14 @@ import (
 	"strconv"
 	"strings"
 
-	// tm "github.com/buger/goterm"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/constants"
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/logger"
@@ -28,6 +28,9 @@ import (
 )
 
 func main() {
+	log.SetField("App", "conscience-node")
+	log.SetField("ReleaseStage", constants.ReleaseStage)
+	log.SetField("AppVersion", constants.AppVersion)
 	log.SetLevel(log.DebugLevel)
 
 	f, err := os.OpenFile("/tmp/conscience-node-env", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -41,6 +44,7 @@ func main() {
 	f.Close()
 
 	app := cli.NewApp()
+	app.Version = constants.AppVersion
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -64,6 +68,7 @@ func main() {
 func run(configPath string) error {
 	ctx := context.Background()
 
+	// Add our custom logger hook (used by nodehttp.Server)
 	logger.InstallHook()
 
 	// Read the config file
@@ -71,6 +76,7 @@ func run(configPath string) error {
 	if err != nil {
 		return err
 	}
+	config.AttachToLogger(cfg)
 
 	n, err := swarm.NewNode(ctx, cfg)
 	if err != nil {
@@ -121,47 +127,6 @@ var replCommands = map[string]struct {
 	HelpText string
 	Handler  func(ctx context.Context, args []string, n *swarm.Node) error
 }{
-	//  "state": {
-	//      "show an overview of the current state of the node",
-	//      func(ctx context.Context, args []string, n *swarm.Node) error {
-	//          tm.Clear()
-	//          tm.MoveCursor(1, 1)
-	//          box := tm.NewBox(50|tm.PCT, 3, 0)
-	//          _, err := box.Write([]byte("Conscience"))
-	//          if err != nil {
-	//              panic(err)
-	//          }
-	//          tm.Println(box.String())
-	//          state, err := n.GetNodeState()
-	//          if err != nil {
-	//              tm.Println("There has been some error")
-	//              tm.Println(err.Error())
-	//              tm.Flush()
-	//              return err
-	//          }
-	//          tm.Printf("%v %v\n", tm.Bold("Username:"), state.User)
-	//          tm.Printf("%v %v\n", tm.Bold("Ethereum Address:"), state.EthAccount)
-	//          tm.Printf("\n%v\n", tm.Bold("Node ('addrs' for more info):"))
-	//          tm.Println(state.Addrs[1])
-	//          tm.Printf("\n%v ('peers' for more info):\n", tm.Bold("Peers"))
-	//          if len(state.Peers) < 2 {
-	//              tm.Printf("  No peers at the moment\n")
-	//          }
-	//          for peer, addrs := range state.Peers {
-	//              if len(addrs) > 1 {
-	//                  tm.Printf("  -%s/ipfs/%s\n", addrs[1], peer)
-	//              }
-	//          }
-	//          tm.Printf("\n%v ('repos' for more info)\n", tm.Bold("\nRepos"))
-	//          for repo := range state.LocalRepos {
-	//              tm.Printf("  - %s\n", repo)
-	//          }
-	//
-	//          tm.Flush()
-	//          return nil
-	//      },
-	//  },
-
 	"addrs": {
 		"list the p2p addresses this node is using to communicate with its swarm",
 		func(ctx context.Context, args []string, n *swarm.Node) error {

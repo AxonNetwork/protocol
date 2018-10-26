@@ -9,7 +9,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/mitchellh/go-homedir"
-	log "github.com/sirupsen/logrus"
+
+	"github.com/Conscience/protocol/log"
 )
 
 type Config struct {
@@ -51,13 +52,22 @@ type RPCClientConfig struct {
 	Host string
 }
 
+var HOME = func() string {
+	dir, err := homedir.Dir()
+	if err != nil {
+		panic(err)
+	}
+	log.SetField("Calculated HOME", dir)
+	return dir
+}()
+
 var DefaultConfig = Config{
 	User: &UserConfig{
 		Username: "nobody",
 		JWT:      "",
 	},
 	Node: &NodeConfig{
-		PrivateKeyFile: filepath.Join(os.Getenv("HOME"), ".conscience.key"),
+		PrivateKeyFile: filepath.Join(HOME, ".conscience.key"),
 		P2PListenAddr:  "0.0.0.0",
 		P2PListenPort:  1337,
 		// RPCListenNetwork:        "unix",
@@ -72,7 +82,7 @@ var DefaultConfig = Config{
 		ContentRequestInterval:  Duration(15 * time.Second),
 		FindProviderTimeout:     Duration(10 * time.Second),
 		LocalRepos:              []string{},
-		ReplicationRoot:         filepath.Join(os.Getenv("HOME"), "conscience"),
+		ReplicationRoot:         filepath.Join(HOME, "conscience"),
 		ReplicateRepos:          []string{},
 		BootstrapPeers:          []string{"/dns4/node.conscience.network/tcp/1337/p2p/16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
 		KnownReplicators:        []string{"16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
@@ -93,7 +103,7 @@ func ReadConfig() (*Config, error) {
 
 	configPath, err := filepath.Abs(filepath.Join(dir, ".consciencerc"))
 	if err != nil {
-		log.Printf("error filepath.Abs = %v", err)
+		log.Errorf("ReadConfig error on filepath.Abs: %v", err)
 		return nil, err
 	}
 
@@ -101,7 +111,7 @@ func ReadConfig() (*Config, error) {
 }
 
 func ReadConfigAtPath(configPath string) (*Config, error) {
-	log.Warnf("reading config at %v", configPath)
+	log.Debugf("reading config at %v", configPath)
 	cfg := DefaultConfig
 
 	bs, err := ioutil.ReadFile(configPath)
@@ -119,6 +129,28 @@ func ReadConfigAtPath(configPath string) (*Config, error) {
 
 	cfg.configPath = configPath
 	return &cfg, nil
+}
+
+func AttachToLogger(cfg *Config) {
+	log.SetField("config.Node.PrivateKeyFile", cfg.Node.PrivateKeyFile)
+	log.SetField("config.Node.P2PListenAddr", cfg.Node.P2PListenAddr)
+	log.SetField("config.Node.P2PListenPort", cfg.Node.P2PListenPort)
+	log.SetField("config.Node.BootstrapPeers", cfg.Node.BootstrapPeers)
+	log.SetField("config.Node.RPCListenNetwork", cfg.Node.RPCListenNetwork)
+	log.SetField("config.Node.RPCListenHost", cfg.Node.RPCListenHost)
+	log.SetField("config.Node.HTTPListenAddr", cfg.Node.HTTPListenAddr)
+	log.SetField("config.Node.EthereumHost", cfg.Node.EthereumHost)
+	log.SetField("config.Node.ProtocolContract", cfg.Node.ProtocolContract)
+	log.SetField("config.Node.EthereumBIP39Seed", cfg.Node.EthereumBIP39Seed)
+	log.SetField("config.Node.ContentAnnounceInterval", cfg.Node.ContentAnnounceInterval)
+	log.SetField("config.Node.ContentRequestInterval", cfg.Node.ContentRequestInterval)
+	log.SetField("config.Node.FindProviderTimeout", cfg.Node.FindProviderTimeout)
+	log.SetField("config.Node.LocalRepos", cfg.Node.LocalRepos)
+	log.SetField("config.Node.ReplicationRoot", cfg.Node.ReplicationRoot)
+	log.SetField("config.Node.ReplicateRepos", cfg.Node.ReplicateRepos)
+	log.SetField("config.Node.KnownReplicators", cfg.Node.KnownReplicators)
+	log.SetField("config.Node.ReplicateEverything", cfg.Node.ReplicateEverything)
+	log.SetField("config.RPCClient.Host", cfg.RPCClient.Host)
 }
 
 func (c *Config) Update(fn func() error) error {

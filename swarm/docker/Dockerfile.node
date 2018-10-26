@@ -19,14 +19,15 @@ RUN go get github.com/lunixbochs/struc
 RUN go get github.com/btcsuite/btcd
 RUN go get github.com/btcsuite/btcutil
 RUN go get gopkg.in/src-d/go-git.v4
-RUN go get github.com/buger/goterm
+RUN go get github.com/urfave/cli
 RUN go get github.com/aclements/go-rabin/rabin
 RUN go get github.com/dustin/go-humanize
-RUN go get github.com/logrusorgru/aurora
 RUN go get github.com/golang/protobuf/proto
 RUN go get golang.org/x/net/context
 RUN go get google.golang.org/grpc
 RUN go get github.com/brynbellomy/debugcharts
+RUN go get github.com/Shopify/logrus-bugsnag
+RUN go get github.com/bugsnag/bugsnag-go
 
 # Build all of the binaries with the Makefile
 COPY . $GOPATH/src/github.com/Conscience/protocol

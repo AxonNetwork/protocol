@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 
 	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	"gx/ipfs/QmQYwRL1T9dJtdCScoeRQwwvScbJTcWqnXhq4dYQ6Cu5vX/go-libp2p-kad-dht"
@@ -30,6 +29,7 @@ import (
 	"gx/ipfs/QmesQqwonP618R7cJZoFfA4ioYhhMKnDmtUxcAvvxEEGnw/go-libp2p-kbucket"
 
 	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	. "github.com/Conscience/protocol/swarm/wire"
@@ -92,6 +92,13 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "could not initialize Ethereum client")
 	}
+
+	username, err := eth.GetUsername(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not fetch username from Ethereum smart contract")
+	}
+	log.SetField("username", username)
+	log.WithFields(log.Fields{"blabla": 123}).Errorln("testing inside node")
 
 	n := &Node{
 		host:             h,
@@ -557,6 +564,7 @@ func (n *Node) pullRepo(repoID string) error {
 	// Start a git-pull process
 	cmd := exec.Command("git", "pull", "origin", "master")
 	cmd.Dir = r.Path
+	cmd.Env = util.CopyEnv()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	cmd.Stdout = stdout

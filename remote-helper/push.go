@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+
+	"github.com/Conscience/protocol/log"
 )
 
 func push(srcRefName string, destRefName string) error {

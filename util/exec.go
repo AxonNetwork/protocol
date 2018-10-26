@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func envToMap(env []string) map[string]string {
+func EnvToMap(env []string) map[string]string {
 	m := make(map[string]string, len(env))
 	for _, line := range env {
 		pair := strings.Split(line, "=")
@@ -25,7 +25,7 @@ func envToMap(env []string) map[string]string {
 	return m
 }
 
-func mapToEnv(m map[string]string) []string {
+func MapToEnv(m map[string]string) []string {
 	env := make([]string, len(m))
 	i := 0
 	for k, v := range m {
@@ -33,6 +33,16 @@ func mapToEnv(m map[string]string) []string {
 		i++
 	}
 	return env
+}
+
+func CopyEnv() []string {
+	envMap := EnvToMap(os.Environ())
+	if envMap["PATH"] == "" {
+		envMap["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	} else {
+		envMap["PATH"] = envMap["PATH"] + ":" + "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	}
+	return MapToEnv(envMap)
 }
 
 func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn func(string) error) (err error) {
@@ -52,13 +62,7 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 
 	cmd := exec.CommandContext(ctx, cmdAndArgs[0], cmdAndArgs[1:]...)
 	cmd.Dir = cwd
-	envMap := envToMap(os.Environ())
-	if envMap["PATH"] == "" {
-		envMap["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-	} else {
-		envMap["PATH"] = envMap["PATH"] + ":" + "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-	}
-	cmd.Env = mapToEnv(envMap)
+	cmd.Env = CopyEnv()
 
 	for _, v := range cmd.Env {
 		f.WriteString(v)
