@@ -32,7 +32,7 @@ RUN go get github.com/bugsnag/bugsnag-go
 # Build all of the binaries with the Makefile
 COPY . $GOPATH/src/github.com/Conscience/protocol
 WORKDIR $GOPATH/src/github.com/Conscience/protocol
-RUN make && make install
+RUN make build-prod && make install
 RUN ln -s /mnt/.consciencerc $HOME/.consciencerc
 
 # Expose ports
