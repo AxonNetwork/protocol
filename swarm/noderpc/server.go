@@ -521,10 +521,10 @@ func parseGitStatusLine(line string) (*pb.File, error) {
 }
 
 func parseGitLSFilesLine(line string) (*pb.File, error) {
-	parts := strings.Split(line, " ")
-	moarParts := strings.Split(parts[2], "\t")
+	moarParts := strings.Split(line, "\t")
+	parts := strings.Split(moarParts[0], " ")
 
-	mode, err := strconv.ParseUint(moarParts[0], 8, 32)
+	mode, err := strconv.ParseUint(parts[0], 8, 32)
 	if err != nil {
 		return nil, err
 	}
@@ -534,8 +534,13 @@ func parseGitLSFilesLine(line string) (*pb.File, error) {
 		return nil, err
 	}
 
+	name := moarParts[1]
+	if name[0:1] == "\"" {
+		name = fmt.Sprintf(name[1 : len(name)-2])
+	}
+
 	return &pb.File{
-		Name:           moarParts[1],
+		Name:           name,
 		Hash:           hash,
 		Mode:           uint32(mode),
 		Size:           0,
@@ -580,7 +585,8 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	err := util.ExecAndScanStdout(ctx, []string{"git", "ls-files", "--stage"}, r.Path, func(line string) error {
 		file, err := parseGitLSFilesLine(line)
 		if err != nil {
-			return err
+			log.Errorln("GetRepoFiles (git ls-files):", err)
+			return nil // continue
 		}
 		files[file.Name] = file
 		return nil
@@ -593,7 +599,8 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	err = util.ExecAndScanStdout(ctx, []string{"git", "status", "--porcelain=2"}, r.Path, func(line string) error {
 		file, err := parseGitStatusLine(line)
 		if err != nil {
-			return err
+			log.Errorln("GetRepoFiles (git status --porcelain=2):", err)
+			return nil // continue
 		}
 		files[file.Name] = file
 		return nil
@@ -602,17 +609,16 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 		return nil, err
 	}
 
-	fileList := make([]*pb.File, len(files))
-	i := 0
+	fileList := []*pb.File{}
 	for _, file := range files {
 		stat, err := getStats(filepath.Join(r.Path, file.Name))
 		if err != nil {
-			return nil, err
+			log.Errorln("GetRepoFiles (getStats):", err)
+			continue
 		}
 		file.Modified = uint32(stat.ModTime().Unix())
 		file.Size = uint64(stat.Size())
-		fileList[i] = file
-		i++
+		fileList = append(fileList, file)
 	}
 
 	return &pb.GetRepoFilesResponse{Files: fileList}, nil
