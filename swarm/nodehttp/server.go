@@ -7,10 +7,10 @@ import (
 	"net/http"
 
 	"github.com/brynbellomy/debugcharts"
-	log "github.com/sirupsen/logrus"
 
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/logger"

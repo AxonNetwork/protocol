@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/noderpc"
 )
@@ -26,6 +26,8 @@ var (
 )
 
 func main() {
+	log.SetField("App", "git-remote-conscience")
+
 	var err error
 
 	repoID = strings.Replace(os.Args[2], "conscience://", "", -1)
@@ -34,6 +36,7 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	config.AttachToLogger(cfg)
 
 	client, err = noderpc.NewClient(cfg.RPCClient.Host)
 	if err != nil {
