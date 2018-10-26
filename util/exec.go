@@ -3,9 +3,7 @@ package util
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
@@ -50,23 +48,16 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 		err = errors.Wrapf(err, "error running %v", strings.Join(cmdAndArgs, " "))
 	}()
 
-	asdf := []string{}
-	for _, x := range cmdAndArgs {
-		asdf = append(asdf, strings.Replace(x, "/", "-", -1))
+	var args []string
+	if len(cmdAndArgs) == 1 {
+		args = []string{}
+	} else {
+		args = cmdAndArgs[1:]
 	}
-	f, err := os.OpenFile(fmt.Sprintf("/tmp/conscience-proc-"+strings.Join(asdf, "-")+"-%v", rand.Int()), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 
-	cmd := exec.CommandContext(ctx, cmdAndArgs[0], cmdAndArgs[1:]...)
+	cmd := exec.CommandContext(ctx, cmdAndArgs[0], args...)
 	cmd.Dir = cwd
 	cmd.Env = CopyEnv()
-
-	for _, v := range cmd.Env {
-		f.WriteString(v)
-	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

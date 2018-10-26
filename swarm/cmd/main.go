@@ -33,23 +33,13 @@ func main() {
 	log.SetField("AppVersion", constants.AppVersion)
 	log.SetLevel(log.DebugLevel)
 
-	f, err := os.OpenFile("/tmp/conscience-node-env", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	for _, v := range os.Environ() {
-		f.WriteString(v + "\n")
-	}
-	f.Close()
-
 	app := cli.NewApp()
 	app.Version = constants.AppVersion
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "config",
-			Value: filepath.Join(os.Getenv("HOME"), ".consciencerc"),
+			Value: filepath.Join(config.HOME, ".consciencerc"),
 			Usage: "location of config file",
 		},
 	}
@@ -59,7 +49,7 @@ func main() {
 		return run(configPath)
 	}
 
-	err = app.Run(os.Args)
+	err := app.Run(os.Args)
 	if err != nil {
 		log.Fatal(err)
 	}

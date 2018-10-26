@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-
-	"github.com/Conscience/protocol/log"
 )
 
 func push(srcRefName string, destRefName string) error {
@@ -22,7 +19,7 @@ func push(srcRefName string, destRefName string) error {
 	// @@TODO: give context a timeout and make it configurable
 	ctx, cancel1 := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel1()
-	err = client.AnnounceRepoContent(context.Background(), repoID)
+	err := client.AnnounceRepoContent(context.Background(), repoID)
 	if err != nil {
 		return err
 	}
