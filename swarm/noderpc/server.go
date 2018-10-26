@@ -187,11 +187,29 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 }
 
 func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.PullRepoResponse, error) {
-	err := util.ExecAndScanStdout(ctx, []string{"git", "pull", "origin", "master"}, req.Path, func(line string) error {
+	didStash := false
+	err := util.ExecAndScanStdout(ctx, []string{"git", "stash"}, req.Path, func(line string) error {
+		if line != "No local changes to save" {
+			didStash = true
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, errors.WithStack(err)
+	}
+	err = util.ExecAndScanStdout(ctx, []string{"git", "pull", "origin", "master"}, req.Path, func(line string) error {
+		return nil
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if didStash {
+		err = util.ExecAndScanStdout(ctx, []string{"git", "stash", "apply"}, req.Path, func(line string) error {
+			return nil
+		})
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
 	}
 	return &pb.PullRepoResponse{Ok: true}, nil
 }
