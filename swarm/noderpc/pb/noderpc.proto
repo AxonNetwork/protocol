@@ -223,6 +223,8 @@ message File {
     uint32 modified = 5;
     string unstagedStatus = 6;
     string stagedStatus = 7;
+    bool mergeConflict = 8;
+    bool mergeUnresolved = 9;
 }
 
 message GetRepoFilesResponse {

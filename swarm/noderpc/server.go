@@ -491,6 +491,23 @@ func parseGitStatusLine(line string) (*pb.File, error) {
 	file := &pb.File{}
 
 	switch parts[0] {
+	case "u":
+		mode, err := strconv.ParseUint(parts[3], 8, 32)
+		if err != nil {
+			return nil, err
+		}
+
+		hash, err := hex.DecodeString(parts[7])
+		if err != nil {
+			return nil, err
+		}
+
+		file.Name = parts[10]
+		file.Hash = hash
+		file.Mode = uint32(mode)
+		file.UnstagedStatus = parts[1][:1]
+		file.StagedStatus = parts[1][1:]
+
 	case "1":
 		mode, err := strconv.ParseUint(parts[3], 8, 32)
 		if err != nil {
@@ -559,6 +576,39 @@ func getStats(path string) (os.FileInfo, error) {
 	return stat, err
 }
 
+func getMergeConflicts(ctx context.Context, path string) ([]string, []string, error) {
+	unresolved := make([]string, 0)
+	err := util.ExecAndScanStdout(ctx, []string{"git", "diff", "--name-only", "--diff-filter=U"}, path, func(line string) error {
+		unresolved = append(unresolved, line)
+		return nil
+	})
+	if err != nil {
+		return []string{}, []string{}, err
+	}
+
+	mergeConflicts := make([]string, 0)
+	for i := range unresolved {
+		exists, err := util.GrepExists(filepath.Join(path, unresolved[i]), "<<<<<")
+		if err != nil {
+			return []string{}, []string{}, err
+		}
+		if exists {
+			mergeConflicts = append(mergeConflicts, unresolved[i])
+		}
+
+	}
+	return unresolved, mergeConflicts, err
+}
+
+func contains(arr []string, str string) bool {
+	for i := range arr {
+		if arr[i] == str {
+			return true
+		}
+	}
+	return false
+}
+
 // @@TODO: move this into the Node
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
 	var r *repo.Repo
@@ -609,6 +659,11 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 		return nil, err
 	}
 
+	unresolved, mergeConflicts, err := getMergeConflicts(ctx, r.Path)
+	if err != nil {
+		return nil, err
+	}
+
 	fileList := []*pb.File{}
 	for _, file := range files {
 		stat, err := getStats(filepath.Join(r.Path, file.Name))
@@ -618,6 +673,8 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 		}
 		file.Modified = uint32(stat.ModTime().Unix())
 		file.Size = uint64(stat.Size())
+		file.MergeConflict = contains(mergeConflicts, file.Name)
+		file.MergeUnresolved = contains(unresolved, file.Name)
 		fileList = append(fileList, file)
 	}
 
