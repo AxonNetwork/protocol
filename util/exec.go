@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+
+	"github.com/Conscience/protocol/log"
 )
 
 func EnvToMap(env []string) map[string]string {
@@ -18,7 +20,7 @@ func EnvToMap(env []string) map[string]string {
 		if len(pair) < 2 {
 			continue
 		}
-		m[pair[0]] = m[pair[1]]
+		m[pair[0]] = pair[1]
 	}
 	return m
 }
@@ -36,9 +38,9 @@ func MapToEnv(m map[string]string) []string {
 func CopyEnv() []string {
 	envMap := EnvToMap(os.Environ())
 	if envMap["PATH"] == "" {
-		envMap["PATH"] = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+		envMap["PATH"] = envMap["CONSCIENCE_BINARIES_PATH"] + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 	} else {
-		envMap["PATH"] = envMap["PATH"] + ":" + "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+		envMap["PATH"] = envMap["CONSCIENCE_BINARIES_PATH"] + ":" + envMap["PATH"] + ":" + "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 	}
 	return MapToEnv(envMap)
 }
