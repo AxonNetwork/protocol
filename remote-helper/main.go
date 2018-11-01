@@ -101,6 +101,12 @@ func speakGit(r io.Reader, w io.Writer) error {
 			if err != nil {
 				return err
 			}
+
+			err = trackRepo()
+			if err != nil {
+				return err
+			}
+
 			fmt.Fprintln(w)
 
 		case strings.HasPrefix(text, "push"):
@@ -126,13 +132,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 			fmt.Fprintln(w)
 
 		case text == "":
-			// Tell the node to track this repo
-			fullpath, err := filepath.Abs(filepath.Dir(GIT_DIR))
-			if err != nil {
-				return err
-			}
-			// @@TODO: give context a timeout and make it configurable
-			err = client.TrackLocalRepo(context.Background(), fullpath)
+			err := trackRepo()
 			if err != nil {
 				return err
 			}
@@ -147,4 +147,18 @@ func speakGit(r io.Reader, w io.Writer) error {
 func die(err error) {
 	log.Errorf("%+v\n", err)
 	os.Exit(1)
+}
+
+func trackRepo() error {
+	// Tell the node to track this repo
+	fullpath, err := filepath.Abs(filepath.Dir(GIT_DIR))
+	if err != nil {
+		return err
+	}
+	// @@TODO: give context a timeout and make it configurable
+	err = client.TrackLocalRepo(context.Background(), fullpath)
+	if err != nil {
+		return err
+	}
+	return nil
 }
