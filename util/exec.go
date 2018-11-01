@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-
-	"github.com/Conscience/protocol/log"
 )
 
 func EnvToMap(env []string) map[string]string {
