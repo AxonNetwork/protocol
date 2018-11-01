@@ -2,7 +2,6 @@ package log
 
 import (
 	"os"
-	"strings"
 
 	"github.com/Shopify/logrus-bugsnag"
 	bugsnag "github.com/bugsnag/bugsnag-go"
@@ -42,11 +41,11 @@ func init() {
 		logrus.AddHook(hook)
 	}
 
-	// Add the current environment to the log metadata
-	for _, v := range os.Environ() {
-		parts := strings.Split(v, "=")
-		SetField("env."+parts[0], parts[1])
-	}
+	// Add some of the current environment to the log metadata
+	SetField("env.PATH", os.Getenv("PATH"))
+	SetField("env.PWD", os.Getenv("PWD"))
+	SetField("env.CONSCIENCE_APP_PATH", os.Getenv("CONSCIENCE_APP_PATH"))
+	SetField("env.CONSCIENCE_BINARIES_PATH", os.Getenv("CONSCIENCE_BINARIES_PATH"))
 }
 
 func WithFields(fields logrus.Fields) *logrus.Entry {
