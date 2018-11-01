@@ -15,25 +15,32 @@ type Fields = logrus.Fields
 
 var (
 	DebugLevel = logrus.DebugLevel
+	InfoLevel  = logrus.InfoLevel
+
+	bugsnagEnabled = os.Getenv("BUGSNAG_ENABLED") != ""
 )
 
 var globalFields = logrus.Fields{}
 
 func SetField(key string, value interface{}) {
-	globalFields[key] = value
+	if bugsnagEnabled {
+		globalFields[key] = value
+	}
 }
 
 func init() {
-	bugsnag.Configure(bugsnag.Configuration{
-		APIKey:       constants.BugsnagAPIKey,
-		ReleaseStage: constants.ReleaseStage,
-		AppVersion:   constants.AppVersion,
-	})
-	hook, err := logrus_bugsnag.NewBugsnagHook()
-	if err != nil {
-		panic(err)
+	if bugsnagEnabled {
+		bugsnag.Configure(bugsnag.Configuration{
+			APIKey:       constants.BugsnagAPIKey,
+			ReleaseStage: constants.ReleaseStage,
+			AppVersion:   constants.AppVersion,
+		})
+		hook, err := logrus_bugsnag.NewBugsnagHook()
+		if err != nil {
+			panic(err)
+		}
+		logrus.AddHook(hook)
 	}
-	logrus.AddHook(hook)
 
 	// Add the current environment to the log metadata
 	for _, v := range os.Environ() {
