@@ -353,7 +353,7 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 		raw.SetOption("user", "", "email", email)
 		changed = true
 	}
-	if changed == true {
+	if changed {
 		err = writeConfig(r.Path, raw)
 		if err != nil {
 			return err

@@ -486,7 +486,7 @@ func (n *Node) handleBecomeReplicatorRequest(stream netp2p.Stream) {
 		err = n.SetReplicationPolicy(req.RepoID, true)
 		if err != nil {
 			log.Errorf("[become replicator] error: %v", err)
-			WriteStructPacket(stream, &BecomeReplicatorResponse{Error: err.Error()})
+			_ = WriteStructPacket(stream, &BecomeReplicatorResponse{Error: err.Error()})
 			return
 		}
 

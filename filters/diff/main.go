@@ -30,7 +30,7 @@ func main() {
 	}
 }
 
-func getChunks(file *os.File) (chunks []string) {
+func getChunks(file io.Reader) (chunks []string) {
 	const WINDOW_SIZE, MIN, AVG, MAX = 64, 512, 2048, 4096
 
 	copy := new(bytes.Buffer)

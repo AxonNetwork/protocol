@@ -137,11 +137,8 @@ func speakGit(r io.Reader, w io.Writer) error {
 				return err
 			}
 
-			break
-
 		default:
 			return fmt.Errorf("Error: default git speak: %q", text)
-
 		}
 	}
 	return scanner.Err()

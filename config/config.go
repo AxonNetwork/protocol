@@ -118,7 +118,7 @@ func ReadConfigAtPath(configPath string) (*Config, error) {
 	if err != nil {
 		log.Errorf("could not read config!")
 	} else {
-		log.Printf("reaad config.  contents = %v", string(bs))
+		log.Printf("read config.  contents = %v", string(bs))
 	}
 
 	_, err = toml.DecodeFile(configPath, &cfg)
