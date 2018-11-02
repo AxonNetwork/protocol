@@ -14,6 +14,9 @@ while [[ "$#" > 0 ]]; do case $1 in
   *) echo "Unknown parameter passed: $1"; exit 1;;
 esac; shift; done
 
+echo Running gofmt
+gofmt -s -w .
+
 echo Building:
 [[ -n $darwin ]]  && echo   - darwin
 [[ -n $windows ]] && echo   - windows
