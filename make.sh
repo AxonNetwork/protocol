@@ -23,6 +23,34 @@ echo Building:
 [[ -n $linux ]]   && echo   - linux
 
 
+function get_deps {
+    set -x
+    go get github.com/whyrusleeping/gx
+    go get github.com/whyrusleeping/gx-go
+    gx install
+
+    # Install regular packages
+    go get github.com/sirupsen/logrus
+    go get github.com/BurntSushi/toml
+    go get github.com/mitchellh/go-homedir
+    go get github.com/pkg/errors
+    go get github.com/ethereum/go-ethereum
+    go get github.com/tyler-smith/go-bip39
+    go get github.com/lunixbochs/struc
+    go get github.com/btcsuite/btcd
+    go get github.com/btcsuite/btcutil
+    go get gopkg.in/src-d/go-git.v4
+    go get github.com/urfave/cli
+    go get github.com/aclements/go-rabin/rabin
+    go get github.com/dustin/go-humanize
+    go get github.com/golang/protobuf/proto
+    go get golang.org/x/net/context
+    go get google.golang.org/grpc
+    go get github.com/brynbellomy/debugcharts
+    go get github.com/Shopify/logrus-bugsnag
+    go get github.com/bugsnag/bugsnag-go
+    set +x
+}
 
 
 function build_darwin {
@@ -139,6 +167,7 @@ function build_windows {
     cd -
 }
 
+get_deps
 
 [[ -n $darwin ]] && build_darwin
 [[ -n $linux ]] && build_linux
