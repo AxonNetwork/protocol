@@ -12,3 +12,4 @@ eth/truffle.js
 
 *.swp
 .consciencerc
+.envrc
