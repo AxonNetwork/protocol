@@ -33,13 +33,21 @@ func MapToEnv(m map[string]string) []string {
 	return env
 }
 
+func PrependToPathList(PATH string, newPaths ...string) string {
+	pathList := strings.Split(PATH, string(os.PathListSeparator))
+	pathList = append(newPaths, pathList...)
+	pathListFiltered := []string{}
+	for _, x := range pathList {
+		if x != "" {
+			pathListFiltered = append(pathListFiltered, x)
+		}
+	}
+	return strings.Join(pathListFiltered, string(os.PathListSeparator))
+}
+
 func CopyEnv() []string {
 	envMap := EnvToMap(os.Environ())
-	if envMap["PATH"] == "" {
-		envMap["PATH"] = envMap["CONSCIENCE_BINARIES_PATH"] + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-	} else {
-		envMap["PATH"] = envMap["CONSCIENCE_BINARIES_PATH"] + ":" + envMap["PATH"] + ":" + "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-	}
+	envMap["PATH"] = PrependToPathList(envMap["PATH"], envMap["CONSCIENCE_BINARIES_PATH"])
 	return MapToEnv(envMap)
 }
 

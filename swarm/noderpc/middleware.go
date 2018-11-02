@@ -13,7 +13,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 		if err != nil {
 			log.Errorf("[rpc server] %v %+v %v", info.FullMethod, req, err)
 		}
-		log.Debugf("[rpc server] %v %+v, %+v", info.FullMethod, req, x)
+		// log.Debugf("[rpc server] %v %+v, %+v", info.FullMethod, req, x)
 		return x, err
 	}
 }
