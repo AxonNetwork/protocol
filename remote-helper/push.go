@@ -19,7 +19,7 @@ func push(srcRefName string, destRefName string) error {
 	// @@TODO: give context a timeout and make it configurable
 	ctx, cancel1 := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel1()
-	err := client.AnnounceRepoContent(context.Background(), repoID)
+	err := client.AnnounceRepoContent(ctx, repoID)
 	if err != nil {
 		return err
 	}

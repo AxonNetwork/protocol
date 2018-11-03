@@ -18,9 +18,9 @@ echo Running gofmt
 gofmt -s -w .
 
 echo Building:
-[[ -n $darwin ]]  && echo   - darwin
+[[ -n $darwin  ]] && echo   - darwin
 [[ -n $windows ]] && echo   - windows
-[[ -n $linux ]]   && echo   - linux
+[[ -n $linux   ]] && echo   - linux
 
 
 function get_deps {

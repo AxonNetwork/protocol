@@ -28,26 +28,23 @@ var (
 func main() {
 	log.SetField("App", "git-remote-conscience")
 
-	var err error
-
-	repoID = strings.Replace(os.Args[2], "conscience://", "", -1)
-
 	cfg, err := config.ReadConfig()
 	if err != nil {
 		die(err)
 	}
 	config.AttachToLogger(cfg)
 
+	if GIT_DIR == "" {
+		die(errors.New("error: empty GIT_DIR"))
+	}
+
+	repoID = strings.Replace(os.Args[2], "conscience://", "", -1)
+
 	client, err = noderpc.NewClient(cfg.RPCClient.Host)
 	if err != nil {
 		die(err)
 	}
 	defer client.Close()
-
-	if GIT_DIR == "" {
-		fmt.Printf("error: empty GIT_DIR\n")
-		os.Exit(1)
-	}
 
 	Repo, err = repo.Open(filepath.Dir(GIT_DIR))
 	if err != nil {
@@ -64,11 +61,12 @@ func speakGit(r io.Reader, w io.Writer) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		text := scanner.Text()
+		text = strings.TrimSpace(text)
 		log.Println("[git]", text)
 
 		switch {
 
-		case text == "capabilities":
+		case strings.HasPrefix(text, "capabilities"):
 			fmt.Fprintln(w, "list")
 			fmt.Fprintln(w, "fetch")
 			fmt.Fprintln(w, "push")
@@ -138,7 +136,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 			}
 
 		default:
-			return fmt.Errorf("Error: default git speak: %q", text)
+			return fmt.Errorf("unknown git speak: %v", text)
 		}
 	}
 	return scanner.Err()

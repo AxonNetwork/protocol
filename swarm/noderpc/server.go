@@ -201,12 +201,14 @@ func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.Pul
 		return nil, errors.WithStack(err)
 	}
 	if didStash {
+		// @@TODO: handle merge conflict on stash pop
 		err = util.ExecAndScanStdout(ctx, []string{"git", "stash", "apply"}, req.Path, func(line string) error {
 			return nil
 		})
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
+		// @@TODO: git stash drop
 	}
 	return &pb.PullRepoResponse{Ok: true}, nil
 }
@@ -233,10 +235,12 @@ func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.C
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+
 	err = r.AddUserToConfig(req.Name, req.Email)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+
 	return &pb.CloneRepoResponse{Path: repoPath}, nil
 }
 
