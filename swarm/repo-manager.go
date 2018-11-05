@@ -105,6 +105,11 @@ func (rm *RepoManager) TrackRepo(repoPath string) (*repo.Repo, error) {
 }
 
 func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
+	if r, exists := rm.reposByPath[repoPath]; exists {
+		log.Warnf("[repo manager] already opened repo at path '%v' (doing nothing)", repoPath)
+		return r, nil
+	}
+
 	r, err := repo.Open(repoPath)
 	if err != nil {
 		return nil, err
@@ -113,10 +118,6 @@ func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
 	repoID, err := r.RepoID()
 	if err != nil {
 		return nil, err
-	}
-
-	if _, exists := rm.repos[repoID]; exists {
-		log.Warnf("[repo manager] already opened repo with ID '%v'", repoID)
 	}
 
 	rm.repos[repoID] = r
