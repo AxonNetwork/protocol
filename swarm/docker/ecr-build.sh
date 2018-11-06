@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 __dirname="$(CDPATH= cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

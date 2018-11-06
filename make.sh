@@ -11,6 +11,8 @@ while [[ "$#" > 0 ]]; do case $1 in
   -m|--darwin) darwin=1;;
   -w|--windows) windows=1;;
   -l|--linux) linux=1;;
+  -n|--native) native=1;;
+  -c|--copy) copy=1;;
   *) echo "Unknown parameter passed: $1"; exit 1;;
 esac; shift; done
 
@@ -52,6 +54,44 @@ function get_deps {
     set +x
 }
 
+
+function build_native {
+    mkdir -p build/native
+    cd swarm/cmd
+    go build -o main ./*.go
+    mv main ../../build/native/conscience-node
+    cd -
+
+    mkdir -p build/native
+    cd remote-helper
+    go build -o main ./*.go
+    mv main ../build/native/git-remote-conscience
+    cd -
+
+    mkdir -p build/native
+    cd filters/encode
+    go build -o main ./*.go
+    mv main ../../build/native/conscience_encode
+    cd -
+
+    mkdir -p build/native
+    cd filters/decode
+    go build -o main ./*.go
+    mv main ../../build/native/conscience_decode
+    cd -
+
+    mkdir -p build/native
+    cd filters/diff
+    go build -o main ./*.go
+    mv main ../../build/native/conscience_diff
+    cd -
+
+    mkdir -p build/native
+    cd cmd
+    go build -o main ./*.go
+    mv main ../build/native/conscience
+    cd -
+}
 
 function build_darwin {
     mkdir -p build/darwin
@@ -172,5 +212,8 @@ get_deps
 [[ -n $darwin ]] && build_darwin
 [[ -n $linux ]] && build_linux
 [[ -n $windows ]] && build_windows
+[[ -n $native ]] && build_native
 
-cp -R ./build/* $DESKTOP_APP_BINARY_ROOT/
+[[ -n $copy ]] && cp -R ./build/* $DESKTOP_APP_BINARY_ROOT/
+
+echo Build complete.
