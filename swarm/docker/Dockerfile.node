@@ -8,6 +8,10 @@ COPY package.json $GOPATH/src/github.com/Conscience/protocol/package.json
 WORKDIR $GOPATH/src/github.com/Conscience/protocol
 RUN gx install
 
+# Install dumb-init
+RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64
+RUN chmod +x /usr/local/bin/dumb-init
+
 # Install regular packages
 RUN go get github.com/sirupsen/logrus
 RUN go get github.com/BurntSushi/toml
@@ -44,4 +48,6 @@ EXPOSE 8081
 # Copy config files
 # COPY swarm/docker/consciencerc /mnt/.consciencerc
 
+ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
 CMD ["/usr/local/bin/conscience-node"]
+

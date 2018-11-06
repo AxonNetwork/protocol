@@ -357,6 +357,7 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 			// We found a peer with the object
 			objectReader, err := n.requestObject(ctx, provider.ID, repoID, objectID)
 			if err != nil {
+				log.Warnln("[p2p object client] error requesting object:", err)
 				continue
 			}
 			return objectReader, nil
@@ -562,7 +563,11 @@ func (n *Node) pullRepo(repoID string) error {
 	}
 
 	// Start a git-pull process
-	cmd := exec.Command("git", "pull", "origin", "master")
+	// @@TODO: make timeout configurable
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "pull", "origin", "master")
 	cmd.Dir = r.Path
 	cmd.Env = util.CopyEnv()
 	stdout := &bytes.Buffer{}
