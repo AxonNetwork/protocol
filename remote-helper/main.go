@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -149,7 +150,9 @@ func speakGit(r io.Reader, w io.Writer) error {
 			if err != nil {
 				return err
 			}
-			return nil
+			if runtime.GOOS == "windows" {
+				return nil
+			}
 
 		default:
 			return fmt.Errorf("unknown git speak: %v", text)
