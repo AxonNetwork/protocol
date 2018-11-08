@@ -37,3 +37,19 @@ Host    = "unix:///tmp/conscience.sock"
 `RPCClient.Host` can be things like:
 - `unix:///tmp/conscience.sock`
 - `0.0.0.0:1338`
+
+## Environment variables
+
+- `ENABLE_CONSOLE_LOGGING`: Controls whether the logger prints to stderr.  Any non-empty value will be treated as true.
+- `BUGSNAG_ENABLED`: Controls whether the logger sends errors to Bugsnag.  Any non-empty value will be treated as true.
+- `LOG_CHILD_PROCS`: Controls whether the logger logs stdout and stderr of any child process started by the node (primarily calls to git).  Any non-empty value will be treated as true.
+- `CONSCIENCE_BINARIES_PATH`: Specifies the location of the Conscience binaries (git-remote-conscience, conscience_decode, conscience_encode, conscience_diff).  This location is added to the `PATH` of any child process invoked by the node so that Git can find these helpers.
+
+## Weird bugs and other errata
+
+- The `logrus` logging package seems to lock up completely when the logger is set to output to stderr and the node is being run from inside the Electron app.  A few initial messages will be sent out, and then everything will deadlock.  As a result, we've temporarily added the `ENABLE_CONSOLE_LOGGING` environment variable so that we can still get console logging during debug or CLI sessions.
+
+- Keep an eye out for line endings.  The git remote helper (git-remote-conscience) was failing on Windows due to the presence of `\r` characters in the stream.
+
+
+

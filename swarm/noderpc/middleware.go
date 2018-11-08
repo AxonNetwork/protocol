@@ -9,11 +9,12 @@ import (
 
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		log.Debugf("[rpc server] %v %+v", info.FullMethod, req)
 		x, err := handler(ctx, req)
 		if err != nil {
 			log.Errorf("[rpc server] %v %+v %v", info.FullMethod, req, err)
 		}
-		// log.Debugf("[rpc server] %v %+v, %+v", info.FullMethod, req, x)
+		log.Debugf("[rpc server] %v %+v, %+v", info.FullMethod, req, x)
 		return x, err
 	}
 }

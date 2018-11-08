@@ -108,11 +108,6 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		Addrs      []string
 	}
 
-	type Log struct {
-		Level   string
-		Message string
-	}
-
 	type RepoInfo struct {
 		RepoID string
 		Path   string
@@ -126,7 +121,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		Peers           []Peer
 		LocalRepos      []RepoInfo
 		ReplicateRepos  []string
-		Logs            []Log
+		Logs            []logger.Entry
 		GlobalConnStats struct {
 			TotalIn  string
 			TotalOut string
@@ -172,9 +167,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 		state.ReplicateRepos = s.node.Config.Node.ReplicateRepos
 
-		for _, entry := range logger.GetLogs() {
-			state.Logs = append(state.Logs, Log{Level: entry.Level.String(), Message: entry.Message})
-		}
+		state.Logs = logger.GetLogs()
 
 		stats := s.node.GetBandwidthTotals()
 		state.GlobalConnStats.TotalIn = util.HumanizeBytes(float64(stats.TotalIn))
