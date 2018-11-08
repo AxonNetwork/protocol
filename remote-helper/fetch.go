@@ -92,7 +92,10 @@ func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.ObjectType, error) 
 
 	// Fetch an object stream from the node via RPC
 	// @@TODO: give context a timeout and make it configurable
-	objectStream, err := client.GetObject(context.Background(), repoID, hash[:])
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	objectStream, err := client.GetObject(ctx, repoID, hash[:])
 	if err != nil {
 		return 0, errors.WithStack(err)
 	}
