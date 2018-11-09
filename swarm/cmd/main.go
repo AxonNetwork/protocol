@@ -56,7 +56,7 @@ func main() {
 }
 
 func run(configPath string) error {
-	ctx, ctxCancel := context.Background()
+	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	// Add our custom logger hook (used by nodehttp.Server)
 	logger.InstallHook()
