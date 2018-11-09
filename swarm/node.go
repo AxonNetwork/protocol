@@ -98,7 +98,6 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, errors.Wrap(err, "could not fetch username from Ethereum smart contract")
 	}
 	log.SetField("username", username)
-	log.WithFields(log.Fields{"blabla": 123}).Errorln("testing inside node")
 
 	n := &Node{
 		host:             h,
@@ -188,6 +187,12 @@ func (n *Node) Close() error {
 func (n *Node) periodicallyRequestContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.ContentRequestInterval))
 	for range c {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		log.Debugf("[content request] starting content request")
 
 		for _, repoID := range n.Config.Node.ReplicateRepos {
@@ -204,6 +209,12 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 	c := time.Tick(time.Duration(n.Config.Node.ContentAnnounceInterval))
 	for range c {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		log.Debugf("[content announce] starting content announce")
 
 		// Announce what we're willing to replicate.
@@ -354,7 +365,8 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 
 	for provider := range n.dht.FindProvidersAsync(ctxTimeout, c, 10) {
 		if provider.ID != n.host.ID() {
-			// We found a peer with the object
+			// We found a peer with the object.  They get 15 seconds to transmit it to us or we bail.
+			// @@TODO: make context timeout configurable
 			ctxRequestObject, _ := context.WithTimeout(ctx, 15*time.Second)
 			objectReader, err := n.requestObject(ctxRequestObject, provider.ID, repoID, objectID)
 			if err != nil {

@@ -30,9 +30,8 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 		return
 	}
 
-	// @@TODO: give context a timeout and make it configurable
-	ctx := context.Background()
-
+	// @@TODO: make context timeout configurable
+	ctx := context.WithTimeout(context.Background(), 15*time.Second)
 	hasAccess, err := n.eth.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
 		log.Errorf("[p2p object server] %v", err)
