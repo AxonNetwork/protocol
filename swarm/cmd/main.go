@@ -56,7 +56,7 @@ func main() {
 }
 
 func run(configPath string) error {
-	ctx := context.Background()
+	ctx, ctxCancel := context.Background()
 
 	// Add our custom logger hook (used by nodehttp.Server)
 	logger.InstallHook()
@@ -101,6 +101,7 @@ func run(configPath string) error {
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		<-c
+		ctxCancel() // Stop any goroutines spawned by the node
 		n.Close()
 		os.Exit(1)
 	}()
