@@ -182,29 +182,29 @@ function build_windows {
     mv main-windows-4.0-amd64.exe ../build/windows/git-remote-conscience.exe
     cd -
 
-    mkdir -p build/windows
-    cd filters/encode
-    xgo --targets=windows/amd64 -out main .
-    mv main-windows-4.0-amd64.exe ../../build/windows/conscience_encode.exe
-    cd -
+    # mkdir -p build/windows
+    # cd filters/encode
+    # xgo --targets=windows/amd64 -out main .
+    # mv main-windows-4.0-amd64.exe ../../build/windows/conscience_encode.exe
+    # cd -
 
-    mkdir -p build/windows
-    cd filters/decode
-    xgo --targets=windows/amd64 -out main .
-    mv main-windows-4.0-amd64.exe ../../build/windows/conscience_decode.exe
-    cd -
+    # mkdir -p build/windows
+    # cd filters/decode
+    # xgo --targets=windows/amd64 -out main .
+    # mv main-windows-4.0-amd64.exe ../../build/windows/conscience_decode.exe
+    # cd -
 
-    mkdir -p build/windows
-    cd filters/diff
-    xgo --targets=windows/amd64 -out main .
-    mv main-windows-4.0-amd64.exe ../../build/windows/conscience_diff.exe
-    cd -
+    # mkdir -p build/windows
+    # cd filters/diff
+    # xgo --targets=windows/amd64 -out main .
+    # mv main-windows-4.0-amd64.exe ../../build/windows/conscience_diff.exe
+    # cd -
 
-    mkdir -p build/windows
-    cd cmd
-    xgo --targets=windows/amd64 -out main .
-    mv main-windows-4.0-amd64.exe ../build/windows/conscience.exe
-    cd -
+    # mkdir -p build/windows
+    # cd cmd
+    # xgo --targets=windows/amd64 -out main .
+    # mv main-windows-4.0-amd64.exe ../build/windows/conscience.exe
+    # cd -
 }
 
 get_deps

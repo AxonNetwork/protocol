@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -56,6 +57,19 @@ func main() {
 		die(err)
 	}
 }
+
+// func appendLog(msg string) {
+//  f, err := os.OpenFile("c:\\Users\\bryn\\remote-helper.txt", os.O_APPEND|os.O_WRONLY, 0600)
+//  if err != nil {
+//      panic(err)
+//  }
+
+//  defer f.Close()
+
+//  if _, err = f.WriteString(msg + "\r\n"); err != nil {
+//      panic(err)
+//  }
+// }
 
 func speakGit(r io.Reader, w io.Writer) error {
 	scanner := bufio.NewScanner(r)
@@ -130,10 +144,14 @@ func speakGit(r io.Reader, w io.Writer) error {
 			fmt.Fprintln(w)
 
 		case text == "":
+			// The blank line is the stream terminator.  We return when we see this.
 			// err := trackRepo()
 			// if err != nil {
 			// 	return err
 			// }
+			if runtime.GOOS == "windows" {
+				return nil
+			}
 
 		default:
 			return fmt.Errorf("unknown git speak: %v", text)

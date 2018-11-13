@@ -381,7 +381,8 @@ func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []by
 	for provider := range n.dht.FindProvidersAsync(ctxTimeout, c, 10) {
 		if provider.ID != n.host.ID() {
 			// We found a peer with the object
-			objectReader, err := n.requestObject(ctx, provider.ID, repoID, objectID)
+			ctxRequestObject, _ := context.WithTimeout(ctx, 15*time.Second)
+			objectReader, err := n.requestObject(ctxRequestObject, provider.ID, repoID, objectID)
 			if err != nil {
 				log.Warnln("[p2p object client] error requesting object:", err)
 				continue

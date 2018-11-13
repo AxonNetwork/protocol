@@ -31,6 +31,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 		return
 	}
 
+	// @@TODO: give context a timeout and make it configurable
 	ctx := context.Background()
 
 	hasAccess, err := n.eth.AddressHasPullAccess(ctx, addr, req.RepoID)

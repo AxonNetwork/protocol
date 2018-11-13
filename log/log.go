@@ -1,13 +1,14 @@
 package log
 
 import (
+	"io/ioutil"
 	"os"
+	"sync"
 
+	"github.com/Conscience/protocol/constants"
 	"github.com/Shopify/logrus-bugsnag"
 	bugsnag "github.com/bugsnag/bugsnag-go"
 	"github.com/sirupsen/logrus"
-
-	"github.com/Conscience/protocol/constants"
 )
 
 type Fields = logrus.Fields
@@ -19,12 +20,24 @@ var (
 	bugsnagEnabled = os.Getenv("BUGSNAG_ENABLED") != ""
 )
 
-var globalFields = logrus.Fields{}
+var loggerWithFields = Fields{}
+var loggerWithFieldsMutex = &sync.RWMutex{}
 
 func SetField(key string, value interface{}) {
-	if bugsnagEnabled {
-		globalFields[key] = value
+	loggerWithFieldsMutex.Lock()
+	defer loggerWithFieldsMutex.Unlock()
+	loggerWithFields[key] = value
+}
+
+func getFieldsCopy() Fields {
+	loggerWithFieldsMutex.RLock()
+	defer loggerWithFieldsMutex.RUnlock()
+
+	fields := Fields{}
+	for k, v := range loggerWithFields {
+		fields[k] = v
 	}
+	return fields
 }
 
 func init() {
@@ -46,10 +59,15 @@ func init() {
 	SetField("env.PWD", os.Getenv("PWD"))
 	SetField("env.CONSCIENCE_APP_PATH", os.Getenv("CONSCIENCE_APP_PATH"))
 	SetField("env.CONSCIENCE_BINARIES_PATH", os.Getenv("CONSCIENCE_BINARIES_PATH"))
+
+	enableConsoleLogging := os.Getenv("CONSOLE_LOGGING") != ""
+	if enableConsoleLogging == false {
+		logrus.SetOutput(ioutil.Discard)
+	}
 }
 
-func WithFields(fields logrus.Fields) *logrus.Entry {
-	return logrus.WithFields(globalFields).WithFields(fields)
+func WithFields(fields Fields) *logrus.Entry {
+	return logrus.WithFields(fields)
 }
 
 // SetLevel sets the standard logger level.
@@ -59,120 +77,120 @@ func SetLevel(level logrus.Level) {
 
 // Debug logs a message at level Debug on the standard logger.
 func Debug(args ...interface{}) {
-	logrus.WithFields(globalFields).Debug(args...)
+	logrus.WithFields(getFieldsCopy()).Debug(args...)
 }
 
 // Print logs a message at level Info on the standard logger.
 func Print(args ...interface{}) {
-	logrus.WithFields(globalFields).Print(args...)
+	logrus.WithFields(getFieldsCopy()).Print(args...)
 }
 
 // Info logs a message at level Info on the standard logger.
 func Info(args ...interface{}) {
-	logrus.WithFields(globalFields).Info(args...)
+	logrus.WithFields(getFieldsCopy()).Info(args...)
 }
 
 // Warn logs a message at level Warn on the standard logger.
 func Warn(args ...interface{}) {
-	logrus.WithFields(globalFields).Warn(args...)
+	logrus.WithFields(getFieldsCopy()).Warn(args...)
 }
 
 // Warning logs a message at level Warn on the standard logger.
 func Warning(args ...interface{}) {
-	logrus.WithFields(globalFields).Warning(args...)
+	logrus.WithFields(getFieldsCopy()).Warning(args...)
 }
 
 // Error logs a message at level Error on the standard logger.
 func Error(args ...interface{}) {
-	logrus.WithFields(globalFields).Error(args...)
+	logrus.WithFields(getFieldsCopy()).Error(args...)
 }
 
 // Panic logs a message at level Panic on the standard logger.
 func Panic(args ...interface{}) {
-	logrus.WithFields(globalFields).Panic(args...)
+	logrus.WithFields(getFieldsCopy()).Panic(args...)
 }
 
 // Fatal logs a message at level Fatal on the standard logger then the process will exit with status set to 1.
 func Fatal(args ...interface{}) {
-	logrus.WithFields(globalFields).Fatal(args...)
+	logrus.WithFields(getFieldsCopy()).Fatal(args...)
 }
 
 // Debugf logs a message at level Debug on the standard logger.
 func Debugf(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Debugf(format, args...)
+	logrus.WithFields(getFieldsCopy()).Debugf(format, args...)
 }
 
 // Printf logs a message at level Info on the standard logger.
 func Printf(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Printf(format, args...)
+	logrus.WithFields(getFieldsCopy()).Printf(format, args...)
 }
 
 // Infof logs a message at level Info on the standard logger.
 func Infof(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Infof(format, args...)
+	logrus.WithFields(getFieldsCopy()).Infof(format, args...)
 }
 
 // Warnf logs a message at level Warn on the standard logger.
 func Warnf(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Warnf(format, args...)
+	logrus.WithFields(getFieldsCopy()).Warnf(format, args...)
 }
 
 // Warningf logs a message at level Warn on the standard logger.
 func Warningf(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Warningf(format, args...)
+	logrus.WithFields(getFieldsCopy()).Warningf(format, args...)
 }
 
 // Errorf logs a message at level Error on the standard logger.
 func Errorf(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Errorf(format, args...)
+	logrus.WithFields(getFieldsCopy()).Errorf(format, args...)
 }
 
 // Panicf logs a message at level Panic on the standard logger.
 func Panicf(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Panicf(format, args...)
+	logrus.WithFields(getFieldsCopy()).Panicf(format, args...)
 }
 
 // Fatalf logs a message at level Fatal on the standard logger then the process will exit with status set to 1.
 func Fatalf(format string, args ...interface{}) {
-	logrus.WithFields(globalFields).Fatalf(format, args...)
+	logrus.WithFields(getFieldsCopy()).Fatalf(format, args...)
 }
 
 // Debugln logs a message at level Debug on the standard logger.
 func Debugln(args ...interface{}) {
-	logrus.WithFields(globalFields).Debugln(args...)
+	logrus.WithFields(getFieldsCopy()).Debugln(args...)
 }
 
 // Println logs a message at level Info on the standard logger.
 func Println(args ...interface{}) {
-	logrus.WithFields(globalFields).Println(args...)
+	logrus.WithFields(getFieldsCopy()).Println(args...)
 }
 
 // Infoln logs a message at level Info on the standard logger.
 func Infoln(args ...interface{}) {
-	logrus.WithFields(globalFields).Infoln(args...)
+	logrus.WithFields(getFieldsCopy()).Infoln(args...)
 }
 
 // Warnln logs a message at level Warn on the standard logger.
 func Warnln(args ...interface{}) {
-	logrus.WithFields(globalFields).Warnln(args...)
+	logrus.WithFields(getFieldsCopy()).Warnln(args...)
 }
 
 // Warningln logs a message at level Warn on the standard logger.
 func Warningln(args ...interface{}) {
-	logrus.WithFields(globalFields).Warningln(args...)
+	logrus.WithFields(getFieldsCopy()).Warningln(args...)
 }
 
 // Errorln logs a message at level Error on the standard logger.
 func Errorln(args ...interface{}) {
-	logrus.WithFields(globalFields).Errorln(args...)
+	logrus.WithFields(getFieldsCopy()).Errorln(args...)
 }
 
 // Panicln logs a message at level Panic on the standard logger.
 func Panicln(args ...interface{}) {
-	logrus.WithFields(globalFields).Panicln(args...)
+	logrus.WithFields(getFieldsCopy()).Panicln(args...)
 }
 
 // Fatalln logs a message at level Fatal on the standard logger then the process will exit with status set to 1.
 func Fatalln(args ...interface{}) {
-	logrus.WithFields(globalFields).Fatalln(args...)
+	logrus.WithFields(getFieldsCopy()).Fatalln(args...)
 }

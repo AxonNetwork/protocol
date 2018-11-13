@@ -19,6 +19,10 @@ import (
 	"github.com/Conscience/protocol/log"
 )
 
+var (
+	logChildProcessesToFile = os.Getenv("LOG_CHILD_PROCS") != ""
+)
+
 func EnvToMap(env []string) map[string]string {
 	m := make(map[string]string, len(env))
 	for _, line := range env {
@@ -41,6 +45,9 @@ func MapToEnv(m map[string]string) []string {
 	return env
 }
 
+// Accepts a PATH string directly from the environment (of the format "path1:path2:path3" on POSIX or
+// "path1;path2;path3" on Windows), prepends the paths in `newPaths` to it, filters any empty
+// paths, and returns the result as a joined string.
 func PrependToPathList(PATH string, newPaths ...string) string {
 	pathList := strings.Split(PATH, string(os.PathListSeparator))
 	pathList = append(newPaths, pathList...)
@@ -53,6 +60,8 @@ func PrependToPathList(PATH string, newPaths ...string) string {
 	return strings.Join(pathListFiltered, string(os.PathListSeparator))
 }
 
+// Copies the current environment (from `os.environ()`), prepends the path in CONSCIENCE_BINARIES_PATH,
+// and returns the result.
 func CopyEnv() []string {
 	envMap := EnvToMap(os.Environ())
 	envMap["PATH"] = PrependToPathList(envMap["PATH"], envMap["CONSCIENCE_BINARIES_PATH"])
@@ -97,6 +106,10 @@ func logStdoutStderr(logfilePrefix string, stdout, stderr io.Reader) (io.Reader,
 	}
 
 	closeFn := func() {
+		ioutil.ReadAll(stdout)
+		ioutil.ReadAll(stderr)
+		logfile_stdout.WriteString("\r\n(end)\r\n")
+		logfile_stderr.WriteString("\r\n(end)\r\n")
 		logfile_stdout.Close()
 		logfile_stderr.Close()
 	}
@@ -105,7 +118,6 @@ func logStdoutStderr(logfilePrefix string, stdout, stderr io.Reader) (io.Reader,
 }
 
 func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn func(string) error) (err error) {
-	logToFile := os.Getenv("LOG_CHILD_PROCS") != ""
 	defer func() {
 		err = errors.Wrapf(err, "error running %v", strings.Join(cmdAndArgs, " "))
 	}()
@@ -122,7 +134,7 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 	cmd.Env = CopyEnv()
 
 	logfilePrefix := getLogfilePrefix(cmdAndArgs)
-	if logToFile {
+	if logChildProcessesToFile {
 		logEnvironment(logfilePrefix, cmd.Env)
 	}
 
@@ -138,8 +150,7 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 		return
 	}
 
-	// @@TODO: make conditional
-	if logToFile {
+	if logChildProcessesToFile {
 		var closeLogfiles func()
 		stdout, stderr, closeLogfiles = logStdoutStderr(logfilePrefix, stdout, stderr)
 		defer closeLogfiles()
