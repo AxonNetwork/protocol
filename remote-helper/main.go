@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -95,16 +94,16 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		case strings.HasPrefix(text, "fetch"):
 			fetchArgs := strings.Split(text, " ")
-			objHash := fetchArgs[1]
-			err := fetch(gitplumbing.NewHash(objHash))
+			commitHash := fetchArgs[1]
+			err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
 			if err != nil {
 				return err
 			}
 
-			err = trackRepo()
-			if err != nil {
-				return err
-			}
+			// err = trackRepo()
+			// if err != nil {
+			// 	return err
+			// }
 
 			fmt.Fprintln(w)
 
@@ -131,10 +130,10 @@ func speakGit(r io.Reader, w io.Writer) error {
 			fmt.Fprintln(w)
 
 		case text == "":
-			err := trackRepo()
-			if err != nil {
-				return err
-			}
+			// err := trackRepo()
+			// if err != nil {
+			// 	return err
+			// }
 
 		default:
 			return fmt.Errorf("unknown git speak: %v", text)

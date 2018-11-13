@@ -40,7 +40,8 @@ func push(srcRefName string, destRefName string) error {
 	}
 
 	// @@TODO: give context a timeout and make it configurable
-	ctx, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel3()
-	return client.RequestReplication(ctx, repoID)
+	// ctx, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
+	// defer cancel3()
+	// return client.RequestReplication(ctx, repoID)
+	return nil
 }

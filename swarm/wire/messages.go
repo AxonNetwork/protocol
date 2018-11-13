@@ -10,6 +10,7 @@ const (
 	MessageType_Invalid MessageType = iota
 	MessageType_SetUsername
 	MessageType_GetObject
+	MessageType_GetManifest
 	MessageType_RegisterRepoID
 	MessageType_TrackLocalRepo
 	MessageType_GetLocalRepos
@@ -42,6 +43,22 @@ type GetObjectResponse struct {
 	HasObject    bool
 	ObjectType   gitplumbing.ObjectType
 	ObjectLen    uint64
+}
+
+type GetManifestRequest struct {
+	RepoIDLen    int `struc:"sizeof=RepoID"`
+	RepoID       string
+	CommitLen    int `struc:"sizeof=Commit"`
+	Commit       string
+	SignatureLen int `struc:"sizeof=Signature"`
+	Signature    []byte
+}
+
+type GetManifestResponse struct {
+	Authorized bool
+	HasCommit  bool
+	HeadLen    int
+	HistoryLen int
 }
 
 type ReplicationRequest struct {

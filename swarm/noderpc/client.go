@@ -52,6 +52,15 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 	return errors.WithStack(err)
 }
 
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) error {
+	_, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
+		RepoID: repoID,
+		Path:   path,
+		Commit: commit,
+	})
+	return errors.WithStack(err)
+}
+
 func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
 	getObjectClient, err := c.client.GetObject(ctx, &pb.GetObjectRequest{RepoID: repoID, ObjectID: objectID})
 	if err != nil {

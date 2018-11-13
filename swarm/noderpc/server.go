@@ -244,6 +244,16 @@ func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.C
 	return &pb.CloneRepoResponse{Path: repoPath}, nil
 }
 
+func (s *Server) FetchFromCommit(ctx context.Context, req *pb.FetchFromCommitRequest) (*pb.FetchFromCommitResponse, error) {
+	err := s.node.FetchFromCommit(ctx, req.RepoID, req.Path, req.Commit)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return &pb.FetchFromCommitResponse{Ok: true}, nil
+
+}
+
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
 	objectReader, err := s.node.GetObjectReader(server.Context(), req.RepoID, req.ObjectID)
 	if err != nil {

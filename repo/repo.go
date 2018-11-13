@@ -361,3 +361,65 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 	}
 	return nil
 }
+
+func (r *Repo) GetManifest() ([]byte, []byte, error) {
+	headMap, err := r.headToMap()
+	if err != nil {
+		return []byte{}, []byte{}, nil
+	}
+	flatHead := make([]byte, 0)
+	flatHistory := make([]byte, 0)
+	iter, err := r.Objects()
+	if err != nil {
+		return []byte{}, []byte{}, nil
+	}
+	err = iter.ForEach(func(obj gitobject.Object) error {
+		id := obj.ID()
+		idBytes := id[:]
+		if headMap[id] {
+			flatHead = append(flatHead, idBytes...)
+		} else {
+			flatHistory = append(flatHistory, idBytes...)
+		}
+		return nil
+	})
+	if err != nil {
+		return []byte{}, []byte{}, nil
+	}
+	// headStr := strings.Join(flatHead, ",")
+	// historyStr := strings.Join(flatHistory, ",")
+	// manifest := fmt.Sprintf("%s::%s", headStr, historyStr)
+	return flatHead, flatHistory, nil
+}
+
+func (r *Repo) headToMap() (map[gitplumbing.Hash]bool, error) {
+	headMap := make(map[gitplumbing.Hash]bool)
+	head, err := r.Head()
+	if err != nil {
+		return nil, err
+	}
+	commit, err := r.CommitObject(head.Hash())
+	if err != nil {
+		return nil, err
+	}
+	headMap[commit.Hash] = true
+	tree, err := r.TreeObject(commit.TreeHash)
+	if err != nil {
+		return nil, err
+	}
+	headMap[tree.Hash] = true
+	seen := make(map[gitplumbing.Hash]bool)
+	walker := gitobject.NewTreeWalker(tree, true, seen)
+	defer walker.Close()
+	for {
+		_, entry, err := walker.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		headMap[entry.Hash] = true
+	}
+
+	return headMap, nil
+}

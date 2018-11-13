@@ -36,10 +36,16 @@ func main() {
 	app := cli.NewApp()
 	app.Version = constants.AppVersion
 
+	configPath := filepath.Join(config.HOME, ".consciencerc")
+	// for setting custom config path. Mainly used for testing with multiple nodes
+	if len(os.Args) > 1 {
+		configPath = os.Args[1]
+	}
+
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "config",
-			Value: filepath.Join(config.HOME, ".consciencerc"),
+			Value: configPath,
 			Usage: "location of config file",
 		},
 	}
