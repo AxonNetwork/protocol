@@ -48,6 +48,9 @@ func (tx Transaction) Await(ctx context.Context) chan TxResult {
 				}
 				time.Sleep(time.Millisecond * POLL_INTERVAL)
 			}
+
+			// @@TODO: make configurable
+			time.Sleep(2 * time.Second)
 		}
 	}()
 	return ch
