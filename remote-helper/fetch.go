@@ -19,26 +19,26 @@ func fetchFromCommit(commitHash string) error {
 	}
 
 	type FileStream struct {
-		file       *gitplumbing.MemoryObject
+		file       gitplumbing.EncodedObject
 		fileWriter io.WriteCloser
 		written    uint64
 	}
 
-	files := make(map[string]FileStream)
+	files := make(map[string]*FileStream)
 
 	for pkt := range ch {
 		hash := hex.EncodeToString(pkt.ObjHash)
 
 		if _, exists := files[hash]; !exists {
 			obj := Repo.Storer.NewEncodedObject()
-			obj.SetType(pkt.ObjType)
+			obj.SetType(gitplumbing.ObjectType(pkt.ObjType))
 
 			w, err := obj.Writer()
 			if err != nil {
 				return err
 			}
 
-			files[hash] = FileStream{
+			files[hash] = &FileStream{
 				file:       obj,
 				fileWriter: w,
 				written:    0,
@@ -52,18 +52,19 @@ func fetchFromCommit(commitHash string) error {
 			return errors.New("remote helper: did not fully write packet")
 		}
 
-		files[hash].written += n
+		files[hash].written += uint64(n)
 		if files[hash].written >= pkt.ObjLen {
 			err = files[hash].fileWriter.Close()
 			if err != nil {
 				return errors.WithStack(err)
 			}
 
-			if !bytes.Equal(pkt.ObjHash, newobj.Hash()[:]) {
+			h := files[hash].file.Hash()
+			if !bytes.Equal(pkt.ObjHash, h[:]) {
 				return errors.Errorf("remote helper: bad checksum for %v", hash)
 			}
 
-			_, err = Repo.Storer.SetEncodedObject(newobj)
+			_, err = Repo.Storer.SetEncodedObject(files[hash].file)
 			if err != nil {
 				return errors.WithStack(err)
 			}
