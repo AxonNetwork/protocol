@@ -4,23 +4,6 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-type MessageType uint64
-
-const (
-	MessageType_Invalid MessageType = iota
-	MessageType_SetUsername
-	MessageType_GetObject
-	MessageType_RegisterRepoID
-	MessageType_TrackLocalRepo
-	MessageType_GetLocalRepos
-	MessageType_SetReplicationPolicy
-	MessageType_AnnounceRepoContent
-	MessageType_GetRefs
-	MessageType_UpdateRef
-	MessageType_Replicate
-	MessageType_BecomeReplicator
-)
-
 type GetObjectRequest struct {
 	RepoIDLen   int `struc:"sizeof=RepoID"`
 	RepoID      string
