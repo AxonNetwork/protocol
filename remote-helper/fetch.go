@@ -1,55 +1,72 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-
-	"github.com/Conscience/protocol/swarm/wire"
 )
 
 func fetchFromCommit(commitHash string) error {
-	r, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
+	ch, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
 	if err != nil {
 		return err
 	}
-	for {
-		objHeader := wire.ObjectHeader{}
-		err := wire.ReadStructPacket(r, &objHeader)
-		if err != nil {
-			return err
+
+	type FileStream struct {
+		file       *gitplumbing.MemoryObject
+		fileWriter io.WriteCloser
+		written    uint64
+	}
+
+	files := make(map[string]FileStream)
+
+	for pkt := range ch {
+		hash := hex.EncodeToString(pkt.ObjHash)
+
+		if _, exists := files[hash]; !exists {
+			obj := Repo.Storer.NewEncodedObject()
+			obj.SetType(pkt.ObjType)
+
+			w, err := obj.Writer()
+			if err != nil {
+				return err
+			}
+
+			files[hash] = FileStream{
+				file:       obj,
+				fileWriter: w,
+				written:    0,
+			}
 		}
-		data := make([]byte, objHeader.Len)
-		_, err = io.ReadFull(r, data)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		newobj := Repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
-		newobj.SetType(objHeader.Type)
-		w, err := newobj.Writer()
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		n, err := w.Write(data)
-		if err != nil {
-			return errors.WithStack(err)
-		} else if uint64(n) < objHeader.Len {
-			return errors.Errorf("Remote Helper: Could not write entire file")
-		}
-		err = w.Close()
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		if objHeader.Hash != newobj.Hash() {
-			return errors.Errorf("Remote Helper: back checksum for %v", objHeader.Hash.String())
-		}
-		_, err = Repo.Storer.SetEncodedObject(newobj)
+
+		n, err := files[hash].fileWriter.Write(pkt.Data)
 		if err != nil {
 			return errors.WithStack(err)
+		} else if n != len(pkt.Data) {
+			return errors.New("remote helper: did not fully write packet")
+		}
+
+		files[hash].written += n
+		if files[hash].written >= pkt.ObjLen {
+			err = files[hash].fileWriter.Close()
+			if err != nil {
+				return errors.WithStack(err)
+			}
+
+			if !bytes.Equal(pkt.ObjHash, newobj.Hash()[:]) {
+				return errors.Errorf("remote helper: bad checksum for %v", hash)
+			}
+
+			_, err = Repo.Storer.SetEncodedObject(newobj)
+			if err != nil {
+				return errors.WithStack(err)
+			}
 		}
 	}
 	return nil

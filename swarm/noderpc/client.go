@@ -3,14 +3,11 @@ package noderpc
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
-	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
@@ -55,7 +52,12 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 	return errors.WithStack(err)
 }
 
-func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (io.Reader, error) {
+type MaybeFetchFromCommitPacket struct {
+	*pb.FetchFromCommitResponsePacket
+	Error error
+}
+
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (chan MaybeFetchFromCommitPacket, error) {
 	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
 		RepoID: repoID,
 		Path:   path,
@@ -64,51 +66,23 @@ func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	r, w := io.Pipe()
-	go func() {
-		var err error
-		defer func() {
-			if err != nil && err != io.EOF {
-				log.Println("CLOSING WITH ERROR")
-				w.CloseWithError(err)
-			} else {
-				log.Println("CLOSING")
-				w.Close()
-			}
-		}()
 
-		files := map[gitplumbing.Hash]*bytes.Buffer{}
+	ch := make(chan MaybeFetchFromCommitPacket)
+	go func() {
+		defer close(ch)
 		for {
 			packet, err := fetchFromCommitClient.Recv()
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				err = errors.WithStack(err)
+				ch <- MaybeFetchFromCommitPacket{nil, errors.WithStack(err)}
 				return
 			}
-			hashB := [20]byte{}
-			copy(hashB[:], packet.ObjHash[:])
-			hash := gitplumbing.Hash(hashB)
-
-			files[hash].Write(packet.Data)
-			if uint64(files[hash].Len()) == packet.ObjLen {
-				wire.WriteStructPacket(w, &wire.ObjectHeader{
-					Hash: hash,
-					Type: gitplumbing.ObjectType(packet.ObjType),
-					Len:  packet.ObjLen,
-				})
-				n, err := io.Copy(w, files[hash])
-				if err != nil {
-					err = errors.WithStack(err)
-					return
-				} else if uint64(n) != packet.ObjLen {
-					err = fmt.Errorf("RPC Client: Could not write entire packet")
-					return
-				}
-			}
+			ch <- MaybeFetchFromCommitPacket{packet, nil}
 		}
 	}()
-	return io.Reader(r), nil
+
+	return ch, nil
 }
 
 func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
