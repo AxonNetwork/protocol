@@ -246,8 +246,7 @@ func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.C
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
 	ch := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, req.Commit)
-	for {
-		maybeChunk := <-ch
+	for maybeChunk := range ch {
 		if maybeChunk.Error != nil {
 			return errors.WithStack(maybeChunk.Error)
 		}

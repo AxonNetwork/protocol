@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
@@ -54,12 +55,6 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 	return errors.WithStack(err)
 }
 
-type ObjectHeader struct {
-	ObjHash gitplumbing.Hash
-	ObjType gitplumbing.ObjectType
-	ObjLen  uint64
-}
-
 func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (io.Reader, error) {
 	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
 		RepoID: repoID,
@@ -74,8 +69,10 @@ func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string
 		var err error
 		defer func() {
 			if err != nil && err != io.EOF {
+				log.Println("CLOSING WITH ERROR")
 				w.CloseWithError(err)
 			} else {
+				log.Println("CLOSING")
 				w.Close()
 			}
 		}()

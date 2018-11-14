@@ -38,14 +38,14 @@ func fetchFromCommit(commitHash string) error {
 		if err != nil {
 			return errors.WithStack(err)
 		} else if uint64(n) < objHeader.Len {
-			return errors.Errorf("Remote Helper: Could nto write entire file")
+			return errors.Errorf("Remote Helper: Could not write entire file")
 		}
 		err = w.Close()
 		if err != nil {
 			return errors.WithStack(err)
 		}
 		if objHeader.Hash != newobj.Hash() {
-			return errors.Errorf("Remote Helper: Could nto write entire file")
+			return errors.Errorf("Remote Helper: back checksum for %v", objHeader.Hash.String())
 		}
 		_, err = Repo.Storer.SetEncodedObject(newobj)
 		if err != nil {

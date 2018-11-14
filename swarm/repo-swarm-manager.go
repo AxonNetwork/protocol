@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/util"
 	"github.com/pkg/errors"
@@ -49,9 +48,8 @@ func (sm *RepoSwarmManager) FetchFromCommit(ctx context.Context, repoID string, 
 	if err != nil {
 		ch <- MaybeChunk{Error: err}
 	}
-	log.Println("got manifest")
-	go sm.fetchObjects(repoID, flatHead, ch)
-	go sm.fetchObjects(repoID, flatHistory, ch)
+	allObjects := append(flatHead, flatHistory...)
+	go sm.fetchObjects(repoID, allObjects, ch)
 	return ch
 }
 
@@ -82,7 +80,7 @@ func (sm *RepoSwarmManager) fetchObjects(repoID string, objects []byte, ch chan 
 		go sm.fetchObject(repoID, gitplumbing.Hash(hash), wg, ch)
 	}
 	wg.Wait()
-	log.Println("fetched objects")
+	close(ch)
 }
 
 func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg *sync.WaitGroup, ch chan MaybeChunk) {
@@ -103,11 +101,13 @@ func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg
 		n, err := io.ReadFull(objReader.Reader, data)
 		if err == io.EOF {
 			// read no bytes
-			return
+			break
 		} else if err == io.ErrUnexpectedEOF {
 			data = data[:n]
-		} else {
+			break
+		} else if err != nil {
 			ch <- MaybeChunk{Error: err}
+			break
 		}
 		ch <- MaybeChunk{
 			ObjHash: hash,
@@ -116,7 +116,6 @@ func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg
 			Data:    data,
 		}
 	}
-
 }
 
 func (sm *RepoSwarmManager) fetchObjStream(repoID string, hash gitplumbing.Hash) (*util.ObjectReader, error) {
