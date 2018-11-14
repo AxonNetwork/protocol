@@ -27,6 +27,7 @@ contract Protocol
     event LogSetUsername(address indexed addr, string indexed username);
     event LogCreateRepo(address indexed user, string indexed repoID);
     event LogDeleteRepo(address indexed user, string indexed repoID);
+    event LogSetPrivate(address indexed user, string repoID, bool isPrivate);
     event LogUpdateRef(address indexed user, string indexed repoID, string indexed refName, string commitHash);
     event LogDeleteRef(address indexed user, string indexed repoID, string indexed refName);
 
@@ -80,6 +81,17 @@ contract Protocol
         delete repositories[hashString(repoID)];
 
         emit LogDeleteRepo(msg.sender, repoID);
+    }
+
+    function setPrivate(string repoID, bool isPrivate) public {
+        require(addressIsAdmin(msg.sender, repoID), "you are not an admin of this repo");
+
+        Repo storage repo = repositories[hashString(repoID)];
+        require(repo.exists, "this repo does not exist");
+
+        repo.isPrivate = isPrivate;
+
+        emit LogSetPrivate(msg.sender, repoID, isPrivate);
     }
 
     function updateRef(string repoID, string refName, string commitHash) public {
