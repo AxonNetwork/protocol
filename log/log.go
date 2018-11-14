@@ -24,9 +24,11 @@ var loggerWithFields = Fields{}
 var loggerWithFieldsMutex = &sync.RWMutex{}
 
 func SetField(key string, value interface{}) {
-	loggerWithFieldsMutex.Lock()
-	defer loggerWithFieldsMutex.Unlock()
-	loggerWithFields[key] = value
+	if bugsnagEnabled {
+		loggerWithFieldsMutex.Lock()
+		defer loggerWithFieldsMutex.Unlock()
+		loggerWithFields[key] = value
+	}
 }
 
 func getFieldsCopy() Fields {

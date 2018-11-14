@@ -4,10 +4,56 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+
+	"github.com/Conscience/protocol/swarm/wire"
 )
+
+func fetchFromCommit(commitHash string) error {
+	r, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
+	if err != nil {
+		return err
+	}
+	for {
+		objHeader := wire.ObjectHeader{}
+		err := wire.ReadStructPacket(r, &objHeader)
+		if err != nil {
+			return err
+		}
+		data := make([]byte, objHeader.Len)
+		_, err = io.ReadFull(r, data)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		newobj := Repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
+		newobj.SetType(objHeader.Type)
+		w, err := newobj.Writer()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		n, err := w.Write(data)
+		if err != nil {
+			return errors.WithStack(err)
+		} else if uint64(n) < objHeader.Len {
+			return errors.Errorf("Remote Helper: Could nto write entire file")
+		}
+		err = w.Close()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		if objHeader.Hash != newobj.Hash() {
+			return errors.Errorf("Remote Helper: Could nto write entire file")
+		}
+		_, err = Repo.Storer.SetEncodedObject(newobj)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
 
 var inflightLimiter = make(chan struct{}, 5)
 

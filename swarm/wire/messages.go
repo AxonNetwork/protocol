@@ -81,6 +81,12 @@ type Ref struct {
 	CommitHash string
 }
 
+type ObjectHeader struct {
+	Hash gitplumbing.Hash
+	Type gitplumbing.ObjectType
+	Len  uint64
+}
+
 type ObjectMetadata struct {
 	Type gitplumbing.ObjectType
 	Len  uint64

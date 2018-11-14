@@ -336,28 +336,10 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) error {
-	c, err := cidForString(repoID)
-	if err != nil {
-		return err
-	}
-
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
-	defer cancel()
-
-	for provider := range n.dht.FindProvidersAsync(ctxTimeout, c, 10) {
-		log.Debugf("Found provider for %v : %v", repoID, commit)
-		if provider.ID != n.host.ID() {
-			// We found a peer with the object
-			_, err := n.requestManifest(ctx, provider.ID, repoID, commit)
-			if err != nil {
-				log.Warnln("[p2p object client] error requesting object:", err)
-				continue
-			}
-			return nil
-		}
-	}
-	return errors.Errorf("could not find provider for %v : %v", repoID, commit)
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan MaybeChunk {
+	repo := n.RepoManager.repos[repoID]
+	sm := NewRepoSwarmManager(n, repo)
+	return sm.FetchFromCommit(ctx, repoID, commit)
 }
 
 // Attempts to open a stream to the given object.  If we have it locally, the object is read from

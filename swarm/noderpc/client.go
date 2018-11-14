@@ -3,10 +3,12 @@ package noderpc
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
@@ -52,13 +54,64 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 	return errors.WithStack(err)
 }
 
-func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) error {
-	_, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
+type ObjectHeader struct {
+	ObjHash gitplumbing.Hash
+	ObjType gitplumbing.ObjectType
+	ObjLen  uint64
+}
+
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (io.Reader, error) {
+	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
 		RepoID: repoID,
 		Path:   path,
 		Commit: commit,
 	})
-	return errors.WithStack(err)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	r, w := io.Pipe()
+	go func() {
+		var err error
+		defer func() {
+			if err != nil && err != io.EOF {
+				w.CloseWithError(err)
+			} else {
+				w.Close()
+			}
+		}()
+
+		files := map[gitplumbing.Hash]*bytes.Buffer{}
+		for {
+			packet, err := fetchFromCommitClient.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				err = errors.WithStack(err)
+				return
+			}
+			hashB := [20]byte{}
+			copy(hashB[:], packet.ObjHash[:])
+			hash := gitplumbing.Hash(hashB)
+
+			files[hash].Write(packet.Data)
+			if uint64(files[hash].Len()) == packet.ObjLen {
+				wire.WriteStructPacket(w, &wire.ObjectHeader{
+					Hash: hash,
+					Type: gitplumbing.ObjectType(packet.ObjType),
+					Len:  packet.ObjLen,
+				})
+				n, err := io.Copy(w, files[hash])
+				if err != nil {
+					err = errors.WithStack(err)
+					return
+				} else if uint64(n) != packet.ObjLen {
+					err = fmt.Errorf("RPC Client: Could not write entire packet")
+					return
+				}
+			}
+		}
+	}()
+	return io.Reader(r), nil
 }
 
 func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {

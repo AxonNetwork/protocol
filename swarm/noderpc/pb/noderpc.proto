@@ -13,7 +13,7 @@ service NodeRPC {
   rpc CheckpointRepo(CheckpointRepoRequest) returns (CheckpointRepoResponse) {}
   rpc PullRepo(PullRepoRequest) returns (PullRepoResponse) {}
   rpc CloneRepo(CloneRepoRequest) returns (CloneRepoResponse) {}
-  rpc FetchFromCommit(FetchFromCommitRequest) returns (FetchFromCommitResponse) {}
+  rpc FetchFromCommit(FetchFromCommitRequest) returns (stream FetchFromCommitResponsePacket) {}
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
@@ -95,8 +95,11 @@ message FetchFromCommitRequest {
     string commit = 3;
 }
 
-message FetchFromCommitResponse {
-    bool ok = 1;
+message FetchFromCommitResponsePacket {
+    bytes objHash = 1;
+    int32 objType = 2;
+    uint64 objLen = 3;
+    bytes data = 4;
 }
 
 message GetObjectRequest {

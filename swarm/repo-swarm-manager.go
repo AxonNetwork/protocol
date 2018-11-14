@@ -2,66 +2,131 @@ package swarm
 
 import (
 	"context"
-	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
+	"io"
+	"sync"
 	"time"
 
 	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/util"
+	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
+const OBJ_CHUNK_SIZE = 16384 //16kb
+
 type RepoSwarmManager struct {
-	peers    []Peer
-	objQueue []gitplumbing.Hash
-	node     *Node
+	inflightLimiter chan struct{}
+	node            *Node
+	repo            *repo.Repo
+	flatHead        []byte
+	flatHistory     []byte
 }
 
-func NewRepoSwarmManager(node *Node) *RepoSwarmManager {
+func NewRepoSwarmManager(node *Node, repo *repo.Repo) *RepoSwarmManager {
 	sm := &RepoSwarmManager{
-		peers:    []Peer{},
-		objQueue: []gitplumbing.Hash{},
-		node:     node,
+		inflightLimiter: make(chan struct{}, 5),
+		node:            node,
+		repo:            repo,
+	}
+	for i := 0; i < 5; i++ {
+		sm.inflightLimiter <- struct{}{}
 	}
 	return sm
 }
 
-func (sm *RepoSwarmManager) FindPeersWithCommit(ctx context.Context, repoID string, commit string) error {
-	repoCid, err := cidForString(repoID)
+type MaybeChunk struct {
+	ObjHash gitplumbing.Hash
+	ObjType gitplumbing.ObjectType
+	ObjLen  uint64
+	Data    []byte
+	Error   error
+}
+
+func (sm *RepoSwarmManager) FetchFromCommit(ctx context.Context, repoID string, commit string) <-chan MaybeChunk {
+	ch := make(chan MaybeChunk)
+	flatHead, flatHistory, err := sm.requestManifest(ctx, repoID, commit)
 	if err != nil {
-		return err
+		ch <- MaybeChunk{Error: err}
 	}
-	commitCid, err := cidForString(commit)
+	log.Println("got manifest")
+	go sm.fetchObjects(repoID, flatHead, ch)
+	go sm.fetchObjects(repoID, flatHistory, ch)
+	return ch
+}
+
+func (sm *RepoSwarmManager) requestManifest(ctx context.Context, repoID string, commit string) ([]byte, []byte, error) {
+	c, err := cidForString(repoID)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	ctxTimeout, cancel := context.WithTImeout(ctx, time.Duration(sm.node.Config.Node.FindProviderTimeout))
+	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(sm.node.Config.Node.FindProviderTimeout))
 	defer cancel()
-	syncedPeers := make([]Peer, 0)
-	for provider := range sm.node.dht.FindProvidersAsync(ctxTimeout, commitCid, 10) {
-		log.Debugf("Found provider for %v : %v", repoID, commit)
-		if provider.ID != n.host.ID() {
+
+	for provider := range sm.node.dht.FindProvidersAsync(ctxTimeout, c, 10) {
+		if provider.ID != sm.node.host.ID() {
 			// We found a peer with the object
-			commit, err := n.handshake(ctx, provider.ID, repoID)
-			if err != nil {
-				log.Warnln("[p2p swarm client] error handshaking peer:", err)
-				continue
-			}
-			return nil
+			return sm.node.RequestManifest(ctx, provider.ID, repoID, commit)
 		}
 	}
+	return nil, nil, errors.Errorf("could not find provider for %v : %v", repoID, commit)
 }
 
-func (sm *RepoSwarmManager) AddNewPeer(stream netp2p.Stream) error {
-	sm.peers = append(sm.Peers, Peer{
-		stream:  stream,
-		strikes: 0,
-	})
-
-	return nil
+func (sm *RepoSwarmManager) fetchObjects(repoID string, objects []byte, ch chan MaybeChunk) {
+	wg := &sync.WaitGroup{}
+	for i := 0; i < len(objects); i += 20 {
+		hash := [20]byte{}
+		copy(hash[:], objects[i:i+20])
+		wg.Add(1)
+		go sm.fetchObject(repoID, gitplumbing.Hash(hash), wg, ch)
+	}
+	wg.Wait()
+	log.Println("fetched objects")
 }
 
-type Peer struct {
-	stream        netp2p.Stream
-	strikes       int
-	currentCommit string
+func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg *sync.WaitGroup, ch chan MaybeChunk) {
+	defer wg.Done()
+	if sm.repo != nil && sm.repo.HasObject(hash[:]) {
+		return
+	}
+	objReader, err := sm.fetchObjStream(repoID, hash)
+	if err != nil {
+		ch <- MaybeChunk{
+			Error: err,
+		}
+		return
+	}
+	defer objReader.Close()
+	for {
+		data := make([]byte, OBJ_CHUNK_SIZE)
+		n, err := io.ReadFull(objReader.Reader, data)
+		if err == io.EOF {
+			// read no bytes
+			return
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
+		} else {
+			ch <- MaybeChunk{Error: err}
+		}
+		ch <- MaybeChunk{
+			ObjHash: hash,
+			ObjType: objReader.Type(),
+			ObjLen:  objReader.Len(),
+			Data:    data,
+		}
+	}
+
+}
+
+func (sm *RepoSwarmManager) fetchObjStream(repoID string, hash gitplumbing.Hash) (*util.ObjectReader, error) {
+	<-sm.inflightLimiter
+	defer func() { sm.inflightLimiter <- struct{}{} }()
+
+	// Fetch an object stream from the node via RPC
+	// @@TODO: give context a timeout and make it configurable
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return sm.node.GetObjectReader(ctx, repoID, hash[:])
 }

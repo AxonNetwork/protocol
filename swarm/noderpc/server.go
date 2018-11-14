@@ -244,14 +244,24 @@ func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.C
 	return &pb.CloneRepoResponse{Path: repoPath}, nil
 }
 
-func (s *Server) FetchFromCommit(ctx context.Context, req *pb.FetchFromCommitRequest) (*pb.FetchFromCommitResponse, error) {
-	err := s.node.FetchFromCommit(ctx, req.RepoID, req.Path, req.Commit)
-	if err != nil {
-		return nil, errors.WithStack(err)
+func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
+	ch := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, req.Commit)
+	for {
+		maybeChunk := <-ch
+		if maybeChunk.Error != nil {
+			return errors.WithStack(maybeChunk.Error)
+		}
+		err := server.Send(&pb.FetchFromCommitResponsePacket{
+			ObjHash: maybeChunk.ObjHash[:],
+			ObjType: int32(maybeChunk.ObjType),
+			ObjLen:  maybeChunk.ObjLen,
+			Data:    maybeChunk.Data,
+		})
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	}
-
-	return &pb.FetchFromCommitResponse{Ok: true}, nil
-
+	return nil
 }
 
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
