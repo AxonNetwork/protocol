@@ -132,7 +132,7 @@ func (n *Client) SignHash(data []byte) ([]byte, error) {
 	return crypto.Sign(hash, n.privateKey)
 }
 
-func (n *Client) AddrFromSignedHash(data, sig []byte) (common.Address, error) {
+func (n *Client) AddrFromSignedHash(data, sig []byte) (Address, error) {
 	hash := crypto.Keccak256(data)
 	pubkey, err := crypto.SigToPub(hash, sig)
 	if err != nil {
@@ -311,7 +311,7 @@ func (n *Client) GetRepoUsers(ctx context.Context, repoID string, whichUsers Use
 	return users, x.Total.Uint64(), nil
 }
 
-func (n *Client) AddressHasPullAccess(ctx context.Context, user common.Address, repoID string) (bool, error) {
+func (n *Client) AddressHasPullAccess(ctx context.Context, user Address, repoID string) (bool, error) {
 	hasAccess, err := n.protocolContract.AddressHasPullAccess(n.callOpts(ctx), user, repoID)
 	return hasAccess, err
 }

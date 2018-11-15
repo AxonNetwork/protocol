@@ -138,7 +138,7 @@ var replCommands = map[string]struct {
 		func(ctx context.Context, args []string, n *swarm.Node) error {
 			log.Printf("Known repos:")
 
-			return n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+			return n.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 				repoID, err := r.RepoID()
 				if err != nil {
 					return err
@@ -223,7 +223,7 @@ var replCommands = map[string]struct {
 			if len(args) < 1 {
 				return fmt.Errorf("not enough args")
 			}
-			_, err := n.RepoManager.TrackRepo(args[0])
+			_, err := n.RepoManager().TrackRepo(args[0])
 			return err
 		},
 	},

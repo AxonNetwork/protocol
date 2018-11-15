@@ -1,4 +1,4 @@
-package swarm
+package strategy
 
 import (
 	"context"
@@ -11,8 +11,16 @@ import (
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
+type NaiveServer struct {
+	node INode
+}
+
+func NewNaiveServer(node INode) *NaiveServer {
+	return &NaiveServer{node}
+}
+
 // Handles incoming requests for objects.
-func (n *Node) handleObjectRequest(stream netp2p.Stream) {
+func (ns *NaiveServer) HandleObjectRequest(stream netp2p.Stream) {
 	defer stream.Close()
 
 	// Read the request packet
@@ -25,7 +33,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 
 	log.Debugf("[p2p object server] peer requested %v %0x", req.RepoID, req.ObjectID)
 
-	addr, err := n.eth.AddrFromSignedHash(req.ObjectID, req.Signature)
+	addr, err := ns.node.AddrFromSignedHash(req.ObjectID, req.Signature)
 	if err != nil {
 		log.Errorf("[p2p object server] %v", err)
 		return
@@ -34,7 +42,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	// @@TODO: give context a timeout and make it configurable
 	ctx := context.Background()
 
-	hasAccess, err := n.eth.AddressHasPullAccess(ctx, addr, req.RepoID)
+	hasAccess, err := ns.node.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
 		log.Errorf("[p2p object server] %v", err)
 		return
@@ -53,7 +61,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	//    - [stream of object bytes...]
 	//    - <close connection>
 	//
-	r := n.RepoManager.Repo(req.RepoID)
+	r := ns.node.Repo(req.RepoID)
 	if r == nil {
 		log.Warnf("[p2p object server] cannot find repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
@@ -110,7 +118,7 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 }
 
 // Handles incoming requests for commit manifests
-func (n *Node) handleManifestRequest(stream netp2p.Stream) {
+func (ns *NaiveServer) HandleManifestRequest(stream netp2p.Stream) {
 	defer stream.Close()
 
 	// Read the request packet
@@ -121,7 +129,7 @@ func (n *Node) handleManifestRequest(stream netp2p.Stream) {
 		return
 	}
 
-	addr, err := n.eth.AddrFromSignedHash([]byte(req.Commit), req.Signature)
+	addr, err := ns.node.AddrFromSignedHash([]byte(req.Commit), req.Signature)
 	if err != nil {
 		log.Errorf("[p2p object server] %v", err)
 		return
@@ -130,7 +138,7 @@ func (n *Node) handleManifestRequest(stream netp2p.Stream) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	hasAccess, err := n.eth.AddressHasPullAccess(ctx, addr, req.RepoID)
+	hasAccess, err := ns.node.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
 		log.Errorf("[p2p object server] %v", err)
 		return
@@ -158,7 +166,7 @@ func (n *Node) handleManifestRequest(stream netp2p.Stream) {
 	//    - [stream of manifest bytes...]
 	//    - <close connection>
 	//
-	r := n.RepoManager.Repo(req.RepoID)
+	r := ns.node.Repo(req.RepoID)
 	if r == nil {
 		log.Warnf("[p2p object server] cannot find repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
