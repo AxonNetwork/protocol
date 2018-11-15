@@ -13,6 +13,14 @@ import (
 )
 
 func fetchFromCommit(commitHash string) error {
+	hash, err := hex.DecodeString(commitHash)
+	if err != nil {
+		return err
+	}
+	if Repo.HasObject(hash) {
+		return nil
+	}
+
 	ch, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
 	if err != nil {
 		return err
