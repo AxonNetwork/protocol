@@ -47,6 +47,7 @@ func (sm *RepoSwarmManager) FetchFromCommit(ctx context.Context, repoID string, 
 	flatHead, flatHistory, err := sm.requestManifest(ctx, repoID, commit)
 	if err != nil {
 		ch <- MaybeChunk{Error: err}
+		return ch
 	}
 	allObjects := append(flatHead, flatHistory...)
 	go sm.fetchObjects(repoID, allObjects, ch)
@@ -96,6 +97,16 @@ func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg
 		return
 	}
 	defer objReader.Close()
+	// if object has no data, still need to send to channel
+	if objReader.Len() == 0 {
+		ch <- MaybeChunk{
+			ObjHash: hash,
+			ObjType: objReader.Type(),
+			ObjLen:  objReader.Len(),
+			Data:    make([]byte, 0),
+		}
+		return
+	}
 	for {
 		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(objReader.Reader, data)
@@ -104,7 +115,6 @@ func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg
 			break
 		} else if err == io.ErrUnexpectedEOF {
 			data = data[:n]
-			break
 		} else if err != nil {
 			ch <- MaybeChunk{Error: err}
 			break
