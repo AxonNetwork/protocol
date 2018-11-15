@@ -27,6 +27,10 @@ func fetchFromCommit(commitHash string) error {
 	files := make(map[string]*FileStream)
 
 	for pkt := range ch {
+		if pkt.Error != nil {
+			return pkt.Error
+		}
+
 		hash := hex.EncodeToString(pkt.ObjHash)
 
 		if _, exists := files[hash]; !exists {
@@ -68,6 +72,8 @@ func fetchFromCommit(commitHash string) error {
 			if err != nil {
 				return errors.WithStack(err)
 			}
+
+			delete(files, hash)
 		}
 	}
 	return nil
