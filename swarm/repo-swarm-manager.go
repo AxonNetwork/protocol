@@ -46,7 +46,7 @@ func (sm *RepoSwarmManager) FetchFromCommit(ctx context.Context, repoID string, 
 	ch := make(chan MaybeChunk)
 	flatHead, flatHistory, err := sm.requestManifest(ctx, repoID, commit)
 	if err != nil {
-		ch <- MaybeChunk{Error: err}
+		go func() { ch <- MaybeChunk{Error: err} }()
 		return ch
 	}
 	allObjects := append(flatHead, flatHistory...)
@@ -91,9 +91,7 @@ func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg
 	}
 	objReader, err := sm.fetchObjStream(repoID, hash)
 	if err != nil {
-		ch <- MaybeChunk{
-			Error: err,
-		}
+		ch <- MaybeChunk{Error: err}
 		return
 	}
 	defer objReader.Close()

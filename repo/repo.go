@@ -365,13 +365,14 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 func (r *Repo) GetManifest() ([]byte, []byte, error) {
 	headMap, err := r.headToMap()
 	if err != nil {
-		return []byte{}, []byte{}, nil
+		return nil, nil, err
 	}
+
 	flatHead := make([]byte, 0)
 	flatHistory := make([]byte, 0)
 	iter, err := r.Objects()
 	if err != nil {
-		return []byte{}, []byte{}, nil
+		return nil, nil, err
 	}
 	err = iter.ForEach(func(obj gitobject.Object) error {
 		id := obj.ID()
@@ -384,7 +385,7 @@ func (r *Repo) GetManifest() ([]byte, []byte, error) {
 		return nil
 	})
 	if err != nil {
-		return []byte{}, []byte{}, nil
+		return nil, nil, err
 	}
 	// headStr := strings.Join(flatHead, ",")
 	// historyStr := strings.Join(flatHistory, ",")
