@@ -2,15 +2,30 @@ package util
 
 import (
 	"io"
+	"io/ioutil"
 
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-// type ObjectReader interface {
-//     io.ReadCloser
-//     Len() int64
-//     Type() gitplumbing.ObjectType
-// }
+type ReadAllCloser struct {
+	r io.Reader
+}
+
+func MakeReadAllCloser(r io.Reader) io.ReadCloser {
+	rc := ReadAllCloser{
+		r: r,
+	}
+	return rc
+}
+
+func (rc ReadAllCloser) Read(p []byte) (n int, err error) {
+	return rc.r.Read(p)
+}
+
+func (rc ReadAllCloser) Close() error {
+	_, err := ioutil.ReadAll(rc.r)
+	return err
+}
 
 type ObjectReader struct {
 	io.Reader

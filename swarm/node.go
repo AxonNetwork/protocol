@@ -16,6 +16,7 @@ import (
 
 	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 	"gx/ipfs/QmQYwRL1T9dJtdCScoeRQwwvScbJTcWqnXhq4dYQ6Cu5vX/go-libp2p-kad-dht"
+	cid "gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
 	ma "gx/ipfs/QmYmsdtJ3HsodkePE3eU3TsCaP2YvPZJ4LoXnNkDE5Tpt7/go-multiaddr"
 	"gx/ipfs/QmZ86eLPtXkQ1Dfa992Q8NpXArUoWWh3y728JDcWvzRrvC/go-libp2p"
 	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
@@ -32,6 +33,7 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/strategy"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
@@ -40,7 +42,7 @@ type Node struct {
 	host        host.Host
 	dht         *dht.IpfsDHT
 	eth         *nodeeth.Client
-	RepoManager *RepoManager
+	repoManager *RepoManager
 	Config      config.Config
 	Shutdown    chan struct{}
 
@@ -48,9 +50,6 @@ type Node struct {
 }
 
 const (
-	OBJECT_PROTO            = "/conscience/object/1.0.0"
-	MANIFEST_PROTO          = "/conscience/manifest/1.0.0"
-	HANDSHAKE_PROTO         = "/conscience/handshake/1.0.0"
 	REPLICATION_PROTO       = "/conscience/replication/1.0.0"
 	BECOME_REPLICATOR_PROTO = "/conscience/become-replicator/1.0.0"
 )
@@ -106,7 +105,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		host:             h,
 		dht:              d,
 		eth:              eth,
-		RepoManager:      NewRepoManager(cfg),
+		repoManager:      NewRepoManager(cfg),
 		Config:           *cfg,
 		Shutdown:         make(chan struct{}),
 		bandwidthCounter: bandwidthCounter,
@@ -115,10 +114,10 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
 	go n.periodicallyRequestContent(ctx)  // Start a goroutine for pulling content from repos we are replicating
 
-	// Set the handler function for when we get a new incoming object stream
-	n.host.SetStreamHandler(OBJECT_PROTO, n.handleObjectRequest)
-	n.host.SetStreamHandler(MANIFEST_PROTO, n.handleManifestRequest)
-	n.host.SetStreamHandler(HANDSHAKE_PROTO, n.handleHandshakeRequest)
+	ns := strategy.NewNaiveServer(n)
+	n.host.SetStreamHandler(strategy.OBJECT_PROTO, ns.HandleObjectRequest)
+	n.host.SetStreamHandler(strategy.MANIFEST_PROTO, ns.HandleManifestRequest)
+	n.host.SetStreamHandler(strategy.HANDSHAKE_PROTO, ns.HandleHandshakeRequest)
 	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
 	n.host.SetStreamHandler(BECOME_REPLICATOR_PROTO, n.handleBecomeReplicatorRequest)
 
@@ -222,7 +221,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 		}
 
 		// Announce the repos we have locally
-		err := n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+		err := n.repoManager.ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
 			if err != nil {
 				return err
@@ -249,7 +248,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 // to know that we have the content in question.  The content is new, and therefore hasn't been
 // announced before; hence, the reason for this.
 func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
-	repo := n.RepoManager.Repo(repoID)
+	repo := n.repoManager.Repo(repoID)
 	if repo == nil {
 		return errors.Errorf("repo '%v' not found", repoID)
 	}
@@ -267,7 +266,7 @@ func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 
 // Announce to the swarm that this Node can provide objects from the given repository.
 func (n *Node) announceRepo(ctx context.Context, repoID string) error {
-	c, err := cidForString(repoID)
+	c, err := util.CidForString(repoID)
 	if err != nil {
 		return err
 	}
@@ -281,7 +280,7 @@ func (n *Node) announceRepo(ctx context.Context, repoID string) error {
 
 // Announce to the swarm that this Node is willing to replicate objects from the given repository.
 func (n *Node) announceRepoReplicator(ctx context.Context, repoID string) error {
-	c, err := cidForString("replicate:" + repoID)
+	c, err := util.CidForString("replicate:" + repoID)
 	if err != nil {
 		return err
 	}
@@ -295,7 +294,7 @@ func (n *Node) announceRepoReplicator(ctx context.Context, repoID string) error 
 
 // Announce to the swarm that this Node can provide a specific object from a given repository.
 func (n *Node) announceObject(ctx context.Context, repoID string, objectID []byte) error {
-	c, err := cidForObject(repoID, objectID)
+	c, err := util.CidForObject(repoID, objectID)
 	if err != nil {
 		return err
 	}
@@ -338,43 +337,10 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan MaybeChunk {
-	repo := n.RepoManager.repos[repoID]
-	sm := NewRepoSwarmManager(n, repo)
-	return sm.FetchFromCommit(ctx, repoID, commit)
-}
-
-// Attempts to open a stream to the given object.  If we have it locally, the object is read from
-// the filesystem.  Otherwise, we look for a peer and stream it over a p2p connection.
-func (n *Node) GetObjectReader(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
-	r := n.RepoManager.Repo(repoID)
-
-	// If we detect that we already have the object locally, just open a regular file stream
-	if r != nil && r.HasObject(objectID) {
-		return r.OpenObject(objectID)
-	}
-
-	c, err := cidForString(repoID)
-	if err != nil {
-		return nil, err
-	}
-
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(n.Config.Node.FindProviderTimeout))
-	defer cancel()
-
-	for provider := range n.dht.FindProvidersAsync(ctxTimeout, c, 10) {
-		if provider.ID != n.host.ID() {
-			// We found a peer with the object
-			ctxRequestObject, _ := context.WithTimeout(ctx, 15*time.Second)
-			objectReader, err := n.requestObject(ctxRequestObject, provider.ID, repoID, objectID)
-			if err != nil {
-				log.Warnln("[p2p object client] error requesting object:", err)
-				continue
-			}
-			return objectReader, nil
-		}
-	}
-	return nil, errors.Errorf("could not find provider for %v : %0x", repoID, objectID)
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan strategy.MaybeChunk {
+	repo := n.repoManager.repos[repoID]
+	nc := strategy.NewNaiveClient(n, repo, &n.Config)
+	return nc.FetchFromCommit(ctx, repoID, commit)
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
@@ -427,7 +393,7 @@ func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
 func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
-	c, err := cidForString("replicate:" + repoID)
+	c, err := util.CidForString("replicate:" + repoID)
 	if err != nil {
 		return err
 	}
@@ -568,7 +534,7 @@ func (n *Node) handleReplicationRequest(stream netp2p.Stream) {
 }
 
 func (n *Node) pullRepo(repoID string) error {
-	r, err := n.RepoManager.EnsureLocalCheckoutExists(repoID)
+	r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
 	if err != nil {
 		return err
 	}
@@ -610,6 +576,14 @@ func (n *Node) pullRepo(repoID string) error {
 	return nil
 }
 
+func (n *Node) RepoManager() *RepoManager {
+	return n.repoManager
+}
+
+func (n *Node) Repo(repoID string) *repo.Repo {
+	return n.repoManager.Repo(repoID)
+}
+
 func (n *Node) ID() peer.ID {
 	return n.host.ID()
 }
@@ -618,16 +592,20 @@ func (n *Node) Addrs() []ma.Multiaddr {
 	return n.host.Addrs()
 }
 
+func (n *Node) NewStream(ctx context.Context, peerID peer.ID, pids ...protocol.ID) (netp2p.Stream, error) {
+	return n.host.NewStream(ctx, peerID, pids...)
+}
+
+func (n *Node) FindProvidersAsync(ctx context.Context, key *cid.Cid, count int) <-chan pstore.PeerInfo {
+	return n.dht.FindProvidersAsync(ctx, key, count)
+}
+
 func (n *Node) Peers() []pstore.PeerInfo {
 	return pstore.PeerInfos(n.host.Peerstore(), n.host.Peerstore().Peers())
 }
 
 func (n *Node) Conns() []netp2p.Conn {
 	return n.host.Network().Conns()
-}
-
-func (n *Node) NewStream(ctx context.Context, peerID peer.ID, protocol protocol.ID) (netp2p.Stream, error) {
-	return n.host.NewStream(ctx, peerID, protocol)
 }
 
 func (n *Node) EthAddress() nodeeth.Address {
@@ -646,8 +624,16 @@ func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*node
 	return n.eth.EnsureRepoIDRegistered(ctx, repoID)
 }
 
+func (n *Node) AddrFromSignedHash(data, sig []byte) (nodeeth.Address, error) {
+	return n.eth.AddrFromSignedHash(data, sig)
+}
+
+func (n *Node) AddressHasPullAccess(ctx context.Context, user nodeeth.Address, repoID string) (bool, error) {
+	return n.eth.AddressHasPullAccess(ctx, user, repoID)
+}
+
 func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]Ref, string, error) {
-	r, err := n.RepoManager.RepoAtPathOrID(path, repoID)
+	r, err := n.repoManager.RepoAtPathOrID(path, repoID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -660,7 +646,7 @@ func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (ma
 }
 
 func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (bool, error) {
-	r, err := n.RepoManager.RepoAtPathOrID(path, repoID)
+	r, err := n.repoManager.RepoAtPathOrID(path, repoID)
 	if err != nil {
 		return false, err
 	}

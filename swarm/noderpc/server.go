@@ -1,10 +1,8 @@
 package noderpc
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,7 +21,6 @@ import (
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
-	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -141,7 +138,7 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 
 	// Have the node track the local repo
-	_, err = s.node.RepoManager.TrackRepo(path)
+	_, err = s.node.RepoManager().TrackRepo(path)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -264,47 +261,48 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 }
 
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
-	objectReader, err := s.node.GetObjectReader(server.Context(), req.RepoID, req.ObjectID)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	defer objectReader.Close()
+	// objectReader, err := s.node.GetObjectReader(server.Context(), req.RepoID, req.ObjectID)
+	// if err != nil {
+	// 	return errors.WithStack(err)
+	// }
+	// defer objectReader.Close()
 
-	// First, send a special header packet containing the type and length of the object
-	{
-		headerbuf := &bytes.Buffer{}
-		err = wire.WriteStructPacket(headerbuf, &wire.ObjectMetadata{Type: objectReader.Type(), Len: objectReader.Len()})
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	// // First, send a special header packet containing the type and length of the object
+	// {
+	// 	headerbuf := &bytes.Buffer{}
+	// 	err = wire.WriteStructPacket(headerbuf, &wire.ObjectMetadata{Type: objectReader.Type(), Len: objectReader.Len()})
+	// 	if err != nil {
+	// 		return errors.WithStack(err)
+	// 	}
 
-		err = server.Send(&pb.GetObjectResponsePacket{Data: headerbuf.Bytes()})
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	}
+	// 	err = server.Send(&pb.GetObjectResponsePacket{Data: headerbuf.Bytes()})
+	// 	if err != nil {
+	// 		return errors.WithStack(err)
+	// 	}
+	// }
 
-	// @@TODO: make this configurable
-	const CHUNK_SIZE = 1048576 // 1 MiB
-	data := &bytes.Buffer{}
+	// // @@TODO: make this configurable
+	// const CHUNK_SIZE = 1048576 // 1 MiB
+	// data := &bytes.Buffer{}
 
-	eof := false
-	for !eof {
-		_, err = io.CopyN(data, objectReader, CHUNK_SIZE)
-		if err == io.EOF {
-			eof = true
-		} else if err != nil {
-			return errors.WithStack(err)
-		}
+	// eof := false
+	// for !eof {
+	// 	_, err = io.CopyN(data, objectReader, CHUNK_SIZE)
+	// 	if err == io.EOF {
+	// 		eof = true
+	// 	} else if err != nil {
+	// 		return errors.WithStack(err)
+	// 	}
 
-		err = server.Send(&pb.GetObjectResponsePacket{Data: data.Bytes()})
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	// 	err = server.Send(&pb.GetObjectResponsePacket{Data: data.Bytes()})
+	// 	if err != nil {
+	// 		return errors.WithStack(err)
+	// 	}
 
-		data.Reset()
-	}
-	return nil
+	// 	data.Reset()
+	// }
+	// return nil
+	panic("NOT IMPLEMENTED ANYMORE")
 }
 
 func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDRequest) (*pb.RegisterRepoIDResponse, error) {
@@ -325,7 +323,7 @@ func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDReque
 }
 
 func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoRequest) (*pb.TrackLocalRepoResponse, error) {
-	_, err := s.node.RepoManager.TrackRepo(req.RepoPath)
+	_, err := s.node.RepoManager().TrackRepo(req.RepoPath)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -333,7 +331,7 @@ func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoReque
 }
 
 func (s *Server) GetLocalRepos(req *pb.GetLocalReposRequest, server pb.NodeRPC_GetLocalReposServer) error {
-	return s.node.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+	return s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 		select {
 		case <-server.Context().Done():
 			return errors.WithStack(server.Context().Err())
@@ -439,13 +437,13 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	var r *repo.Repo
 
 	if len(req.Path) > 0 {
-		r = s.node.RepoManager.RepoAtPath(req.Path)
+		r = s.node.RepoManager().RepoAtPath(req.Path)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
 		}
 
 	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager.Repo(req.RepoID)
+		r = s.node.RepoManager().Repo(req.RepoID)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
 		}
@@ -634,13 +632,13 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	var r *repo.Repo
 
 	if len(req.Path) > 0 {
-		r = s.node.RepoManager.RepoAtPath(req.Path)
+		r = s.node.RepoManager().RepoAtPath(req.Path)
 		if r == nil {
 			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
 		}
 
 	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager.Repo(req.RepoID)
+		r = s.node.RepoManager().Repo(req.RepoID)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
 		}
@@ -705,13 +703,13 @@ func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest
 	var r *repo.Repo
 
 	if len(req.Path) > 0 {
-		r = s.node.RepoManager.RepoAtPath(req.Path)
+		r = s.node.RepoManager().RepoAtPath(req.Path)
 		if r == nil {
 			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
 		}
 
 	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager.Repo(req.RepoID)
+		r = s.node.RepoManager().Repo(req.RepoID)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
 		}

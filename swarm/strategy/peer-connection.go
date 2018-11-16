@@ -1,9 +1,8 @@
-package swarm
+package strategy
 
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"time"
 
 	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
@@ -28,10 +27,10 @@ type PeerConnection struct {
 	resChannels   map[string]chan MaybeRes
 }
 
-func (n *Node) NewPeerConnection(peerID peer.ID, repoID string) (*PeerConnection, error) {
+func NewPeerConnection(node INode, peerID peer.ID, repoID string) (*PeerConnection, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
-	currentCommit, stream, err := n.handshakeRequest(ctx, peerID, repoID)
+	currentCommit, stream, err := handshakeRequest(ctx, node, peerID, repoID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,15 +45,15 @@ func (n *Node) NewPeerConnection(peerID peer.ID, repoID string) (*PeerConnection
 	return pc, nil
 }
 
-func (n *Node) handshakeRequest(ctx context.Context, peerID peer.ID, repoID string) (string, netp2p.Stream, error) {
+func handshakeRequest(ctx context.Context, node INode, peerID peer.ID, repoID string) (string, netp2p.Stream, error) {
 	log.Debugf("[p2p swarm client] requesting handshake %v from peer %v", repoID, peerID.Pretty())
 
-	stream, err := n.NewStream(ctx, peerID, HANDSHAKE_PROTO)
+	stream, err := node.NewStream(ctx, peerID, HANDSHAKE_PROTO)
 	if err != nil {
 		return "", nil, err
 	}
 
-	sig, err := n.SignHash([]byte(repoID))
+	sig, err := node.SignHash([]byte(repoID))
 	if err != nil {
 		return "", nil, err
 	}
@@ -91,7 +90,7 @@ func (pc *PeerConnection) RequestObject(ctx context.Context, objectID []byte) (*
 		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%0x", pc.repoID, objectID)
 	}
 	r := io.LimitReader(pc.stream, int64(resp.ObjectLen))
-	rc := ioutil.NopCloser(r)
+	rc := util.MakeReadAllCloser(r)
 	or := &util.ObjectReader{
 		Reader:     rc,
 		Closer:     rc,

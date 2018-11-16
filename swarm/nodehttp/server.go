@@ -151,7 +151,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			state.Peers = append(state.Peers, p)
 		}
 
-		err := s.node.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+		err := s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
 			if err != nil {
 				return err
