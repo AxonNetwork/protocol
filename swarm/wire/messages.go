@@ -23,8 +23,6 @@ const (
 )
 
 type GetObjectRequest struct {
-	RepoIDLen   int `struc:"sizeof=RepoID"`
-	RepoID      string
 	ObjectIDLen int `struc:"sizeof=ObjectID"`
 	ObjectID    []byte
 }
@@ -41,6 +39,8 @@ type GetObjectRequestSigned struct {
 type GetObjectResponse struct {
 	Unauthorized bool
 	HasObject    bool
+	ObjectIDLen  int `struc:"sizeof=ObjectID"`
+	ObjectID     []byte
 	ObjectType   gitplumbing.ObjectType
 	ObjectLen    uint64
 }
@@ -59,6 +59,19 @@ type GetManifestResponse struct {
 	HasCommit  bool
 	HeadLen    int
 	HistoryLen int
+}
+
+type HandshakeRequest struct {
+	RepoIDLen    int `struc:"sizeof=RepoID"`
+	RepoID       string
+	SignatureLen int `struc:"sizeof=Signature"`
+	Signature    []byte
+}
+
+type HandshakeResponse struct {
+	Authorized bool
+	CommitLen  int `struc:"sizeof=Commit"`
+	Commit     string
 }
 
 type ReplicationRequest struct {

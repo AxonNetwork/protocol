@@ -3,7 +3,6 @@ package swarm
 import (
 	"context"
 	"io"
-	"time"
 
 	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
 
@@ -107,103 +106,4 @@ func (n *Node) handleObjectRequest(stream netp2p.Stream) {
 	}
 
 	log.Printf("[p2p object server] sent %v %0x (%v bytes)", req.RepoID, req.ObjectID, sent)
-}
-
-// Handles incoming requests for commit manifests
-func (n *Node) handleManifestRequest(stream netp2p.Stream) {
-	defer stream.Close()
-
-	// Read the request packet
-	req := GetManifestRequest{}
-	err := ReadStructPacket(stream, &req)
-	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
-		return
-	}
-
-	addr, err := n.eth.AddrFromSignedHash([]byte(req.Commit), req.Signature)
-	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	hasAccess, err := n.eth.AddressHasPullAccess(ctx, addr, req.RepoID)
-	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
-		return
-	}
-
-	if hasAccess == false {
-		log.Warnf("[p2p object server] address 0x%0x does not have pull access", addr.Bytes())
-		err := WriteStructPacket(stream, &GetManifestResponse{Authorized: false})
-		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
-			return
-		}
-		return
-	}
-
-	// Send our response:
-	// 1. peer is not authorized to pull
-	//    - GetManifestResponse{Authorized: false}
-	//    - <close connection>
-	// 2. we don't have the repo/commit:
-	//    - GetCommitResponse{HasCommit: false}
-	//    - <close connection>
-	// 3. we do have the commit:
-	//    - GetCommitResponse{Authorized: true, HasCommit: true, ManifestLen: ...}
-	//    - [stream of manifest bytes...]
-	//    - <close connection>
-	//
-	r := n.RepoManager.Repo(req.RepoID)
-	if r == nil {
-		log.Warnf("[p2p object server] cannot find repo %v", req.RepoID)
-		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
-		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
-			return
-		}
-		return
-	}
-
-	flatHead, flatHistory, err := r.GetManifest()
-	if err != nil {
-		log.Warnf("[p2p object server] cannot get manifest for repo %v", req.RepoID)
-		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
-		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
-			return
-		}
-		return
-	}
-
-	err = WriteStructPacket(stream, &GetManifestResponse{
-		Authorized: true,
-		HasCommit:  true,
-		HeadLen:    len(flatHead),
-		HistoryLen: len(flatHistory),
-	})
-	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
-		return
-	}
-
-	sent, err := stream.Write(flatHead)
-	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
-	} else if sent < len(flatHead) {
-		log.Errorf("[p2p object server] terminated while sending head")
-	}
-
-	sent, err = stream.Write(flatHistory)
-	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
-	} else if sent < len(flatHead) {
-		log.Errorf("[p2p object server] terminated while sending history")
-	}
-
-	log.Printf("[p2p object server] sent manifest for %v %v (%v bytes)", req.RepoID, req.Commit, sent)
 }

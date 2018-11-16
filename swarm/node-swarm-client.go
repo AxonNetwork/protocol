@@ -10,13 +10,7 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	. "github.com/Conscience/protocol/swarm/wire"
-	"github.com/Conscience/protocol/util"
 )
-
-func (n *Node) handshake(ctx context.Context, peerID peer.ID, repoID string) (*util.ObjectReader, error) {
-
-	return nil, nil
-}
 
 func (n *Node) RequestManifest(ctx context.Context, peerID peer.ID, repoID string, commit string) ([]byte, []byte, error) {
 	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", repoID, commit, peerID.Pretty())

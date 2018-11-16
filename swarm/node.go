@@ -50,6 +50,7 @@ type Node struct {
 const (
 	OBJECT_PROTO            = "/conscience/object/1.0.0"
 	MANIFEST_PROTO          = "/conscience/manifest/1.0.0"
+	HANDSHAKE_PROTO         = "/conscience/handshake/1.0.0"
 	REPLICATION_PROTO       = "/conscience/replication/1.0.0"
 	BECOME_REPLICATOR_PROTO = "/conscience/become-replicator/1.0.0"
 )
@@ -117,6 +118,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	// Set the handler function for when we get a new incoming object stream
 	n.host.SetStreamHandler(OBJECT_PROTO, n.handleObjectRequest)
 	n.host.SetStreamHandler(MANIFEST_PROTO, n.handleManifestRequest)
+	n.host.SetStreamHandler(HANDSHAKE_PROTO, n.handleHandshakeRequest)
 	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
 	n.host.SetStreamHandler(BECOME_REPLICATOR_PROTO, n.handleBecomeReplicatorRequest)
 
@@ -622,6 +624,10 @@ func (n *Node) Peers() []pstore.PeerInfo {
 
 func (n *Node) Conns() []netp2p.Conn {
 	return n.host.Network().Conns()
+}
+
+func (n *Node) NewStream(ctx context.Context, peerID peer.ID, protocol protocol.ID) (netp2p.Stream, error) {
+	return n.host.NewStream(ctx, peerID, protocol)
 }
 
 func (n *Node) EthAddress() nodeeth.Address {

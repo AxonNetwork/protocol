@@ -49,9 +49,31 @@ func (sm *RepoSwarmManager) FetchFromCommit(ctx context.Context, repoID string, 
 		go func() { ch <- MaybeChunk{Error: err} }()
 		return ch
 	}
+	peer, err := sm.getPeerConnection(ctx, repoID)
+	if err != nil {
+		panic(err)
+	}
 	allObjects := append(flatHead, flatHistory...)
-	go sm.fetchObjects(repoID, allObjects, ch)
+	go sm.fetchObjects(peer, repoID, allObjects, ch)
 	return ch
+}
+
+func (sm *RepoSwarmManager) getPeerConnection(ctx context.Context, repoID string) (*PeerConnection, error) {
+	c, err := cidForString(repoID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(sm.node.Config.Node.FindProviderTimeout))
+	defer cancel()
+
+	for provider := range sm.node.dht.FindProvidersAsync(ctxTimeout, c, 10) {
+		if provider.ID != sm.node.host.ID() {
+			// We found a peer with the object
+			return sm.node.NewPeerConnection(provider.ID, repoID)
+		}
+	}
+	return nil, errors.Errorf("could not find provider for %v", repoID)
 }
 
 func (sm *RepoSwarmManager) requestManifest(ctx context.Context, repoID string, commit string) ([]byte, []byte, error) {
@@ -72,24 +94,24 @@ func (sm *RepoSwarmManager) requestManifest(ctx context.Context, repoID string, 
 	return nil, nil, errors.Errorf("could not find provider for %v : %v", repoID, commit)
 }
 
-func (sm *RepoSwarmManager) fetchObjects(repoID string, objects []byte, ch chan MaybeChunk) {
+func (sm *RepoSwarmManager) fetchObjects(peer *PeerConnection, repoID string, objects []byte, ch chan MaybeChunk) {
 	wg := &sync.WaitGroup{}
 	for i := 0; i < len(objects); i += 20 {
 		hash := [20]byte{}
 		copy(hash[:], objects[i:i+20])
 		wg.Add(1)
-		go sm.fetchObject(repoID, gitplumbing.Hash(hash), wg, ch)
+		sm.fetchObject(peer, repoID, gitplumbing.Hash(hash), wg, ch)
 	}
 	wg.Wait()
 	close(ch)
 }
 
-func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg *sync.WaitGroup, ch chan MaybeChunk) {
+func (sm *RepoSwarmManager) fetchObject(peer *PeerConnection, repoID string, hash gitplumbing.Hash, wg *sync.WaitGroup, ch chan MaybeChunk) {
 	defer wg.Done()
 	if sm.repo != nil && sm.repo.HasObject(hash[:]) {
 		return
 	}
-	objReader, err := sm.fetchObjStream(repoID, hash)
+	objReader, err := sm.fetchObjStream(peer, repoID, hash)
 	if err != nil {
 		ch <- MaybeChunk{Error: err}
 		return
@@ -126,7 +148,7 @@ func (sm *RepoSwarmManager) fetchObject(repoID string, hash gitplumbing.Hash, wg
 	}
 }
 
-func (sm *RepoSwarmManager) fetchObjStream(repoID string, hash gitplumbing.Hash) (*util.ObjectReader, error) {
+func (sm *RepoSwarmManager) fetchObjStream(peer *PeerConnection, repoID string, hash gitplumbing.Hash) (*util.ObjectReader, error) {
 	<-sm.inflightLimiter
 	defer func() { sm.inflightLimiter <- struct{}{} }()
 
@@ -135,5 +157,5 @@ func (sm *RepoSwarmManager) fetchObjStream(repoID string, hash gitplumbing.Hash)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	return sm.node.GetObjectReader(ctx, repoID, hash[:])
+	return peer.RequestObject(ctx, hash[:])
 }

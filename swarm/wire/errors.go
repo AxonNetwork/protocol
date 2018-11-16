@@ -5,7 +5,8 @@ import (
 )
 
 var (
-	ErrUnauthorized   = errors.New("Not authorized to pull object")
-	ErrObjectNotFound = errors.New("Object not found")
-	ErrProtocol       = errors.New("Protocol error")
+	ErrUnauthorized           = errors.New("Not authorized to pull object")
+	ErrObjectNotFound         = errors.New("Object not found")
+	ErrTerminatedWhileSending = errors.New("Terminated While Sending")
+	ErrProtocol               = errors.New("Protocol error")
 )
