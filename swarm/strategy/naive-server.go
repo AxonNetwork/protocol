@@ -320,7 +320,7 @@ func (ns *NaiveServer) HandleManifestRequest(stream netp2p.Stream) {
 	sent, err = stream.Write(flatHistory)
 	if err != nil {
 		log.Errorf("[NaiveServer] %v", err)
-	} else if sent < len(flatHead) {
+	} else if sent < len(flatHistory) {
 		log.Errorf("[NaiveServer] terminated while sending history")
 	}
 
