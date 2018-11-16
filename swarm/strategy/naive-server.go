@@ -32,7 +32,7 @@ func (ns *NaiveServer) HandleObjectRequest(stream netp2p.Stream) {
 		return
 	}
 
-	log.Debugf("[p2p object server] peer requested %v %0x", req.RepoID, req.ObjectID)
+	// log.Debugf("[p2p object server] peer requested %v %0x", req.RepoID, req.ObjectID)
 
 	addr, err := ns.node.AddrFromSignedHash(req.ObjectID, req.Signature)
 	if err != nil {
@@ -115,7 +115,7 @@ func (ns *NaiveServer) HandleObjectRequest(stream netp2p.Stream) {
 		log.Errorf("[p2p object server] terminated while sending")
 	}
 
-	log.Printf("[p2p object server] sent %v %0x (%v bytes)", req.RepoID, req.ObjectID, sent)
+	// log.Debugf("[p2p object server] sent %v %0x (%v bytes)", req.RepoID, req.ObjectID, sent)
 }
 
 func (ns *NaiveServer) HandleHandshakeRequest(stream netp2p.Stream) {
@@ -125,7 +125,7 @@ func (ns *NaiveServer) HandleHandshakeRequest(stream netp2p.Stream) {
 		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
-	log.Warnf("[NaiveServer] incoming handshake %+v", req)
+	log.Infof("[NaiveServer] incoming handshake %+v", req)
 
 	addr, err := ns.node.AddrFromSignedHash([]byte(req.RepoID), req.Signature)
 	if err != nil {
@@ -174,7 +174,6 @@ func (ns *NaiveServer) connectLoop(repoID string, stream netp2p.Stream) {
 			log.Debugf("[NaiveServer] Stream closed")
 			return
 		}
-		log.Infof("[NaiveServer] got object request %v", hex.EncodeToString(req.ObjectID))
 		ns.writeObjectToStream(repoID, req.ObjectID, stream)
 	}
 }

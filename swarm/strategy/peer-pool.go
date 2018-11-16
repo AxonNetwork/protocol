@@ -36,7 +36,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	}
 
 	go func() {
-		defer log.Errorln("closing goroutine 1")
+		defer log.Debugln("closing goroutine 1")
 
 		for {
 			select {
@@ -80,7 +80,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	}()
 
 	go func() {
-		defer log.Errorln("closing goroutine 2")
+		defer log.Debugln("closing goroutine 2")
 
 		for i := 0; i < concurrentConns; i++ {
 			select {
@@ -95,7 +95,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 }
 
 func (p *peerPool) Close() error {
-	log.Errorln("peerPool.Close()")
+	log.Debugln("peerPool.Close()")
 	p.cancel()
 
 	p.needNewPeer = nil
