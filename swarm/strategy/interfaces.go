@@ -13,6 +13,7 @@ import (
 
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/util"
 )
 
 type (
@@ -36,5 +37,9 @@ type (
 		ObjLen  uint64
 		Data    []byte
 		Error   error
+	}
+
+	IPeerConnection interface {
+		RequestObject(ctx context.Context, objectID []byte) (*util.ObjectReader, error)
 	}
 )
