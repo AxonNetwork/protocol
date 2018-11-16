@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"context"
+	"time"
 
 	peerstore "gx/ipfs/QmZR2XWVVBCtbgBWnQhWk2xcQfaR3W8faQPriAiaaj7rsr/go-libp2p-peerstore"
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
@@ -35,6 +36,8 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	}
 
 	go func() {
+		defer log.Errorln("closing goroutine 1")
+
 		for {
 			select {
 			case <-p.needNewPeer:
@@ -46,7 +49,13 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 			for {
 				var peerID peer.ID
 				select {
-				case peerInfo := <-p.chProviders:
+				case peerInfo, open := <-p.chProviders:
+					if !open {
+						log.Warnf("PROVIDERS CHANNEL IS CLOSED")
+						p.chProviders = node.FindProvidersAsync(ctxInner, cid, 999)
+						continue
+					}
+					log.Infof("FOUND PEER %+v", peerInfo)
 					peerID = peerInfo.ID
 				case <-p.ctx.Done():
 					return
@@ -55,6 +64,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				_peerConn, err := NewPeerConnection(node, peerID, repoID)
 				if err != nil {
 					log.Errorln("[peer pool] error opening NewPeerConnection", err)
+					time.Sleep(1 * time.Second)
 					continue
 				}
 				peerConn = _peerConn
@@ -70,6 +80,8 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	}()
 
 	go func() {
+		defer log.Errorln("closing goroutine 2")
+
 		for i := 0; i < concurrentConns; i++ {
 			select {
 			case <-p.ctx.Done():
@@ -83,6 +95,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 }
 
 func (p *peerPool) Close() error {
+	log.Errorln("peerPool.Close()")
 	p.cancel()
 
 	p.needNewPeer = nil

@@ -79,6 +79,7 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, repoID string, commi
 			ch <- MaybeChunk{Error: err}
 			return
 		}
+		defer p.Close()
 
 		for j := range sc.jobQueue {
 			conn := p.GetConn()
