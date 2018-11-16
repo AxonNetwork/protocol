@@ -9,6 +9,7 @@ import (
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
 	"github.com/pkg/errors"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -16,8 +17,6 @@ import (
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
-
-const OBJ_CHUNK_SIZE = 16384 //16kb
 
 type SmartClient struct {
 	inflightLimiter chan struct{}
@@ -181,7 +180,7 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn IPeerC
 		}
 	}()
 
-	if sc.repo != nil && sc.repo.HasObject(hash[:]) {
+	if sc.repo != nil && sc.repo.HasObject(j.objectID) {
 		return
 	}
 
@@ -192,10 +191,13 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn IPeerC
 	}
 	defer objReader.Close()
 
+	var hash [20]byte
+	copy(hash[:], j.objectID)
+
 	// if object has no data, still need to send to channel
 	if objReader.Len() == 0 {
 		ch <- MaybeChunk{
-			ObjHash: hash,
+			ObjHash: gitplumbing.Hash(hash),
 			ObjType: objReader.Type(),
 			ObjLen:  objReader.Len(),
 			Data:    make([]byte, 0),
@@ -216,7 +218,7 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn IPeerC
 			break
 		}
 		ch <- MaybeChunk{
-			ObjHash: hash,
+			ObjHash: gitplumbing.Hash(hash),
 			ObjType: objReader.Type(),
 			ObjLen:  objReader.Len(),
 			Data:    data,

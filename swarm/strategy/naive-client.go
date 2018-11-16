@@ -18,8 +18,6 @@ import (
 	"github.com/Conscience/protocol/util"
 )
 
-const OBJ_CHUNK_SIZE = 16384 //16kb
-
 type NaiveClient struct {
 	inflightLimiter chan struct{}
 	node            INode

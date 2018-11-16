@@ -3,16 +3,18 @@ package strategy
 import (
 	"context"
 
+	peerstore "gx/ipfs/QmZR2XWVVBCtbgBWnQhWk2xcQfaR3W8faQPriAiaaj7rsr/go-libp2p-peerstore"
 	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
 
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/util"
 )
 
 type peerPool struct {
 	peers       chan IPeerConnection
-	chProviders chan peer.ID
+	chProviders <-chan peerstore.PeerInfo
 	needNewPeer chan struct{}
-	chClose     chan struct{}
+	ctx         context.Context
 	cancel      func()
 }
 
@@ -28,7 +30,6 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 		peers:       make(chan IPeerConnection, concurrentConns),
 		chProviders: node.FindProvidersAsync(ctxInner, cid, 999),
 		needNewPeer: make(chan struct{}),
-		chClose:     make(chan struct{}),
 		ctx:         ctxInner,
 		cancel:      cancel,
 	}
@@ -41,14 +42,24 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				return
 			}
 
-			var peerID peer.ID
-			select {
-			case peerID = <-p.chProviders:
-			case <-p.ctx.Done():
-				return
-			}
+			var peerConn IPeerConnection
+			for {
+				var peerID peer.ID
+				select {
+				case peerInfo := <-p.chProviders:
+					peerID = peerInfo.ID
+				case <-p.ctx.Done():
+					return
+				}
 
-			// ... make peer connection ...
+				_peerConn, err := NewPeerConnection(node, peerID, repoID)
+				if err != nil {
+					log.Errorln("[peer pool] error opening NewPeerConnection", err)
+					continue
+				}
+				peerConn = _peerConn
+				break
+			}
 
 			select {
 			case p.peers <- peerConn:
@@ -94,13 +105,13 @@ func (p *peerPool) ReturnConn(conn IPeerConnection, strike bool) {
 	if strike {
 		select {
 		case p.needNewPeer <- struct{}{}:
-		case p.ctx.Done():
+		case <-p.ctx.Done():
 		}
 
 	} else {
 		select {
 		case p.peers <- conn:
-		case p.ctx.Done():
+		case <-p.ctx.Done():
 		}
 	}
 }

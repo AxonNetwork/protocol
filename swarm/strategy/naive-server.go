@@ -172,7 +172,7 @@ func (ns *NaiveServer) connectLoop(repoID string, stream netp2p.Stream) {
 			log.Debugf("[p2p object server] Stream closed")
 			return
 		}
-		go ns.writeObjectToStream(repoID, req.ObjectID, stream)
+		ns.writeObjectToStream(repoID, req.ObjectID, stream)
 	}
 }
 

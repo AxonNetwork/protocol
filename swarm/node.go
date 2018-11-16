@@ -339,8 +339,8 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 
 func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan strategy.MaybeChunk {
 	repo := n.repoManager.repos[repoID]
-	nc := strategy.NewNaiveClient(n, repo, &n.Config)
-	return nc.FetchFromCommit(ctx, repoID, commit)
+	c := strategy.NewSmartClient(n, repo, &n.Config)
+	return c.FetchFromCommit(ctx, repoID, commit)
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {

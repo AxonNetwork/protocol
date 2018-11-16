@@ -40,7 +40,7 @@ func NewPeerConnection(node INode, peerID peer.ID, repoID string) (*PeerConnecti
 		repoID:        repoID,
 		currentCommit: currentCommit,
 		stream:        stream,
-		resChannels:   map[string]chan MaybeRes{},
+		resChannels:   make(map[string]chan MaybeRes),
 	}
 	return pc, nil
 }

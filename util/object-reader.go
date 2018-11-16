@@ -8,22 +8,18 @@ import (
 )
 
 type ReadAllCloser struct {
-	r io.Reader
+	io.Reader
 }
 
 func MakeReadAllCloser(r io.Reader) io.ReadCloser {
 	rc := ReadAllCloser{
-		r: r,
+		Reader: r,
 	}
 	return rc
 }
 
-func (rc ReadAllCloser) Read(p []byte) (n int, err error) {
-	return rc.r.Read(p)
-}
-
 func (rc ReadAllCloser) Close() error {
-	_, err := ioutil.ReadAll(rc.r)
+	_, err := ioutil.ReadAll(rc)
 	return err
 }
 
