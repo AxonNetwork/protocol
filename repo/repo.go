@@ -457,6 +457,9 @@ func (r *Repo) walkCommits() (map[gitplumbing.Hash]bool, error) {
 }
 
 func (r *Repo) objectsForCommit(commit *gitobject.Commit, seen map[gitplumbing.Hash]bool) error {
+	seen[commit.Hash] = true
+	seen[commit.TreeHash] = true
+
 	tree, err := r.TreeObject(commit.TreeHash)
 	if err != nil {
 		return err
