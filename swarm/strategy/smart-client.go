@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"context"
+	"encoding/hex"
 	"io"
 	"sync"
 	"time"
@@ -39,7 +40,7 @@ func NewSmartClient(node INode, repo *repo.Repo, config *config.Config) *SmartCl
 		node:            node,
 		repo:            repo,
 		config:          config,
-		jobQueue:        make(chan job),
+		jobQueue:        nil,
 	}
 	for i := 0; i < 5; i++ {
 		sc.inflightLimiter <- struct{}{}
@@ -64,6 +65,9 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, repoID string, commi
 
 		allObjects := append(flatHead, flatHistory...)
 
+		numObjects := len(allObjects) / 20
+		sc.jobQueue = make(chan job, numObjects)
+
 		for i := 0; i < len(allObjects); i += 20 {
 			wg.Add(1)
 			sc.jobQueue <- job{allObjects[i : i+20], make(map[peer.ID]bool)}
@@ -83,10 +87,11 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, repoID string, commi
 
 		for j := range sc.jobQueue {
 			conn := p.GetConn()
-			if conn == IPeerConnection(nil) {
+			if conn == nil {
 				log.Errorln("[smart client] nil PeerConnection, operation canceled?")
 				return
 			}
+			log.Infof("[PeerPool.GetConn] got peer %v for job %v", conn.peerID, hex.EncodeToString(j.objectID))
 
 			go sc.fetchObject(ctx, p, conn, j, wg, ch)
 		}
@@ -166,7 +171,7 @@ func (sc *SmartClient) requestManifestFromPeer(ctx context.Context, peerID peer.
 	return flatHead, flatHistory, nil
 }
 
-func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn IPeerConnection, j job, wg *sync.WaitGroup, ch chan MaybeChunk) {
+func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn *PeerConnection, j job, wg *sync.WaitGroup, ch chan MaybeChunk) {
 	var err error
 
 	defer func() {
@@ -185,12 +190,15 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn IPeerC
 		return
 	}
 
+	log.Infof("[SmartClient] requesting %v from peer %v", hex.EncodeToString(j.objectID), conn.peerID)
 	objReader, err := conn.RequestObject(ctx, j.objectID)
 	if err != nil {
-		ch <- MaybeChunk{Error: err}
+		log.Errorf("[SmartClient] error requesting %v from peer %v: %v", hex.EncodeToString(j.objectID), conn.peerID, err)
+		// ch <- MaybeChunk{Error: err}
 		return
 	}
 	defer objReader.Close()
+	defer log.Infoln("[SmartClient] successfully got %v from peer %v", hex.EncodeToString(j.objectID), conn.peerID)
 
 	var hash [20]byte
 	copy(hash[:], j.objectID)

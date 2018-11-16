@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"context"
+	"encoding/hex"
 	"io"
 	"time"
 
@@ -121,13 +122,14 @@ func (ns *NaiveServer) HandleHandshakeRequest(stream netp2p.Stream) {
 	req := HandshakeRequest{}
 	err := ReadStructPacket(stream, &req)
 	if err != nil {
-		log.Errorf("[p2p swarm server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
+	log.Warnf("[NaiveServer] incoming handshake %+v", req)
 
 	addr, err := ns.node.AddrFromSignedHash([]byte(req.RepoID), req.Signature)
 	if err != nil {
-		log.Errorf("[p2p swarm server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 
@@ -136,15 +138,15 @@ func (ns *NaiveServer) HandleHandshakeRequest(stream netp2p.Stream) {
 
 	hasAccess, err := ns.node.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
-		log.Errorf("[p2p swarm server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 
 	if hasAccess == false {
-		log.Warnf("[p2p swarm server] address 0x%0x does not have pull access", addr.Bytes())
+		log.Warnf("[NaiveServer] address 0x%0x does not have pull access", addr.Bytes())
 		err := WriteStructPacket(stream, &HandshakeResponse{Authorized: false})
 		if err != nil {
-			log.Errorf("[p2p swarm server] %v", err)
+			log.Errorf("[NaiveServer] %v", err)
 			return
 		}
 		return
@@ -152,12 +154,12 @@ func (ns *NaiveServer) HandleHandshakeRequest(stream netp2p.Stream) {
 	repo := ns.node.Repo(req.RepoID)
 	commit, err := repo.HeadHash()
 	if err != nil {
-		log.Errorf("[p2p swarm server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 	err = WriteStructPacket(stream, &HandshakeResponse{Authorized: true, Commit: commit})
 	if err != nil {
-		log.Errorf("[p2p swarm server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 	go ns.connectLoop(req.RepoID, stream)
@@ -169,9 +171,10 @@ func (ns *NaiveServer) connectLoop(repoID string, stream netp2p.Stream) {
 		req := GetObjectRequest{}
 		err := ReadStructPacket(stream, &req)
 		if err != nil {
-			log.Debugf("[p2p object server] Stream closed")
+			log.Debugf("[NaiveServer] Stream closed")
 			return
 		}
+		log.Infof("[NaiveServer] got object request %v", hex.EncodeToString(req.ObjectID))
 		ns.writeObjectToStream(repoID, req.ObjectID, stream)
 	}
 }
@@ -179,10 +182,10 @@ func (ns *NaiveServer) connectLoop(repoID string, stream netp2p.Stream) {
 func (ns *NaiveServer) writeObjectToStream(repoID string, objectID []byte, stream netp2p.Stream) {
 	r := ns.node.Repo(repoID)
 	if r == nil {
-		log.Warnf("[p2p object server] cannot find repo %v", repoID)
+		log.Warnf("[NaiveServer] cannot find repo %v", repoID)
 		err := WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
 		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
+			log.Errorf("[NaiveServer] %v", err)
 			return
 		}
 		return
@@ -190,12 +193,12 @@ func (ns *NaiveServer) writeObjectToStream(repoID string, objectID []byte, strea
 
 	objectStream, err := r.OpenObject(objectID)
 	if err != nil {
-		log.Debugf("[p2p object server] we don't have %v %0x (err: %v)", repoID, objectID, err)
+		log.Debugf("[NaiveServer] we don't have %v %0x (err: %v)", repoID, objectID, err)
 
 		// tell the peer we don't have the object
 		err := WriteStructPacket(stream, &GetObjectResponse{HasObject: false})
 		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
+			log.Errorf("[NaiveServer] %v", err)
 			return
 		}
 		return
@@ -210,18 +213,19 @@ func (ns *NaiveServer) writeObjectToStream(repoID string, objectID []byte, strea
 		ObjectLen:    objectStream.Len(),
 	})
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 
 	sent, err := io.Copy(stream, objectStream)
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	} else if uint64(sent) < objectStream.Len() {
-		log.Errorf("[p2p object server] terminated while sending")
+		log.Errorf("[NaiveServer] terminated while sending")
 		return
 	}
+	log.Infof("[NaiveServer] successfully sent %v", hex.EncodeToString(objectID))
 }
 
 // Handles incoming requests for commit manifests
@@ -232,13 +236,13 @@ func (ns *NaiveServer) HandleManifestRequest(stream netp2p.Stream) {
 	req := GetManifestRequest{}
 	err := ReadStructPacket(stream, &req)
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 
 	addr, err := ns.node.AddrFromSignedHash([]byte(req.Commit), req.Signature)
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 
@@ -247,15 +251,15 @@ func (ns *NaiveServer) HandleManifestRequest(stream netp2p.Stream) {
 
 	hasAccess, err := ns.node.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 
 	if hasAccess == false {
-		log.Warnf("[p2p object server] address 0x%0x does not have pull access", addr.Bytes())
+		log.Warnf("[NaiveServer] address 0x%0x does not have pull access", addr.Bytes())
 		err := WriteStructPacket(stream, &GetManifestResponse{Authorized: false})
 		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
+			log.Errorf("[NaiveServer] %v", err)
 			return
 		}
 		return
@@ -275,10 +279,10 @@ func (ns *NaiveServer) HandleManifestRequest(stream netp2p.Stream) {
 	//
 	r := ns.node.Repo(req.RepoID)
 	if r == nil {
-		log.Warnf("[p2p object server] cannot find repo %v", req.RepoID)
+		log.Warnf("[NaiveServer] cannot find repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
 		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
+			log.Errorf("[NaiveServer] %v", err)
 			return
 		}
 		return
@@ -286,10 +290,10 @@ func (ns *NaiveServer) HandleManifestRequest(stream netp2p.Stream) {
 
 	flatHead, flatHistory, err := r.GetManifest()
 	if err != nil {
-		log.Warnf("[p2p object server] cannot get manifest for repo %v", req.RepoID)
+		log.Warnf("[NaiveServer] cannot get manifest for repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
 		if err != nil {
-			log.Errorf("[p2p object server] %v", err)
+			log.Errorf("[NaiveServer] %v", err)
 			return
 		}
 		return
@@ -302,23 +306,23 @@ func (ns *NaiveServer) HandleManifestRequest(stream netp2p.Stream) {
 		HistoryLen: len(flatHistory),
 	})
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 		return
 	}
 
 	sent, err := stream.Write(flatHead)
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 	} else if sent < len(flatHead) {
-		log.Errorf("[p2p object server] terminated while sending head")
+		log.Errorf("[NaiveServer] terminated while sending head")
 	}
 
 	sent, err = stream.Write(flatHistory)
 	if err != nil {
-		log.Errorf("[p2p object server] %v", err)
+		log.Errorf("[NaiveServer] %v", err)
 	} else if sent < len(flatHead) {
-		log.Errorf("[p2p object server] terminated while sending history")
+		log.Errorf("[NaiveServer] terminated while sending history")
 	}
 
-	log.Printf("[p2p object server] sent manifest for %v %v (%v bytes)", req.RepoID, req.Commit, sent)
+	log.Printf("[NaiveServer] sent manifest for %v %v (%v bytes)", req.RepoID, req.Commit, sent)
 }

@@ -12,7 +12,7 @@ import (
 )
 
 type peerPool struct {
-	peers       chan IPeerConnection
+	peers       chan *PeerConnection
 	chProviders <-chan peerstore.PeerInfo
 	needNewPeer chan struct{}
 	ctx         context.Context
@@ -28,7 +28,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	ctxInner, cancel := context.WithCancel(ctx)
 
 	p := &peerPool{
-		peers:       make(chan IPeerConnection, concurrentConns),
+		peers:       make(chan *PeerConnection, concurrentConns),
 		chProviders: node.FindProvidersAsync(ctxInner, cid, 999),
 		needNewPeer: make(chan struct{}),
 		ctx:         ctxInner,
@@ -45,7 +45,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				return
 			}
 
-			var peerConn IPeerConnection
+			var peerConn *PeerConnection
 			for {
 				var peerID peer.ID
 				select {
@@ -105,7 +105,7 @@ func (p *peerPool) Close() error {
 	return nil
 }
 
-func (p *peerPool) GetConn() IPeerConnection {
+func (p *peerPool) GetConn() *PeerConnection {
 	select {
 	case x := <-p.peers:
 		return x
@@ -114,7 +114,7 @@ func (p *peerPool) GetConn() IPeerConnection {
 	}
 }
 
-func (p *peerPool) ReturnConn(conn IPeerConnection, strike bool) {
+func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 	if strike {
 		select {
 		case p.needNewPeer <- struct{}{}:
