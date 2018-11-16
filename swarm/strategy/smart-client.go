@@ -52,21 +52,24 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, repoID string, commi
 	ch := make(chan MaybeChunk)
 	wg := &sync.WaitGroup{}
 
-	// Request the manifest and load the job queue up with everything it contains
+	flatHead, flatHistory, err := sc.requestManifestFromSwarm(ctx, repoID, commit)
+	if err != nil {
+		go func() {
+			defer close(ch)
+			ch <- MaybeChunk{Error: err}
+		}()
+		return ch
+	}
+
+	allObjects := append(flatHead, flatHistory...)
+
+	numObjects := len(allObjects) / 20
+	sc.jobQueue = make(chan job, numObjects)
+
+	// Load the job queue up with everything in the manifest
 	go func() {
 		defer close(ch)
 		defer close(sc.jobQueue)
-
-		flatHead, flatHistory, err := sc.requestManifestFromSwarm(ctx, repoID, commit)
-		if err != nil {
-			ch <- MaybeChunk{Error: err}
-			return
-		}
-
-		allObjects := append(flatHead, flatHistory...)
-
-		numObjects := len(allObjects) / 20
-		sc.jobQueue = make(chan job, numObjects)
 
 		for i := 0; i < len(allObjects); i += 20 {
 			wg.Add(1)
@@ -91,7 +94,6 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, repoID string, commi
 				log.Errorln("[smart client] nil PeerConnection, operation canceled?")
 				return
 			}
-			log.Infof("[PeerPool.GetConn] got peer %v for job %v", conn.peerID, hex.EncodeToString(j.objectID))
 
 			go sc.fetchObject(ctx, p, conn, j, wg, ch)
 		}
@@ -114,7 +116,7 @@ func (sc *SmartClient) requestManifestFromSwarm(ctx context.Context, repoID stri
 			// We found a peer with the object
 			head, history, err := sc.requestManifestFromPeer(ctx, provider.ID, repoID, commit)
 			if err != nil {
-				log.Errorln("[requestManifestFromSwarm]", err)
+				log.Errorln("[SmartClient requestManifestFromSwarm]", err)
 				continue
 			}
 			return head, history, nil
@@ -190,7 +192,6 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn *PeerC
 		return
 	}
 
-	log.Infof("[SmartClient] requesting %v from peer %v", hex.EncodeToString(j.objectID), conn.peerID)
 	objReader, err := conn.RequestObject(ctx, j.objectID)
 	if err != nil {
 		log.Errorf("[SmartClient] error requesting %v from peer %v: %v", hex.EncodeToString(j.objectID), conn.peerID, err)
@@ -198,7 +199,6 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn *PeerC
 		return
 	}
 	defer objReader.Close()
-	defer log.Infoln("[SmartClient] successfully got %v from peer %v", hex.EncodeToString(j.objectID), conn.peerID)
 
 	var hash [20]byte
 	copy(hash[:], j.objectID)
