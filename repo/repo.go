@@ -466,12 +466,13 @@ func (r *Repo) objectsForCommit(commit *gitobject.Commit, seen map[gitplumbing.H
 	defer walker.Close()
 
 	for {
-		_, _, err := walker.Next()
+		_, entry, err := walker.Next()
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return err
 		}
+		seen[entry.Hash] = true
 	}
 
 	for _, hash := range commit.ParentHashes {
