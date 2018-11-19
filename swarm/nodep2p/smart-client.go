@@ -1,4 +1,4 @@
-package strategy
+package nodep2p
 
 import (
 	"context"
@@ -20,13 +20,11 @@ import (
 )
 
 type SmartClient struct {
-	inflightLimiter chan struct{}
-	node            INode
-	repo            *repo.Repo
-	config          *config.Config
-	flatHead        []byte
-	flatHistory     []byte
-	jobQueue        chan job
+	node        INode
+	repo        *repo.Repo
+	config      *config.Config
+	flatHead    []byte
+	flatHistory []byte
 }
 
 type job struct {
@@ -34,16 +32,13 @@ type job struct {
 	failedPeers map[peer.ID]bool
 }
 
+var ErrFetchingFromPeer = errors.New("fetching from peer")
+
 func NewSmartClient(node INode, repo *repo.Repo, config *config.Config) *SmartClient {
 	sc := &SmartClient{
-		inflightLimiter: make(chan struct{}, 5),
-		node:            node,
-		repo:            repo,
-		config:          config,
-		jobQueue:        nil,
-	}
-	for i := 0; i < 5; i++ {
-		sc.inflightLimiter <- struct{}{}
+		node:   node,
+		repo:   repo,
+		config: config,
 	}
 	return sc
 }
@@ -62,18 +57,17 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, repoID string, commi
 	}
 
 	allObjects := append(flatHead, flatHistory...)
-
 	numObjects := len(allObjects) / 20
-	sc.jobQueue = make(chan job, numObjects)
+	jobQueue := make(chan job, numObjects)
 
 	// Load the job queue up with everything in the manifest
 	go func() {
 		defer close(ch)
-		defer close(sc.jobQueue)
+		defer close(jobQueue)
 
 		for i := 0; i < len(allObjects); i += 20 {
 			wg.Add(1)
-			sc.jobQueue <- job{allObjects[i : i+20], make(map[peer.ID]bool)}
+			jobQueue <- job{allObjects[i : i+20], make(map[peer.ID]bool)}
 		}
 
 		wg.Wait()
@@ -81,21 +75,36 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, repoID string, commi
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		p, err := newPeerPool(ctx, sc.node, repoID, 4)
+		pool, err := newPeerPool(ctx, sc.node, repoID, 4)
 		if err != nil {
 			ch <- MaybeChunk{Error: err}
 			return
 		}
-		defer p.Close()
+		defer pool.Close()
 
-		for j := range sc.jobQueue {
-			conn := p.GetConn()
+		for j := range jobQueue {
+			conn := pool.GetConn()
 			if conn == nil {
 				log.Errorln("[smart client] nil PeerConnection, operation canceled?")
 				return
 			}
 
-			go sc.fetchObject(ctx, p, conn, j, wg, ch)
+			go func(j job) {
+				err := sc.fetchObject(ctx, conn, j, ch)
+				if err != nil {
+					log.Errorln("[smart client] fetchObject:", err)
+					if errors.Cause(err) == ErrFetchingFromPeer {
+						// @@TODO: mark failed peer on job{}
+						// @@TODO: maybe call ReturnConn with true if the peer should be discarded
+					}
+					jobQueue <- j
+					pool.ReturnConn(conn, false)
+
+				} else {
+					wg.Done()
+					pool.ReturnConn(conn, false)
+				}
+			}(j)
 		}
 	}()
 
@@ -116,13 +125,13 @@ func (sc *SmartClient) requestManifestFromSwarm(ctx context.Context, repoID stri
 			// We found a peer with the object
 			head, history, err := sc.requestManifestFromPeer(ctx, provider.ID, repoID, commit)
 			if err != nil {
-				log.Errorln("[SmartClient requestManifestFromSwarm]", err)
+				log.Errorln("[smart client] requestManifestFromPeer:", err)
 				continue
 			}
 			return head, history, nil
 		}
 	}
-	return nil, nil, errors.Errorf("could not find provider for %v : %v", repoID, commit)
+	return nil, nil, errors.Errorf("could not find provider for repo '%v'", repoID)
 }
 
 func (sc *SmartClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit string) ([]byte, []byte, error) {
@@ -173,30 +182,16 @@ func (sc *SmartClient) requestManifestFromPeer(ctx context.Context, peerID peer.
 	return flatHead, flatHistory, nil
 }
 
-func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn *PeerConnection, j job, wg *sync.WaitGroup, ch chan MaybeChunk) {
-	var err error
-
-	defer func() {
-		if err == nil {
-			wg.Done()
-			p.ReturnConn(conn, false)
-		} else {
-			// @@TODO: mark failed peer on job{}
-			sc.jobQueue <- j
-			// @@TODO: maybe call ReturnConn with true if the peer should be discarded
-			p.ReturnConn(conn, false)
-		}
-	}()
-
+func (sc *SmartClient) fetchObject(ctx context.Context, conn *PeerConnection, j job, ch chan MaybeChunk) error {
 	if sc.repo != nil && sc.repo.HasObject(j.objectID) {
-		return
+		return nil
 	}
 
 	objReader, err := conn.RequestObject(ctx, j.objectID)
 	if err != nil {
-		log.Errorf("[SmartClient] error requesting %v from peer %v: %v", hex.EncodeToString(j.objectID), conn.peerID, err)
-		// ch <- MaybeChunk{Error: err}
-		return
+		err := errors.Wrapf(ErrFetchingFromPeer, "tried requesting %v from peer %v: %v", hex.EncodeToString(j.objectID), conn.peerID, err)
+		log.Errorf("[smart client]", err)
+		return err
 	}
 	defer objReader.Close()
 
@@ -211,11 +206,11 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn *PeerC
 			ObjLen:  objReader.Len(),
 			Data:    make([]byte, 0),
 		}
-		return
+		return nil
 	}
 
+	data := make([]byte, OBJ_CHUNK_SIZE)
 	for {
-		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(objReader.Reader, data)
 		if err == io.EOF {
 			// read no bytes
@@ -223,8 +218,7 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn *PeerC
 		} else if err == io.ErrUnexpectedEOF {
 			data = data[:n]
 		} else if err != nil {
-			ch <- MaybeChunk{Error: err}
-			break
+			return err
 		}
 		ch <- MaybeChunk{
 			ObjHash: gitplumbing.Hash(hash),
@@ -233,4 +227,6 @@ func (sc *SmartClient) fetchObject(ctx context.Context, p *peerPool, conn *PeerC
 			Data:    data,
 		}
 	}
+
+	return nil
 }

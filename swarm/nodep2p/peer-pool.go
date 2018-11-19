@@ -1,4 +1,4 @@
-package strategy
+package nodep2p
 
 import (
 	"context"
@@ -15,8 +15,11 @@ type peerPool struct {
 	peers       chan *PeerConnection
 	chProviders <-chan peerstore.PeerInfo
 	needNewPeer chan struct{}
-	ctx         context.Context
-	cancel      func()
+
+	peerList map[*PeerConnection]struct{} // This is only used to close peers when .Close() is called.
+
+	ctx    context.Context
+	cancel func()
 }
 
 func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns int) (*peerPool, error) {
@@ -31,13 +34,14 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 		peers:       make(chan *PeerConnection, concurrentConns),
 		chProviders: node.FindProvidersAsync(ctxInner, cid, 999),
 		needNewPeer: make(chan struct{}),
+		peerList:    make(map[*PeerConnection]struct{}),
 		ctx:         ctxInner,
 		cancel:      cancel,
 	}
 
+	// When a message is sent on the `needNewPeer` channel, this goroutine attempts to take a peer
+	// from the `chProviders` channel, open a PeerConnection to it, and add it to the pool.
 	go func() {
-		defer log.Debugln("closing goroutine 1")
-
 		for {
 			select {
 			case <-p.needNewPeer:
@@ -51,17 +55,15 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				select {
 				case peerInfo, open := <-p.chProviders:
 					if !open {
-						log.Warnf("PROVIDERS CHANNEL IS CLOSED")
-						p.chProviders = node.FindProvidersAsync(ctxInner, cid, 999)
+						p.chProviders = node.FindProvidersAsync(p.ctx, cid, 999)
 						continue
 					}
-					log.Infof("FOUND PEER %+v", peerInfo)
 					peerID = peerInfo.ID
 				case <-p.ctx.Done():
 					return
 				}
 
-				_peerConn, err := NewPeerConnection(node, peerID, repoID)
+				_peerConn, err := NewPeerConnection(p.ctx, node, peerID, repoID)
 				if err != nil {
 					log.Errorln("[peer pool] error opening NewPeerConnection", err)
 					time.Sleep(1 * time.Second)
@@ -71,6 +73,8 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				break
 			}
 
+			p.peerList[peerConn] = struct{}{}
+
 			select {
 			case p.peers <- peerConn:
 			case <-p.ctx.Done():
@@ -79,9 +83,8 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 		}
 	}()
 
+	// This goroutine fills the peer pool with the desired number of peers.
 	go func() {
-		defer log.Debugln("closing goroutine 2")
-
 		for i := 0; i < concurrentConns; i++ {
 			select {
 			case <-p.ctx.Done():
@@ -95,12 +98,18 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 }
 
 func (p *peerPool) Close() error {
-	log.Debugln("peerPool.Close()")
 	p.cancel()
 
 	p.needNewPeer = nil
 	p.chProviders = nil
 	p.peers = nil
+
+	for conn := range p.peerList {
+		err := conn.Close()
+		if err != nil {
+			log.Errorln("[peer pool] Close: error closing connection", err)
+		}
+	}
 
 	return nil
 }
@@ -116,6 +125,15 @@ func (p *peerPool) GetConn() *PeerConnection {
 
 func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 	if strike {
+		if _, exists := p.peerList[conn]; exists {
+			delete(p.peerList, conn)
+		}
+
+		err := conn.Close()
+		if err != nil {
+			log.Errorln("[peer pool] ReturnConn: error closing connection", err)
+		}
+
 		select {
 		case p.needNewPeer <- struct{}{}:
 		case <-p.ctx.Done():

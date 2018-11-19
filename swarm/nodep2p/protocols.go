@@ -1,4 +1,4 @@
-package strategy
+package nodep2p
 
 const (
 	OBJECT_PROTO    = "/conscience/object/1.0.0"
@@ -6,4 +6,5 @@ const (
 	HANDSHAKE_PROTO = "/conscience/handshake/1.0.0"
 )
 
+// @@TODO: make configurable
 const OBJ_CHUNK_SIZE = 16384 //16kb

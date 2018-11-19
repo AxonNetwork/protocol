@@ -33,7 +33,7 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
-	"github.com/Conscience/protocol/swarm/strategy"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
@@ -99,7 +99,6 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, errors.Wrap(err, "could not fetch username from Ethereum smart contract")
 	}
 	log.SetField("username", username)
-	log.WithFields(log.Fields{"blabla": 123}).Errorln("testing inside node")
 
 	n := &Node{
 		host:             h,
@@ -114,10 +113,10 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
 	go n.periodicallyRequestContent(ctx)  // Start a goroutine for pulling content from repos we are replicating
 
-	ns := strategy.NewNaiveServer(n)
-	n.host.SetStreamHandler(strategy.OBJECT_PROTO, ns.HandleObjectRequest)
-	n.host.SetStreamHandler(strategy.MANIFEST_PROTO, ns.HandleManifestRequest)
-	n.host.SetStreamHandler(strategy.HANDSHAKE_PROTO, ns.HandleHandshakeRequest)
+	ns := nodep2p.NewServer(n)
+	// n.host.SetStreamHandler(nodep2p.OBJECT_PROTO, ns.HandleObjectRequest)
+	n.host.SetStreamHandler(nodep2p.MANIFEST_PROTO, ns.HandleManifestRequest)
+	n.host.SetStreamHandler(nodep2p.HANDSHAKE_PROTO, ns.HandleObjectStreamRequest)
 	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
 	n.host.SetStreamHandler(BECOME_REPLICATOR_PROTO, n.handleBecomeReplicatorRequest)
 
@@ -133,6 +132,11 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 
 	return n, nil
 }
+
+type blankValidator struct{}
+
+func (blankValidator) Validate(_ string, _ []byte) error        { return nil }
+func (blankValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil }
 
 func obtainKey(cfg *config.Config) (crypto.PrivKey, error) {
 	f, err := os.Open(cfg.Node.PrivateKeyFile)
@@ -337,9 +341,9 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan strategy.MaybeChunk {
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan nodep2p.MaybeChunk {
 	repo := n.repoManager.repos[repoID]
-	c := strategy.NewSmartClient(n, repo, &n.Config)
+	c := nodep2p.NewSmartClient(n, repo, &n.Config)
 	return c.FetchFromCommit(ctx, repoID, commit)
 }
 

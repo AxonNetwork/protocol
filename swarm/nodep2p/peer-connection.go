@@ -1,4 +1,4 @@
-package strategy
+package nodep2p
 
 import (
 	"context"
@@ -14,23 +14,24 @@ import (
 	"github.com/pkg/errors"
 )
 
-type MaybeRes struct {
-	Res   *util.ObjectReader
-	Error error
-}
-
 type PeerConnection struct {
 	peerID        peer.ID
 	repoID        string
 	currentCommit string
 	stream        netp2p.Stream
-	resChannels   map[string]chan MaybeRes
+	// resChannels   map[string]chan MaybeRes
 }
 
-func NewPeerConnection(node INode, peerID peer.ID, repoID string) (*PeerConnection, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+type MaybeRes struct {
+	Res   *util.ObjectReader
+	Error error
+}
+
+func NewPeerConnection(ctx context.Context, node INode, peerID peer.ID, repoID string) (*PeerConnection, error) {
+	ctxHandshake, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
-	currentCommit, stream, err := handshakeRequest(ctx, node, peerID, repoID)
+
+	currentCommit, stream, err := handshakeRequest(ctxHandshake, node, peerID, repoID)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +41,7 @@ func NewPeerConnection(node INode, peerID peer.ID, repoID string) (*PeerConnecti
 		repoID:        repoID,
 		currentCommit: currentCommit,
 		stream:        stream,
-		resChannels:   make(map[string]chan MaybeRes),
+		// resChannels:   make(map[string]chan MaybeRes),
 	}
 	return pc, nil
 }
@@ -64,7 +65,7 @@ func handshakeRequest(ctx context.Context, node INode, peerID peer.ID, repoID st
 		return "", nil, err
 	}
 
-	// // Read the response
+	// Read the response
 	resp := HandshakeResponse{}
 	err = ReadStructPacket(stream, &resp)
 	if err != nil {
@@ -81,14 +82,15 @@ func (pc *PeerConnection) RequestObject(ctx context.Context, objectID []byte) (*
 	if err != nil {
 		return nil, err
 	}
+
 	resp := GetObjectResponse{}
 	err = ReadStructPacket(pc.stream, &resp)
 	if err != nil {
 		return nil, err
-	}
-	if !resp.HasObject {
+	} else if !resp.HasObject {
 		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%0x", pc.repoID, objectID)
 	}
+
 	r := io.LimitReader(pc.stream, int64(resp.ObjectLen))
 	rc := util.MakeReadAllCloser(r)
 	or := &util.ObjectReader{

@@ -16,8 +16,7 @@ func fetchFromCommit(commitHash string) error {
 	hash, err := hex.DecodeString(commitHash)
 	if err != nil {
 		return err
-	}
-	if Repo.HasObject(hash) {
+	} else if Repo.HasObject(hash) {
 		return nil
 	}
 

@@ -1,4 +1,4 @@
-package strategy
+package nodep2p
 
 import (
 	"context"
