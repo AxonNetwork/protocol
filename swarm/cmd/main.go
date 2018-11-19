@@ -15,7 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
-	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/constants"

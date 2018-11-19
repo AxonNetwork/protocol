@@ -7,8 +7,7 @@ import (
 	"sync"
 	"time"
 
-	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
-
+	peer "github.com/libp2p/go-libp2p-peer"
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 

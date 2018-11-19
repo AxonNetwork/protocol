@@ -27,30 +27,30 @@ echo Building:
 
 function get_deps {
     set -x
-    go get github.com/whyrusleeping/gx
-    go get github.com/whyrusleeping/gx-go
-    gx install
+    # GO111MODULE=on go get github.com/whyrusleeping/gx
+    # GO111MODULE=on go get github.com/whyrusleeping/gx-go
+    # gx install
 
     # Install regular packages
-    go get github.com/sirupsen/logrus
-    go get github.com/BurntSushi/toml
-    go get github.com/mitchellh/go-homedir
-    go get github.com/pkg/errors
-    go get github.com/ethereum/go-ethereum
-    go get github.com/tyler-smith/go-bip39
-    go get github.com/lunixbochs/struc
-    go get github.com/btcsuite/btcd
-    go get github.com/btcsuite/btcutil
-    go get gopkg.in/src-d/go-git.v4
-    go get github.com/urfave/cli
-    go get github.com/aclements/go-rabin/rabin
-    go get github.com/dustin/go-humanize
-    go get github.com/golang/protobuf/proto
-    go get golang.org/x/net/context
-    go get google.golang.org/grpc
-    go get github.com/brynbellomy/debugcharts
-    go get github.com/Shopify/logrus-bugsnag
-    go get github.com/bugsnag/bugsnag-go
+    GO111MODULE=on go get github.com/sirupsen/logrus
+    GO111MODULE=on go get github.com/BurntSushi/toml
+    GO111MODULE=on go get github.com/mitchellh/go-homedir
+    GO111MODULE=on go get github.com/pkg/errors
+    GO111MODULE=on go get github.com/ethereum/go-ethereum
+    GO111MODULE=on go get github.com/tyler-smith/go-bip39
+    GO111MODULE=on go get github.com/lunixbochs/struc
+    GO111MODULE=on go get github.com/btcsuite/btcd
+    GO111MODULE=on go get github.com/btcsuite/btcutil
+    GO111MODULE=on go get gopkg.in/src-d/go-git.v4
+    GO111MODULE=on go get github.com/urfave/cli
+    GO111MODULE=on go get github.com/aclements/go-rabin/rabin
+    GO111MODULE=on go get github.com/dustin/go-humanize
+    GO111MODULE=on go get github.com/golang/protobuf/proto
+    GO111MODULE=on go get golang.org/x/net/context
+    GO111MODULE=on go get google.golang.org/grpc
+    GO111MODULE=on go get github.com/brynbellomy/debugcharts
+    GO111MODULE=on go get github.com/Shopify/logrus-bugsnag
+    GO111MODULE=on go get github.com/bugsnag/bugsnag-go
     set +x
 }
 
@@ -58,37 +58,37 @@ function get_deps {
 function build_native {
     mkdir -p build/native
     cd swarm/cmd
-    go build -o main ./*.go
+    GO111MODULE=on go build -o main ./*.go
     mv main ../../build/native/conscience-node
     cd -
 
     mkdir -p build/native
     cd remote-helper
-    go build -o main ./*.go
+    GO111MODULE=on go build -o main ./*.go
     mv main ../build/native/git-remote-conscience
     cd -
 
     mkdir -p build/native
     cd filters/encode
-    go build -o main ./*.go
+    GO111MODULE=on go build -o main ./*.go
     mv main ../../build/native/conscience_encode
     cd -
 
     mkdir -p build/native
     cd filters/decode
-    go build -o main ./*.go
+    GO111MODULE=on go build -o main ./*.go
     mv main ../../build/native/conscience_decode
     cd -
 
     mkdir -p build/native
     cd filters/diff
-    go build -o main ./*.go
+    GO111MODULE=on go build -o main ./*.go
     mv main ../../build/native/conscience_diff
     cd -
 
     mkdir -p build/native
     cd cmd
-    go build -o main ./*.go
+    GO111MODULE=on go build -o main ./*.go
     mv main ../build/native/conscience
     cd -
 }

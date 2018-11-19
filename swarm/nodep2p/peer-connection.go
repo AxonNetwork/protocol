@@ -5,8 +5,8 @@ import (
 	"io"
 	"time"
 
-	netp2p "gx/ipfs/QmPjvxTpVH8qJyQDnxnsxF9kv9jezKD1kozz1hs3fCGsNh/go-libp2p-net"
-	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	netp2p "github.com/libp2p/go-libp2p-net"
+	peer "github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/log"
 	. "github.com/Conscience/protocol/swarm/wire"
