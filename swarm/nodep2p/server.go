@@ -6,6 +6,8 @@ import (
 	"time"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+	"gopkg.in/src-d/go-git.v4/plumbing/format/packfile"
 
 	"github.com/Conscience/protocol/log"
 	. "github.com/Conscience/protocol/swarm/wire"
@@ -17,6 +19,151 @@ type Server struct {
 
 func NewServer(node INode) *Server {
 	return &Server{node}
+}
+
+func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
+	req := HandshakeRequest{}
+	err := ReadStructPacket(stream, &req)
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return
+	}
+	log.Debugf("[p2p server] incoming handshake %+v", req)
+
+	addr, err := s.node.AddrFromSignedHash([]byte(req.RepoID), req.Signature)
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hasAccess, err := s.node.AddressHasPullAccess(ctx, addr, req.RepoID)
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return
+	}
+
+	if hasAccess == false {
+		log.Warnf("[p2p server] address 0x%0x does not have pull access", addr.Bytes())
+		err := WriteStructPacket(stream, &HandshakeResponse{Authorized: false})
+		if err != nil {
+			log.Errorf("[p2p server] %v", err)
+			return
+		}
+		return
+	}
+
+	repo := s.node.Repo(req.RepoID)
+	commit, err := repo.HeadHash()
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return
+	}
+
+	err = WriteStructPacket(stream, &HandshakeResponse{Authorized: true, Commit: commit})
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return
+	}
+
+	repoID := req.RepoID
+	go func() {
+		defer stream.Close()
+
+		for {
+			req := GetPackfileRequest{}
+			err := ReadStructPacket(stream, &req)
+			if err != nil {
+				log.Debugf("[p2p server] stream closed")
+				return
+			}
+
+			shouldClose := s.writePackfileToStream(repoID, req.ObjectIDs, stream)
+			if shouldClose {
+				return
+			}
+		}
+	}()
+}
+
+func (s *Server) writePackfileToStream(repoID string, objectIDsCompacted []byte, stream netp2p.Stream) (shouldClose bool) {
+	r := s.node.Repo(repoID)
+	if r == nil {
+		log.Warnf("[p2p server] cannot find repo %v", repoID)
+		err := WriteStructPacket(stream, &GetPackfileResponse{ObjectIDs: []byte{}})
+		if err != nil {
+			log.Errorf("[p2p server] %v", err)
+			return false
+		}
+		return false
+	}
+
+	availableObjectIDs := [][]byte{}
+	for _, id := range UnflattenObjectIDs(objectIDsCompacted) {
+		if r.HasObject(id) {
+			availableObjectIDs = append(availableObjectIDs, id)
+		}
+	}
+
+	err := WriteStructPacket(stream, &GetPackfileResponse{ObjectIDs: FlattenObjectIDs(availableObjectIDs)})
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return false
+	}
+
+	if len(availableObjectIDs) == 0 {
+		return false
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		var err error
+		defer func() { pw.CloseWithError(err) }()
+
+		availableHashes := make([]gitplumbing.Hash, len(availableObjectIDs))
+		for i := range availableObjectIDs {
+			var hash gitplumbing.Hash
+			copy(hash[:], availableObjectIDs[i])
+			availableHashes[i] = hash
+		}
+
+		enc := packfile.NewEncoder(pw, r.Storer, false)
+		_, err = enc.Encode(availableHashes, 999)
+		if err != nil {
+			log.Errorln("[p2p server] error encoding packfile:", err)
+		}
+	}()
+
+	const CHUNK_SIZE = 1024 * 1024
+	data := make([]byte, CHUNK_SIZE)
+	for {
+		n, err := io.ReadFull(pr, data)
+		if err == io.EOF {
+			// no data was read
+			break
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
+		} else if err != nil {
+			log.Errorln("[p2p server] error reading packfile stream:", err)
+			return true
+		}
+
+		err = WriteStructPacket(stream, &PackfileStreamChunk{Data: data})
+		if err != nil {
+			log.Errorln("[p2p server] error writing packfile stream:", err)
+			return true
+		}
+	}
+
+	err = WriteStructPacket(stream, &PackfileStreamChunk{End: true})
+	if err != nil {
+		log.Errorln("[p2p server] error ending packfile stream:", err)
+		return true
+	}
+
+	return false
 }
 
 func (s *Server) HandleObjectStreamRequest(stream netp2p.Stream) {

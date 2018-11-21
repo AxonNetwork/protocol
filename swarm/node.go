@@ -116,7 +116,8 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	ns := nodep2p.NewServer(n)
 	// n.host.SetStreamHandler(nodep2p.OBJECT_PROTO, ns.HandleObjectRequest)
 	n.host.SetStreamHandler(nodep2p.MANIFEST_PROTO, ns.HandleManifestRequest)
-	n.host.SetStreamHandler(nodep2p.HANDSHAKE_PROTO, ns.HandleObjectStreamRequest)
+	n.host.SetStreamHandler(nodep2p.OBJECT_PROTO, ns.HandleObjectStreamRequest)
+	n.host.SetStreamHandler(nodep2p.PACKFILE_PROTO, ns.HandlePackfileStreamRequest)
 	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
 	n.host.SetStreamHandler(BECOME_REPLICATOR_PROTO, n.handleBecomeReplicatorRequest)
 
@@ -343,7 +344,7 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 
 func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan nodep2p.MaybeChunk {
 	repo := n.repoManager.repos[repoID]
-	c := nodep2p.NewSmartClient(n, repo, &n.Config)
+	c := nodep2p.NewSmartPackfileClient(n, repo, &n.Config)
 	return c.FetchFromCommit(ctx, repoID, commit)
 }
 

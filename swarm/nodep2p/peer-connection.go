@@ -6,7 +6,7 @@ import (
 	"time"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/log"
 	. "github.com/Conscience/protocol/swarm/wire"
@@ -31,7 +31,7 @@ func NewPeerConnection(ctx context.Context, node INode, peerID peer.ID, repoID s
 	ctxHandshake, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
 
-	currentCommit, stream, err := handshakeRequest(ctxHandshake, node, peerID, repoID)
+	currentCommit, stream, err := initiatePackfileStream(ctxHandshake, node, peerID, repoID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,10 +46,125 @@ func NewPeerConnection(ctx context.Context, node INode, peerID peer.ID, repoID s
 	return pc, nil
 }
 
-func handshakeRequest(ctx context.Context, node INode, peerID peer.ID, repoID string) (string, netp2p.Stream, error) {
+func initiatePackfileStream(ctx context.Context, node INode, peerID peer.ID, repoID string) (string, netp2p.Stream, error) {
 	log.Debugf("[p2p swarm client] requesting handshake %v from peer %v", repoID, peerID.Pretty())
 
-	stream, err := node.NewStream(ctx, peerID, HANDSHAKE_PROTO)
+	stream, err := node.NewStream(ctx, peerID, PACKFILE_PROTO)
+	if err != nil {
+		return "", nil, err
+	}
+
+	sig, err := node.SignHash([]byte(repoID))
+	if err != nil {
+		return "", nil, err
+	}
+
+	// Write the request packet to the stream
+	err = WriteStructPacket(stream, &HandshakeRequest{RepoID: repoID, Signature: sig})
+	if err != nil {
+		return "", nil, err
+	}
+
+	// Read the response
+	resp := HandshakeResponse{}
+	err = ReadStructPacket(stream, &resp)
+	if err != nil {
+		return "", nil, err
+	} else if !resp.Authorized {
+		return "", nil, errors.Wrapf(ErrUnauthorized, "%v", repoID)
+	}
+
+	return resp.Commit, stream, nil
+}
+
+func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byte) ([][]byte, io.ReadCloser, error) {
+	objectIDsCompacted := []byte{}
+	for i := range objectIDs {
+		objectIDsCompacted = append(objectIDsCompacted, objectIDs[i]...)
+	}
+
+	err := WriteStructPacket(pc.stream, &GetPackfileRequest{ObjectIDs: objectIDsCompacted})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp := GetPackfileResponse{}
+	err = ReadStructPacket(pc.stream, &resp)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return UnflattenObjectIDs(resp.ObjectIDs), newPackfileStreamReader(ctx, pc.stream), nil
+}
+
+type PackfileStreamReader struct {
+	io.Reader
+	pw     *io.PipeWriter
+	cancel func()
+}
+
+func newPackfileStreamReader(ctx context.Context, stream io.Reader) *PackfileStreamReader {
+	pr, pw := io.Pipe()
+	ctxInner, cancel := context.WithCancel(ctx)
+
+	go func() {
+		var err error
+		defer func() { pw.CloseWithError(err) }()
+
+		for {
+			pkt := PackfileStreamChunk{}
+
+			select {
+			case <-ctxInner.Done():
+				// Drain the rest of this packfile's packets from the stream so that the next reader
+				// starts at the right position.
+				for {
+					err = ReadStructPacket(stream, &pkt)
+					if err != nil {
+						return
+					} else if pkt.End {
+						return
+					}
+				}
+
+				err = ctxInner.Err()
+				return
+			default:
+			}
+
+			err = ReadStructPacket(stream, &pkt)
+			if err != nil {
+				return
+			} else if pkt.End {
+				return
+			}
+
+			n, err := pw.Write(pkt.Data)
+			if err != nil {
+				return
+			} else if n < len(pkt.Data) {
+				err = errors.New("[peer connection] RequestPackfile: read less than expected")
+				return
+			}
+		}
+	}()
+
+	return &PackfileStreamReader{
+		Reader: pr,
+		pw:     pw,
+		cancel: cancel,
+	}
+}
+
+func (r *PackfileStreamReader) Close() error {
+	r.cancel()
+	return nil
+}
+
+func initiateObjectStream(ctx context.Context, node INode, peerID peer.ID, repoID string) (string, netp2p.Stream, error) {
+	log.Debugf("[p2p swarm client] requesting handshake %v from peer %v", repoID, peerID.Pretty())
+
+	stream, err := node.NewStream(ctx, peerID, OBJECT_PROTO)
 	if err != nil {
 		return "", nil, err
 	}

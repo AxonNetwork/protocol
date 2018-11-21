@@ -252,6 +252,7 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 			ObjType: int32(maybeChunk.ObjType),
 			ObjLen:  maybeChunk.ObjLen,
 			Data:    maybeChunk.Data,
+			End:     maybeChunk.End,
 		})
 		if err != nil {
 			return errors.WithStack(err)

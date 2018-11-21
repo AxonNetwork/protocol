@@ -22,6 +22,22 @@ const (
 	MessageType_BecomeReplicator
 )
 
+type GetPackfileRequest struct {
+	ObjectIDsLen int `struc:"sizeof=ObjectIDs"`
+	ObjectIDs    []byte
+}
+
+type GetPackfileResponse struct {
+	ObjectIDsLen int `struc:"sizeof=ObjectIDs"`
+	ObjectIDs    []byte
+}
+
+type PackfileStreamChunk struct {
+	End     bool
+	DataLen int `struc:"sizeof=Data"`
+	Data    []byte
+}
+
 type GetObjectRequest struct {
 	ObjectIDLen int `struc:"sizeof=ObjectID"`
 	ObjectID    []byte

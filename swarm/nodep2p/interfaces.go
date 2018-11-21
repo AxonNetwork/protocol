@@ -35,6 +35,7 @@ type (
 		ObjType gitplumbing.ObjectType
 		ObjLen  uint64
 		Data    []byte
+		End     bool
 		Error   error
 	}
 

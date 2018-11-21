@@ -76,3 +76,20 @@ func ReadStructPacket(r io.Reader, obj interface{}) error {
 	}
 	return nil
 }
+
+func FlattenObjectIDs(objectIDs [][]byte) []byte {
+	flattened := []byte{}
+	for i := range objectIDs {
+		flattened = append(flattened, objectIDs[i]...)
+	}
+	return flattened
+}
+
+func UnflattenObjectIDs(flattened []byte) [][]byte {
+	numObjects := len(flattened) / 20
+	objectIDs := make([][]byte, numObjects)
+	for i := 0; i < numObjects; i++ {
+		objectIDs[i] = flattened[i*20 : (i+1)*20]
+	}
+	return objectIDs
+}

@@ -16,6 +16,7 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	gitconfigformat "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
+	"gopkg.in/src-d/go-git.v4/plumbing/storer"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/wire"
@@ -391,7 +392,7 @@ func (r *Repo) GetManifest() ([]byte, []byte, error) {
 	// // historyStr := strings.Join(flatHistory, ",")
 	// // manifest := fmt.Sprintf("%s::%s", headStr, historyStr)
 	// return flatHead, flatHistory, nil
-	commitMap, err := r.walkCommits()
+	commitMap, err := r.WalkCommits()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -435,7 +436,7 @@ func (r *Repo) GetManifest() ([]byte, []byte, error) {
 // 	return headMap, nil
 // }
 
-func (r *Repo) walkCommits() (map[gitplumbing.Hash]bool, error) {
+func (r *Repo) WalkCommits() (map[gitplumbing.Hash]bool, error) {
 	seen := make(map[gitplumbing.Hash]bool)
 
 	head, err := r.Head()
@@ -491,4 +492,13 @@ func (r *Repo) objectsForCommit(commit *gitobject.Commit, seen map[gitplumbing.H
 	}
 
 	return nil
+}
+
+func (r *Repo) PackfileWriter() (io.WriteCloser, error) {
+	pfw, ok := r.Storer.(storer.PackfileWriter)
+	if !ok {
+		return nil, errors.Errorf("Repository storer is not a storer.PackfileWriter")
+	}
+
+	return pfw.PackfileWriter()
 }

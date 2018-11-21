@@ -109,7 +109,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 		case strings.HasPrefix(text, "fetch"):
 			fetchArgs := strings.Split(text, " ")
 			commitHash := fetchArgs[1]
-			err := fetchFromCommit(commitHash)
+			err := fetchFromCommit_packfile(commitHash)
 			if err != nil {
 				return err
 			}

@@ -3,7 +3,7 @@ module github.com/Conscience/protocol
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/Shopify/logrus-bugsnag v0.0.0-20171204204709-577dee27f20d
-	github.com/aclements/go-rabin v0.0.0-20170911142644-d0b643ea1a4c // indirect
+	github.com/aclements/go-rabin v0.0.0-20170911142644-d0b643ea1a4c
 	github.com/aead/siphash v1.0.1 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20181109020153-5faa74ffbed7 // indirect
@@ -18,7 +18,7 @@ require (
 	github.com/bugsnag/panicwrap v1.2.0 // indirect
 	github.com/coreos/go-semver v0.2.0 // indirect
 	github.com/deckarep/golang-set v1.7.1 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
+	github.com/dustin/go-humanize v1.0.0
 	github.com/ethereum/go-ethereum v1.8.18
 	github.com/fd/go-nat v1.0.0 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
@@ -99,7 +99,7 @@ require (
 	github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72 // indirect
 	github.com/syndtr/goleveldb v0.0.0-20181105012736-f9080354173f // indirect
 	github.com/tyler-smith/go-bip39 v1.0.0
-	github.com/urfave/cli v1.20.0 // indirect
+	github.com/urfave/cli v1.20.0
 	github.com/whyrusleeping/base32 v0.0.0-20170828182744-c30ac30633cc // indirect
 	github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1 // indirect
 	github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc // indirect
@@ -112,5 +112,5 @@ require (
 	github.com/whyrusleeping/yamux v1.1.2 // indirect
 	golang.org/x/net v0.0.0-20181114220301-adae6a3d119a
 	google.golang.org/grpc v1.16.0
-	gopkg.in/src-d/go-git.v4 v4.7.1
+	gopkg.in/src-d/go-git.v4 v4.8.0
 )

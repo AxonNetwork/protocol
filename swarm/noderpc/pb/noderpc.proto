@@ -100,6 +100,7 @@ message FetchFromCommitResponsePacket {
     int32 objType = 2;
     uint64 objLen = 3;
     bytes data = 4;
+    bool end = 5;
 }
 
 message GetObjectRequest {
