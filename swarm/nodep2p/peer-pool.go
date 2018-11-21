@@ -16,7 +16,7 @@ type peerPool struct {
 	chProviders <-chan peerstore.PeerInfo
 	needNewPeer chan struct{}
 
-	peerList map[*PeerConnection]struct{} // This is only used to close peers when .Close() is called.
+	peerList map[peer.ID]*PeerConnection // This is only used to close peers when .Close() is called.
 
 	ctx    context.Context
 	cancel func()
@@ -34,7 +34,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 		peers:       make(chan *PeerConnection, concurrentConns),
 		chProviders: node.FindProvidersAsync(ctxInner, cid, 999),
 		needNewPeer: make(chan struct{}),
-		peerList:    make(map[*PeerConnection]struct{}),
+		peerList:    make(map[peer.ID]*PeerConnection),
 		ctx:         ctxInner,
 		cancel:      cancel,
 	}
@@ -63,6 +63,10 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 					return
 				}
 
+				if _, exists := p.peerList[peerID]; exists {
+					continue
+				}
+
 				_peerConn, err := NewPeerConnection(p.ctx, node, peerID, repoID)
 				if err != nil {
 					log.Errorln("[peer pool] error opening NewPeerConnection", err)
@@ -73,7 +77,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				break
 			}
 
-			p.peerList[peerConn] = struct{}{}
+			p.peerList[peerConn.peerID] = peerConn
 
 			select {
 			case p.peers <- peerConn:
@@ -104,7 +108,7 @@ func (p *peerPool) Close() error {
 	p.chProviders = nil
 	p.peers = nil
 
-	for conn := range p.peerList {
+	for _, conn := range p.peerList {
 		err := conn.Close()
 		if err != nil {
 			log.Errorln("[peer pool] Close: error closing connection", err)
@@ -125,8 +129,8 @@ func (p *peerPool) GetConn() *PeerConnection {
 
 func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 	if strike {
-		if _, exists := p.peerList[conn]; exists {
-			delete(p.peerList, conn)
+		if _, exists := p.peerList[conn.peerID]; exists {
+			delete(p.peerList, conn.peerID)
 		}
 
 		err := conn.Close()
