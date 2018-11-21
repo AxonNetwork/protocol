@@ -279,8 +279,8 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 	var packfileTempID gitplumbing.Hash
 	copy(packfileTempID[:], makePackfileTempID(availableObjectIDs))
 
-	data := make([]byte, OBJ_CHUNK_SIZE)
 	for {
+		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(packfileReader, data)
 		if err == io.EOF {
 			// read no bytes
