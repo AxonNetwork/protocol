@@ -85,14 +85,14 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 		for batch := range aggregateWork(ctx, jobQueue, len(allObjects)/numPeers) {
 			conn := pool.GetConn()
 			if conn == nil {
-				log.Errorln("[smart client] nil PeerConnection, operation canceled?")
+				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
 				return
 			}
 
 			go func(batch []job) {
 				err := sc.fetchPackfile(ctx, conn, batch, ch, jobQueue, wg)
 				if err != nil {
-					log.Errorln("[smart client] fetchObject:", err)
+					log.Errorln("[packfile client] fetchObject:", err)
 					if errors.Cause(err) == ErrFetchingFromPeer {
 						// @@TODO: mark failed peer on job{}
 						// @@TODO: maybe call ReturnConn with true if the peer should be discarded
@@ -100,7 +100,6 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 					pool.ReturnConn(conn, false)
 
 				} else {
-					wg.Done()
 					pool.ReturnConn(conn, false)
 				}
 			}(batch)
@@ -161,7 +160,7 @@ func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, rep
 			// We found a peer with the object
 			head, history, err := sc.requestManifestFromPeer(ctx, provider.ID, repoID, commit)
 			if err != nil {
-				log.Errorln("[smart client] requestManifestFromPeer:", err)
+				log.Errorln("[packfile client] requestManifestFromPeer:", err)
 				continue
 			}
 			return head, history, nil
@@ -252,6 +251,7 @@ func (sc *SmartPackfileClient) returnJobsToQueue(ctx context.Context, jobs []job
 }
 
 func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, ch chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
+	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 	desiredObjectIDs := make([][]byte, len(batch))
 	jobMap := map[string]job{}
 	for i := range batch {
@@ -262,7 +262,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 	availableObjectIDs, packfileReader, err := conn.RequestPackfile(ctx, desiredObjectIDs)
 	if err != nil {
 		err = errors.Wrapf(ErrFetchingFromPeer, "tried requesting packfile from peer %v: %v", conn.peerID, err)
-		log.Errorf("[smart client]", err)
+		log.Errorf("[packfile client]", err)
 		go sc.returnJobsToQueue(ctx, batch, jobQueue)
 		return err
 	}
@@ -280,8 +280,8 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 	var packfileTempID gitplumbing.Hash
 	copy(packfileTempID[:], makePackfileTempID(availableObjectIDs))
 
-	data := make([]byte, OBJ_CHUNK_SIZE)
 	for {
+		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(packfileReader, data)
 		if err == io.EOF {
 			// read no bytes
