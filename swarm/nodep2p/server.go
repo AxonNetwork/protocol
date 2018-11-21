@@ -130,7 +130,7 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsCompacted []byte,
 		}
 
 		enc := packfile.NewEncoder(pw, r.Storer, false)
-		_, err = enc.Encode(availableHashes, 999)
+		_, err = enc.Encode(availableHashes, 10) // @@TODO: do we need to negotiate the packfile window with the client?
 		if err != nil {
 			log.Errorln("[p2p server] error encoding packfile:", err)
 		}
