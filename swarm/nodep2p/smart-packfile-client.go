@@ -100,7 +100,6 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 					pool.ReturnConn(conn, false)
 
 				} else {
-					wg.Done()
 					pool.ReturnConn(conn, false)
 				}
 			}(batch)
