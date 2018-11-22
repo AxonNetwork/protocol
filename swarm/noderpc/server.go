@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -209,19 +210,53 @@ func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.Pul
 	return &pb.PullRepoResponse{Ok: true}, nil
 }
 
-func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.CloneRepoResponse, error) {
+type MaybeErr struct {
+	Done  bool
+	Error error
+}
+
+func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepoServer) error {
 	location := req.Path
 	if len(location) == 0 {
 		location = s.node.Config.Node.ReplicationRoot
 	}
+	folder := filepath.Join(location, req.RepoID)
 	remote := fmt.Sprintf("conscience://%s", req.RepoID)
-	err := util.ExecAndScanStdout(ctx, []string{"git", "clone", remote}, location, func(line string) error {
-		log.Debugln("[git clone]", line)
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
+	ch := make(chan MaybeErr, 1)
+	go func() {
+		err := util.ExecAndScanStdout(context.Background(), []string{"git", "clone", remote}, location, func(line string) error {
+			log.Debugln("[git clone]", line)
+			return nil
+		})
+		if err != nil {
+			ch <- MaybeErr{Error: err}
+		} else {
+			ch <- MaybeErr{Done: true}
+		}
+	}()
+
+	for {
+		// non-blockin with a buffered channel
+		if len(ch) > 0 {
+			break
+		}
+
+		toFetch, fetched := s.node.GetFetchProgress(folder)
+		err := server.Send(&pb.CloneRepoResponsePacket{
+			ToFetch: toFetch,
+			Fetched: fetched,
+		})
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		time.Sleep(time.Second * 1)
 	}
+
+	result := <-ch
+	if result.Error != nil {
+		return errors.WithStack(result.Error)
+	}
+
 	name := req.RepoID
 	if strings.Contains(name, "/") {
 		name = strings.Split(name, "/")[1]
@@ -230,15 +265,15 @@ func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.C
 	repoPath := filepath.Join(location, name)
 	r, err := repo.Open(repoPath)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
 	err = r.AddUserToConfig(req.Name, req.Email)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
-	return &pb.CloneRepoResponse{Path: repoPath}, nil
+	return nil
 }
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
@@ -247,10 +282,13 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 		if maybeChunk.Error != nil {
 			return errors.WithStack(maybeChunk.Error)
 		}
+		toFetch, fetched := s.node.GetFetchProgress(req.Path)
 		err := server.Send(&pb.FetchFromCommitResponsePacket{
 			ObjHash: maybeChunk.ObjHash[:],
 			ObjType: int32(maybeChunk.ObjType),
 			ObjLen:  maybeChunk.ObjLen,
+			ToFetch: toFetch,
+			Fetched: fetched,
 			Data:    maybeChunk.Data,
 			End:     maybeChunk.End,
 		})

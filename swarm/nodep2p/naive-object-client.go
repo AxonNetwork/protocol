@@ -45,13 +45,12 @@ func (nc *NaiveClient) FetchFromCommit(ctx context.Context, repoID string, commi
 	go func() {
 		defer close(ch)
 
-		flatHead, flatHistory, err := nc.requestManifestFromSwarm(ctx, repoID, commit)
+		allObjects, err := nc.requestManifestFromSwarm(ctx, repoID, commit)
 		if err != nil {
 			ch <- MaybeChunk{Error: err}
 			return
 		}
 
-		allObjects := append(flatHead, flatHistory...)
 		wg := &sync.WaitGroup{}
 
 		for i := 0; i < len(allObjects); i += 20 {
@@ -67,10 +66,10 @@ func (nc *NaiveClient) FetchFromCommit(ctx context.Context, repoID string, commi
 	return ch
 }
 
-func (nc *NaiveClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit string) ([]byte, []byte, error) {
+func (nc *NaiveClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit string) ([]byte, error) {
 	c, err := util.CidForString(repoID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(nc.config.Node.FindProviderTimeout))
@@ -79,63 +78,63 @@ func (nc *NaiveClient) requestManifestFromSwarm(ctx context.Context, repoID stri
 	for provider := range nc.node.FindProvidersAsync(ctxTimeout, c, 10) {
 		if provider.ID != nc.node.ID() {
 			// We found a peer with the object
-			head, history, err := nc.requestManifestFromPeer(ctx, provider.ID, repoID, commit)
+			allObjects, err := nc.requestManifestFromPeer(ctx, provider.ID, repoID, commit)
 			if err != nil {
 				log.Errorln("[requestManifestFromSwarm]", err)
 				continue
 			}
-			return head, history, nil
+			return allObjects, nil
 		}
 	}
-	return nil, nil, errors.Errorf("could not find provider for %v : %v", repoID, commit)
+	return nil, errors.Errorf("could not find provider for %v : %v", repoID, commit)
 }
 
-func (nc *NaiveClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit string) ([]byte, []byte, error) {
+func (nc *NaiveClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit string) ([]byte, error) {
 	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", repoID, commit, peerID.Pretty())
 
 	// Open the stream
 	stream, err := nc.node.NewStream(ctx, peerID, MANIFEST_PROTO)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	sig, err := nc.node.SignHash([]byte(commit))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Write the request packet to the stream
 	err = WriteStructPacket(stream, &GetManifestRequest{RepoID: repoID, Commit: commit, Signature: sig})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// // Read the response
 	resp := GetManifestResponse{}
 	err = ReadStructPacket(stream, &resp)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	} else if !resp.Authorized {
-		return nil, nil, errors.Wrapf(ErrUnauthorized, "%v:%0x", repoID, commit)
+		return nil, errors.Wrapf(ErrUnauthorized, "%v:%0x", repoID, commit)
 	} else if !resp.HasCommit {
-		return nil, nil, errors.Wrapf(ErrObjectNotFound, "%v:%0x", repoID, commit)
+		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%0x", repoID, commit)
 	}
 
 	log.Debugf("[p2p object client] got manifest metadata %+v", resp)
 
-	flatHead := make([]byte, resp.HeadLen)
-	_, err = io.ReadFull(stream, flatHead)
-	if err != nil {
-		return nil, nil, err
+	allObjects := make([]byte, 0)
+	for {
+		obj := repo.ManifestObject{}
+		err = ReadStructPacket(stream, &obj)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		allObjects = append(allObjects, obj.Hash...)
 	}
 
-	flatHistory := make([]byte, resp.HistoryLen)
-	_, err = io.ReadFull(stream, flatHistory)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return flatHead, flatHistory, nil
+	return allObjects, nil
 }
 
 func (nc *NaiveClient) fetchObject(repoID string, hash gitplumbing.Hash, wg *sync.WaitGroup, ch chan MaybeChunk) {

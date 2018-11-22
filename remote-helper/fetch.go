@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"io"
+	"log"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -24,7 +25,7 @@ func fetchFromCommit_packfile(commitHash string) error {
 	}
 
 	packfiles := make(map[string]io.WriteCloser)
-
+	latestPercent := 0
 	for pkt := range ch {
 		if pkt.Error != nil {
 			return pkt.Error
@@ -55,6 +56,14 @@ func fetchFromCommit_packfile(commitHash string) error {
 				return errors.WithStack(err)
 			} else if n != len(pkt.Data) {
 				return errors.New("remote helper: did not fully write packet")
+			}
+			percentDownloaded := 0
+			if pkt.ToFetch > 0 {
+				percentDownloaded = int(100 * pkt.Fetched / pkt.ToFetch)
+			}
+			if percentDownloaded > latestPercent {
+				latestPercent = percentDownloaded
+				log.Printf("Progress: %d%%\n", latestPercent)
 			}
 		}
 	}

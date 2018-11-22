@@ -51,6 +51,15 @@ function get_deps {
     GO111MODULE=on go get github.com/brynbellomy/debugcharts
     GO111MODULE=on go get github.com/Shopify/logrus-bugsnag
     GO111MODULE=on go get github.com/bugsnag/bugsnag-go
+    GO111MODULE=on go get github.com/ipfs/go-cid
+    GO111MODULE=on go get github.com/ipfs/go-datastore
+    GO111MODULE=on go get github.com/ipfs/go-datastore/sync
+    GO111MODULE=on go get github.com/libp2p/go-libp2p
+    GO111MODULE=on go get github.com/libp2p/go-libp2p-host
+    GO111MODULE=on go get github.com/libp2p/go-libp2p-kad-dht
+    GO111MODULE=on go get github.com/libp2p/go-libp2p-kbucket
+    GO111MODULE=on go get github.com/libp2p/go-libp2p-net
+    GO111MODULE=on go get github.com/libp2p/go-libp2p-peerstore
     set +x
 }
 

@@ -108,6 +108,7 @@ func (b sortByteSlices) Less(i, j int) bool {
 	case 0, 1:
 		return false
 	}
+	panic("bytes.Compare did not return (-1,0,1)")
 }
 
 func (b sortByteSlices) Swap(i, j int) {

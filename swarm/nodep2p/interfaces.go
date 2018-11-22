@@ -28,6 +28,7 @@ type (
 
 	IStrategy interface {
 		FetchFromCommit(ctx context.Context, repoID string, commit string) <-chan MaybeChunk
+		GetProgress() (int64, int64)
 	}
 
 	MaybeChunk struct {
