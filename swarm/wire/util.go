@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/lunixbochs/struc"
 	"github.com/pkg/errors"
@@ -92,4 +93,29 @@ func UnflattenObjectIDs(flattened []byte) [][]byte {
 		objectIDs[i] = flattened[i*20 : (i+1)*20]
 	}
 	return objectIDs
+}
+
+type sortByteSlices [][]byte
+
+func (b sortByteSlices) Len() int {
+	return len(b)
+}
+
+func (b sortByteSlices) Less(i, j int) bool {
+	switch bytes.Compare(b[i], b[j]) {
+	case -1:
+		return true
+	case 0, 1:
+		return false
+	}
+}
+
+func (b sortByteSlices) Swap(i, j int) {
+	b[j], b[i] = b[i], b[j]
+}
+
+func SortByteSlices(src [][]byte) [][]byte {
+	sorted := sortByteSlices(src)
+	sort.Sort(sorted)
+	return sorted
 }

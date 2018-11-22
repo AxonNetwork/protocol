@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -392,6 +393,16 @@ func (r *Repo) GetManifest() ([]byte, []byte, error) {
 	// // historyStr := strings.Join(flatHistory, ",")
 	// // manifest := fmt.Sprintf("%s::%s", headStr, historyStr)
 	// return flatHead, flatHistory, nil
+	repoID, err := r.RepoID()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	bs := getCachedManifest(repoID)
+	if bs != nil {
+		return bs, []byte{}, nil
+	}
+
 	commitMap, err := r.WalkCommits()
 	if err != nil {
 		return nil, nil, err
@@ -401,7 +412,39 @@ func (r *Repo) GetManifest() ([]byte, []byte, error) {
 	for hash := range commitMap {
 		manifest = append(manifest, hash[:]...)
 	}
+	createCachedManifest(repoID, manifest)
 	return manifest, []byte{}, nil
+}
+
+func getCachedManifest(repoID string) []byte {
+	cacheDir := filepath.Join(os.TempDir(), "conscience-manifest-cache")
+	err := os.MkdirAll(cacheDir, os.ModePerm)
+	if err != nil {
+		log.Errorln("[repo] getCachedManifest:", err)
+		return nil
+	}
+
+	bs, err := ioutil.ReadFile(filepath.Join(cacheDir, repoID))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	log.Infoln("using cached manifest")
+	return bs
+}
+
+func createCachedManifest(repoID string, data []byte) {
+	log.Infoln("creating cached manifest")
+	cacheDir := filepath.Join(os.TempDir(), "conscience-manifest-cache")
+	err := os.MkdirAll(cacheDir, os.ModePerm)
+	if err != nil {
+		log.Errorln("[repo] createCachedManifest:", err)
+		return
+	}
+
+	err = ioutil.WriteFile(filepath.Join(cacheDir, repoID), data, os.ModePerm)
+	if err != nil {
+		log.Errorln("error caching manifest:", err)
+	}
 }
 
 // func (r *Repo) headToMap() (map[gitplumbing.Hash]bool, error) {
