@@ -71,10 +71,9 @@ type GetManifestRequest struct {
 }
 
 type GetManifestResponse struct {
-	Authorized bool
-	HasCommit  bool
-	HeadLen    int
-	HistoryLen int
+	Authorized  bool
+	HasCommit   bool
+	ManifestLen int
 }
 
 type HandshakeRequest struct {

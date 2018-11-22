@@ -363,80 +363,13 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 	return nil
 }
 
-func (r *Repo) GetManifest() ([]byte, []byte, error) {
-	// headMap, err := r.headToMap()
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
-
-	// flatHead := make([]byte, 0)
-	// flatHistory := make([]byte, 0)
-	// iter, err := r.Objects()
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
-	// err = iter.ForEach(func(obj gitobject.Object) error {
-	// 	id := obj.ID()
-	// 	idBytes := id[:]
-	// 	if headMap[id] {
-	// 		flatHead = append(flatHead, idBytes...)
-	// 	} else {
-	// 		flatHistory = append(flatHistory, idBytes...)
-	// 	}
-	// 	return nil
-	// })
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
-	// // headStr := strings.Join(flatHead, ",")
-	// // historyStr := strings.Join(flatHistory, ",")
-	// // manifest := fmt.Sprintf("%s::%s", headStr, historyStr)
-	// return flatHead, flatHistory, nil
-	commitMap, err := r.WalkCommits()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	manifest := []byte{}
-	for hash := range commitMap {
-		manifest = append(manifest, hash[:]...)
-	}
-	return manifest, []byte{}, nil
+type ManifestObject struct {
+	HashLen int `struc:"sizeof=Hash"`
+	Hash    []byte
+	Size    int64
 }
 
-// func (r *Repo) headToMap() (map[gitplumbing.Hash]bool, error) {
-// 	headMap := make(map[gitplumbing.Hash]bool)
-// 	head, err := r.Head()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	commit, err := r.CommitObject(head.Hash())
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	headMap[commit.Hash] = true
-// 	tree, err := r.TreeObject(commit.TreeHash)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	headMap[tree.Hash] = true
-// 	seen := make(map[gitplumbing.Hash]bool)
-// 	walker := gitobject.NewTreeWalker(tree, true, seen)
-// 	defer walker.Close()
-// 	for {
-// 		_, entry, err := walker.Next()
-// 		if err == io.EOF {
-// 			break
-// 		} else if err != nil {
-// 			return nil, err
-// 		}
-// 		headMap[entry.Hash] = true
-// 	}
-
-// 	return headMap, nil
-// }
-
-func (r *Repo) WalkCommits() (map[gitplumbing.Hash]bool, error) {
+func (r *Repo) GetManifest() ([]ManifestObject, error) {
 	seen := make(map[gitplumbing.Hash]bool)
 
 	head, err := r.Head()
@@ -449,21 +382,34 @@ func (r *Repo) WalkCommits() (map[gitplumbing.Hash]bool, error) {
 		return nil, err
 	}
 
-	err = r.objectsForCommit(commit, seen)
+	manifest, err := r.objectsForCommit(commit, seen)
 	if err != nil {
 		return nil, err
 	}
 
-	return seen, nil
+	return manifest, nil
 }
 
-func (r *Repo) objectsForCommit(commit *gitobject.Commit, seen map[gitplumbing.Hash]bool) error {
+func (r *Repo) objectsForCommit(commit *gitobject.Commit, seen map[gitplumbing.Hash]bool) ([]ManifestObject, error) {
+	objects := make([]ManifestObject, 0)
+
 	seen[commit.Hash] = true
+	obj, err := r.objectForHash(commit.Hash)
+	if err != nil {
+		return nil, err
+	}
+	objects = append(objects, obj)
+
 	seen[commit.TreeHash] = true
+	obj, err = r.objectForHash(commit.TreeHash)
+	if err != nil {
+		return nil, err
+	}
+	objects = append(objects, obj)
 
 	tree, err := r.TreeObject(commit.TreeHash)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	walker := gitobject.NewTreeWalker(tree, true, seen)
@@ -474,24 +420,42 @@ func (r *Repo) objectsForCommit(commit *gitobject.Commit, seen map[gitplumbing.H
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return err
+			return nil, err
 		}
 		seen[entry.Hash] = true
+		obj, err = r.objectForHash(entry.Hash)
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, obj)
 	}
 
 	for _, hash := range commit.ParentHashes {
 		parentCommit, err := r.CommitObject(hash)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		err = r.objectsForCommit(parentCommit, seen)
+		parentObj, err := r.objectsForCommit(parentCommit, seen)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		objects = append(objects, parentObj...)
 	}
 
-	return nil
+	return objects, nil
+}
+
+func (r *Repo) objectForHash(objectID gitplumbing.Hash) (ManifestObject, error) {
+	size, err := r.Storer.EncodedObjectSize(objectID)
+	if err != nil {
+		return ManifestObject{}, err
+	}
+
+	return ManifestObject{
+		Hash: objectID[:],
+		Size: size,
+	}, nil
 }
 
 func (r *Repo) PackfileWriter() (io.WriteCloser, error) {

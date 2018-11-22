@@ -339,7 +339,7 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 		return
 	}
 
-	flatHead, flatHistory, err := r.GetManifest()
+	manifest, err := r.GetManifest()
 	if err != nil {
 		log.Warnf("[p2p server] cannot get manifest for repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
@@ -351,29 +351,23 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	}
 
 	err = WriteStructPacket(stream, &GetManifestResponse{
-		Authorized: true,
-		HasCommit:  true,
-		HeadLen:    len(flatHead),
-		HistoryLen: len(flatHistory),
+		Authorized:  true,
+		HasCommit:   true,
+		ManifestLen: len(manifest),
 	})
 	if err != nil {
 		log.Errorf("[p2p server] %v", err)
 		return
 	}
 
-	sent, err := stream.Write(flatHead)
-	if err != nil {
-		log.Errorf("[p2p server] %v", err)
-	} else if sent < len(flatHead) {
-		log.Errorf("[p2p server] terminated while sending head")
+	for i := range manifest {
+		object := manifest[i]
+		err = WriteStructPacket(stream, &object)
+		if err != nil {
+			log.Errorf("[p2p server] %v", err)
+			return
+		}
 	}
 
-	sent, err = stream.Write(flatHistory)
-	if err != nil {
-		log.Errorf("[p2p server] %v", err)
-	} else if sent < len(flatHistory) {
-		log.Errorf("[p2p server] terminated while sending history")
-	}
-
-	log.Printf("[p2p server] sent manifest for %v %v (%v bytes)", req.RepoID, req.Commit, sent)
+	log.Printf("[p2p server] sent manifest for %v %v", req.RepoID, req.Commit)
 }
