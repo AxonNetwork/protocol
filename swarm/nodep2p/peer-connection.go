@@ -99,7 +99,6 @@ func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byt
 
 type PackfileStreamReader struct {
 	io.Reader
-	pw     *io.PipeWriter
 	cancel func()
 }
 
@@ -151,7 +150,6 @@ func newPackfileStreamReader(ctx context.Context, stream io.Reader) *PackfileStr
 
 	return &PackfileStreamReader{
 		Reader: pr,
-		pw:     pw,
 		cancel: cancel,
 	}
 }

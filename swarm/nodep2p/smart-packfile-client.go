@@ -19,11 +19,9 @@ import (
 )
 
 type SmartPackfileClient struct {
-	node        INode
-	repo        *repo.Repo
-	config      *config.Config
-	flatHead    []byte
-	flatHistory []byte
+	node   INode
+	repo   *repo.Repo
+	config *config.Config
 }
 
 type job struct {
@@ -43,26 +41,27 @@ func NewSmartPackfileClient(node INode, repo *repo.Repo, config *config.Config) 
 }
 
 func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID string, commit string) <-chan MaybeChunk {
-	ch := make(chan MaybeChunk)
+	chOut := make(chan MaybeChunk)
 	wg := &sync.WaitGroup{}
 
 	flatHead, flatHistory, err := sc.requestManifestFromSwarm(ctx, repoID, commit)
 	if err != nil {
 		go func() {
-			defer close(ch)
-			ch <- MaybeChunk{Error: err}
+			defer close(chOut)
+			chOut <- MaybeChunk{Error: err}
 		}()
-		return ch
+		return chOut
 	}
 
 	allObjects := UnflattenObjectIDs(append(flatHead, flatHistory...))
 	jobQueue := make(chan job, len(allObjects))
 
+	// @@TODO: make configurable
 	numPeers := 4
 
 	// Load the job queue up with everything in the manifest
 	go func() {
-		defer close(ch)
+		defer close(chOut)
 		defer close(jobQueue)
 
 		for i := 0; i < len(allObjects); i++ {
@@ -77,12 +76,12 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 	go func() {
 		pool, err := newPeerPool(ctx, sc.node, repoID, numPeers)
 		if err != nil {
-			ch <- MaybeChunk{Error: err}
+			chOut <- MaybeChunk{Error: err}
 			return
 		}
 		defer pool.Close()
 
-		for batch := range aggregateWork(ctx, jobQueue, len(allObjects)/numPeers) {
+		for batch := range aggregateWork(ctx, jobQueue, len(allObjects)/numPeers, 5*time.Second) {
 			conn := pool.GetConn()
 			if conn == nil {
 				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
@@ -90,7 +89,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 			}
 
 			go func(batch []job) {
-				err := sc.fetchPackfile(ctx, conn, batch, ch, jobQueue, wg)
+				err := sc.fetchPackfile(ctx, conn, batch, chOut, jobQueue, wg)
 				if err != nil {
 					log.Errorln("[packfile client] fetchObject:", err)
 					if errors.Cause(err) == ErrFetchingFromPeer {
@@ -106,31 +105,39 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 		}
 	}()
 
-	return ch
+	return chOut
 }
 
-func aggregateWork(ctx context.Context, ch chan job, batchSize int) chan []job {
+// Takes a job queue and batches received jobs up to `batchSize`.  Batches are also time-constrained.
+// If `batchSize` jobs aren't received within `batchTimeout`, the batch is sent anyway.
+func aggregateWork(ctx context.Context, jobQueue chan job, batchSize int, batchTimeout time.Duration) chan []job {
 	chBatch := make(chan []job)
 	go func() {
 		defer close(chBatch)
 
 	Outer:
 		for {
-			timeout := time.After(5 * time.Second)
+			// We don't wait more than this amount of time
+			timeout := time.After(batchTimeout)
 			current := make([]job, 0)
 
 			for {
 				select {
-				case j, open := <-ch:
-					if !open {
-						chBatch <- current
-						return
-					}
+				case j, open := <-jobQueue:
+					// If the channel is open, add the received job to the current batch.
+					// If it's closed, send whatever we have and close the batch channel.
+					if open {
+						current = append(current, j)
+						if len(current) >= batchSize {
+							chBatch <- current
+							continue Outer
+						}
 
-					current = append(current, j)
-					if len(current) >= batchSize {
-						chBatch <- current
-						continue Outer
+					} else {
+						if len(current) > 0 {
+							chBatch <- current
+						}
+						return
 					}
 
 				case <-timeout:
@@ -250,8 +257,9 @@ func (sc *SmartPackfileClient) returnJobsToQueue(ctx context.Context, jobs []job
 	}
 }
 
-func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, ch chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
+func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
+
 	desiredObjectIDs := make([][]byte, len(batch))
 	jobMap := map[string]job{}
 	for i := range batch {
@@ -296,7 +304,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 			go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
 			return err
 		}
-		ch <- MaybeChunk{
+		chOut <- MaybeChunk{
 			ObjHash: packfileTempID,
 			ObjType: -1,
 			ObjLen:  0,
@@ -304,7 +312,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		}
 	}
 
-	ch <- MaybeChunk{
+	chOut <- MaybeChunk{
 		ObjHash: packfileTempID,
 		ObjType: -1,
 		ObjLen:  0,

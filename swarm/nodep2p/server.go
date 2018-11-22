@@ -136,8 +136,7 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsCompacted []byte,
 		}
 	}()
 
-	const CHUNK_SIZE = 1024 * 1024
-	data := make([]byte, CHUNK_SIZE)
+	data := make([]byte, OBJ_CHUNK_SIZE)
 	for {
 		n, err := io.ReadFull(pr, data)
 		if err == io.EOF {
