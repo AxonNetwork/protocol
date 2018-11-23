@@ -19,11 +19,11 @@ import (
 )
 
 type SmartPackfileClient struct {
-	node         INode
-	repo         *repo.Repo
-	config       *config.Config
-	bytesToFetch int64
-	bytesFetched int64
+	node INode
+	// repo   *repo.Repo
+	config *config.Config
+	// bytesToFetch int64
+	// bytesFetched int64
 }
 
 type job struct {
@@ -36,56 +36,65 @@ var ErrFetchingFromPeer = errors.New("fetching from peer")
 
 func NewSmartPackfileClient(node INode, repo *repo.Repo, config *config.Config) *SmartPackfileClient {
 	sc := &SmartPackfileClient{
-		node:         node,
-		repo:         repo,
-		config:       config,
-		bytesToFetch: 0,
-		bytesFetched: 0,
+		node: node,
+		// repo:   repo,
+		config: config,
+		// bytesToFetch: 0,
+		// bytesFetched: 0,
 	}
 	return sc
 }
 
-func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID string, commit string) <-chan MaybeChunk {
-	chOut := make(chan MaybeChunk)
+func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID string, commit string) (<-chan MaybeFetchFromCommitPacket, int64) {
+	chOut := make(chan MaybeFetchFromCommitPacket)
 	wg := &sync.WaitGroup{}
 
-	jobList, err := sc.requestManifestFromSwarm(ctx, repoID, commit)
+	manifest, err := sc.requestManifestFromSwarm(ctx, repoID, commit)
 	if err != nil {
 		go func() {
 			defer close(chOut)
-			chOut <- MaybeChunk{Error: err}
+			chOut <- MaybeFetchFromCommitPacket{Error: err}
 		}()
-		return chOut
+		return chOut, 0
 	}
 
-	jobQueue := make(chan job, len(jobList))
-
-	// @@TODO: make configurable
-	numPeers := 4
+	// Calculate the uncompressed size of the entire tree of commits that will be transferred.
+	var uncompressedSize int64
+	for _, obj := range manifest {
+		uncompressedSize += obj.Size
+	}
 
 	// Load the job queue up with everything in the manifest
+	jobQueue := make(chan job, len(manifest))
 	go func() {
 		defer close(chOut)
 		defer close(jobQueue)
 
-		for i := 0; i < len(jobList); i++ {
+		for _, obj := range manifest {
 			wg.Add(1)
-			jobQueue <- jobList[i]
+			jobQueue <- job{
+				size:        obj.Size,
+				objectID:    obj.Hash,
+				failedPeers: make(map[peer.ID]bool),
+			}
 		}
 
 		wg.Wait()
 	}()
 
+	// @@TODO: make configurable
+	const NUM_PEERS = 1
+
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, repoID, numPeers)
+		pool, err := newPeerPool(ctx, sc.node, repoID, NUM_PEERS)
 		if err != nil {
-			chOut <- MaybeChunk{Error: err}
+			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
 		}
 		defer pool.Close()
 
-		for batch := range aggregateWork(ctx, jobQueue, len(jobList)/numPeers, 5*time.Second) {
+		for batch := range aggregateWork(ctx, jobQueue, len(manifest)/NUM_PEERS, 5*time.Second) {
 			conn := pool.GetConn()
 			if conn == nil {
 				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
@@ -109,7 +118,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 		}
 	}()
 
-	return chOut
+	return chOut, uncompressedSize
 }
 
 // Takes a job queue and batches received jobs up to `batchSize`.  Batches are also time-constrained.
@@ -157,7 +166,7 @@ func aggregateWork(ctx context.Context, jobQueue chan job, batchSize int, batchT
 	return chBatch
 }
 
-func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit string) ([]job, error) {
+func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit string) ([]ManifestObject, error) {
 	c, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -169,18 +178,18 @@ func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, rep
 	for provider := range sc.node.FindProvidersAsync(ctxTimeout, c, 10) {
 		if provider.ID != sc.node.ID() {
 			// We found a peer with the object
-			jobList, err := sc.requestManifestFromPeer(ctx, provider.ID, repoID, commit)
+			manifest, err := sc.requestManifestFromPeer(ctx, provider.ID, repoID, commit)
 			if err != nil {
 				log.Errorln("[packfile client] requestManifestFromPeer:", err)
 				continue
 			}
-			return jobList, nil
+			return manifest, nil
 		}
 	}
 	return nil, errors.Errorf("could not find provider for repo '%v'", repoID)
 }
 
-func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit string) ([]job, error) {
+func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit string) ([]ManifestObject, error) {
 	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", repoID, commit, peerID.Pretty())
 
 	// Open the stream
@@ -213,26 +222,22 @@ func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peer
 
 	log.Debugf("[p2p object client] got manifest metadata %+v", resp)
 
-	jobList := make([]job, resp.ManifestLen)
-	for i := range jobList {
-		obj := ManifestObject{}
+	manifest := make([]ManifestObject, resp.ManifestLen)
+	for i := range manifest {
+		var obj ManifestObject
 		err = ReadStructPacket(stream, &obj)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		jobList[i] = job{
-			size:        obj.Size,
-			objectID:    obj.Hash,
-			failedPeers: make(map[peer.ID]bool),
-		}
-		sc.bytesToFetch += obj.Size
+		manifest[i] = obj
+		// sc.bytesToFetch += obj.Size
 	}
 
-	log.Infof("[p2p object client] fetching %d bytes", sc.bytesToFetch)
+	// log.Infof("[p2p object client] fetching %d bytes", sc.bytesToFetch)
 
-	return jobList, nil
+	return manifest, nil
 }
 
 func makePackfileTempID(objectIDs [][]byte) []byte {
@@ -268,16 +273,14 @@ func (sc *SmartPackfileClient) returnJobsToQueue(ctx context.Context, jobs []job
 	}
 }
 
-func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
+func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
 	desiredObjectIDs := make([][]byte, len(batch))
-	jobMap := map[string]job{}
-	bytesToFetch := int64(0)
+	jobMap := make(map[string]job, len(batch))
 	for i := range batch {
 		desiredObjectIDs[i] = batch[i].objectID
 		jobMap[string(batch[i].objectID)] = batch[i]
-		bytesToFetch += batch[i].size
 	}
 
 	availableObjectIDs, packfileReader, err := conn.RequestPackfile(ctx, desiredObjectIDs)
@@ -289,17 +292,31 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 	}
 	defer packfileReader.Close()
 
+	// Determine which objects the peer can't send us and re-add those to the job queue.
 	missingObjectIDs := determineMissingIDs(desiredObjectIDs, availableObjectIDs)
 	if len(missingObjectIDs) > 0 {
-		failedJobs := make([]job, len(missingObjectIDs))
+		jobsToReturn := make([]job, len(missingObjectIDs))
 		for _, oid := range missingObjectIDs {
-			failedJobs = append(failedJobs, jobMap[string(oid)])
+			jobsToReturn = append(jobsToReturn, jobMap[string(oid)])
 		}
-		go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
+		go sc.returnJobsToQueue(ctx, jobsToReturn, jobQueue)
+	}
+
+	// Calculate the total uncompressed size of the objects in the packfile.
+	var uncompressedSize int64
+	for _, objectID := range availableObjectIDs {
+		uncompressedSize += jobMap[string(objectID)].size
 	}
 
 	var packfileTempID gitplumbing.Hash
 	copy(packfileTempID[:], makePackfileTempID(availableObjectIDs))
+
+	chOut <- MaybeFetchFromCommitPacket{
+		PackfileHeader: &PackfileHeader{
+			PackfileID:       packfileTempID[:],
+			UncompressedSize: uncompressedSize,
+		},
+	}
 
 	for {
 		data := make([]byte, OBJ_CHUNK_SIZE)
@@ -307,8 +324,10 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		if err == io.EOF {
 			// read no bytes
 			break
+
 		} else if err == io.ErrUnexpectedEOF {
 			data = data[:n]
+
 		} else if err != nil {
 			failedJobs := make([]job, len(availableObjectIDs))
 			for _, oid := range availableObjectIDs {
@@ -317,32 +336,36 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 			go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
 			return err
 		}
-		chOut <- MaybeChunk{
+		chOut <- MaybeFetchFromCommitPacket{
+			PackfileData: &PackfileData{
+				ObjHash: packfileTempID,
+				ObjType: -1,
+				ObjLen:  0,
+				Data:    data,
+			},
+		}
+		// sc.bytesFetched += int64(len(data))
+		// bytesToFetch -= int64(len(data))
+	}
+
+	chOut <- MaybeFetchFromCommitPacket{
+		PackfileData: &PackfileData{
 			ObjHash: packfileTempID,
 			ObjType: -1,
 			ObjLen:  0,
-			Data:    data,
-		}
-		sc.bytesFetched += int64(len(data))
-		bytesToFetch -= int64(len(data))
-	}
-
-	chOut <- MaybeChunk{
-		ObjHash: packfileTempID,
-		ObjType: -1,
-		ObjLen:  0,
-		End:     true,
+			End:     true,
+		},
 	}
 
 	for range availableObjectIDs {
 		wg.Done()
 	}
 
-	sc.bytesFetched += bytesToFetch
+	// sc.bytesFetched += bytesToFetch
 
 	return nil
 }
 
-func (sc *SmartPackfileClient) GetProgress() (int64, int64) {
-	return sc.bytesToFetch, sc.bytesFetched
-}
+// func (sc *SmartPackfileClient) GetProgress() (int64, int64) {
+// 	return sc.bytesToFetch, sc.bytesFetched
+// }

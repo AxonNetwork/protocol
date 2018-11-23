@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"io"
 	"log"
 
 	"github.com/pkg/errors"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
 func fetchFromCommit_packfile(commitHash string) error {
@@ -19,130 +17,150 @@ func fetchFromCommit_packfile(commitHash string) error {
 		return nil
 	}
 
-	ch, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
+	ch, uncompressedSize, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
 	if err != nil {
 		return err
 	}
 
-	packfiles := make(map[string]io.WriteCloser)
-	latestPercent := 0
+	type PackfileDownload struct {
+		io.WriteCloser
+		uncompressedSize int64
+		written          int64
+	}
+
+	packfiles := make(map[string]PackfileDownload)
+	var writtenBytes int64
+
 	for pkt := range ch {
-		if pkt.Error != nil {
+		switch {
+		case pkt.Error != nil:
 			return pkt.Error
+
+		case pkt.PackfileHeader != nil:
+			packfileID := hex.EncodeToString(pkt.PackfileHeader.PackfileID)
+
+			if _, exists := packfiles[packfileID]; !exists {
+				pw, err := Repo.PackfileWriter()
+				if err != nil {
+					return err
+				}
+
+				packfiles[packfileID] = PackfileDownload{
+					WriteCloser:      pw,
+					uncompressedSize: pkt.PackfileHeader.UncompressedSize,
+					written:          0,
+				}
+			}
+
+		case pkt.PackfileData != nil:
+			packfileID := hex.EncodeToString(pkt.PackfileData.ObjHash)
+
+			if pkt.PackfileData.End {
+				err = packfiles[packfileID].Close()
+				if err != nil {
+					return errors.WithStack(err)
+				}
+
+				writtenBytes -= packfiles[packfileID].written          // subtract the compressed byte count from writtenBytes
+				writtenBytes += packfiles[packfileID].uncompressedSize // add the uncompressed byte count
+
+				delete(packfiles, packfileID)
+
+			} else {
+				n, err := packfiles[packfileID].Write(pkt.PackfileData.Data)
+				if err != nil {
+					return errors.WithStack(err)
+				} else if n != len(pkt.PackfileData.Data) {
+					return errors.New("remote helper: did not fully write packet")
+				}
+
+				x := packfiles[packfileID]
+				x.written += int64(n)
+				packfiles[packfileID] = x
+
+				writtenBytes += int64(n)
+			}
 		}
 
-		packfileID := hex.EncodeToString(pkt.ObjHash)
+		log.Printf("Progress: %v/%v = %.02f%%\r", writtenBytes, uncompressedSize, 100*(float64(writtenBytes)/float64(uncompressedSize)))
 
-		if _, exists := packfiles[packfileID]; !exists {
-			pw, err := Repo.PackfileWriter()
-			if err != nil {
-				return err
-			}
-
-			packfiles[packfileID] = pw
-		}
-
-		if pkt.End {
-			err = packfiles[packfileID].Close()
-			if err != nil {
-				return errors.WithStack(err)
-			}
-
-			delete(packfiles, packfileID)
-
-		} else {
-			n, err := packfiles[packfileID].Write(pkt.Data)
-			if err != nil {
-				return errors.WithStack(err)
-			} else if n != len(pkt.Data) {
-				return errors.New("remote helper: did not fully write packet")
-			}
-			percentDownloaded := 0
-			if pkt.ToFetch > 0 {
-				percentDownloaded = int(100 * pkt.Fetched / pkt.ToFetch)
-			}
-			if percentDownloaded > latestPercent {
-				latestPercent = percentDownloaded
-				log.Printf("Progress: %d%%\n", latestPercent)
-			}
-		}
 	}
 	return nil
 }
 
-func fetchFromCommit_object(commitHash string) error {
-	hash, err := hex.DecodeString(commitHash)
-	if err != nil {
-		return err
-	} else if Repo.HasObject(hash) {
-		return nil
-	}
+// func fetchFromCommit_object(commitHash string) error {
+// 	hash, err := hex.DecodeString(commitHash)
+// 	if err != nil {
+// 		return err
+// 	} else if Repo.HasObject(hash) {
+// 		return nil
+// 	}
 
-	ch, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
-	if err != nil {
-		return err
-	}
+// 	ch, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	type FileStream struct {
-		file       gitplumbing.EncodedObject
-		fileWriter io.WriteCloser
-		written    uint64
-	}
+// 	type FileStream struct {
+// 		file       gitplumbing.EncodedObject
+// 		fileWriter io.WriteCloser
+// 		written    uint64
+// 	}
 
-	files := make(map[string]*FileStream)
+// 	files := make(map[string]*FileStream)
 
-	for pkt := range ch {
-		if pkt.Error != nil {
-			return pkt.Error
-		}
+// 	for pkt := range ch {
+// 		if pkt.Error != nil {
+// 			return pkt.Error
+// 		}
 
-		hash := hex.EncodeToString(pkt.ObjHash)
+// 		hash := hex.EncodeToString(pkt.ObjHash)
 
-		if _, exists := files[hash]; !exists {
-			obj := Repo.Storer.NewEncodedObject()
-			obj.SetType(gitplumbing.ObjectType(pkt.ObjType))
+// 		if _, exists := files[hash]; !exists {
+// 			obj := Repo.Storer.NewEncodedObject()
+// 			obj.SetType(gitplumbing.ObjectType(pkt.ObjType))
 
-			w, err := obj.Writer()
-			if err != nil {
-				return err
-			}
+// 			w, err := obj.Writer()
+// 			if err != nil {
+// 				return err
+// 			}
 
-			files[hash] = &FileStream{
-				file:       obj,
-				fileWriter: w,
-				written:    0,
-			}
-		}
+// 			files[hash] = &FileStream{
+// 				file:       obj,
+// 				fileWriter: w,
+// 				written:    0,
+// 			}
+// 		}
 
-		n, err := files[hash].fileWriter.Write(pkt.Data)
-		if err != nil {
-			return errors.WithStack(err)
-		} else if n != len(pkt.Data) {
-			return errors.New("remote helper: did not fully write packet")
-		}
+// 		n, err := files[hash].fileWriter.Write(pkt.Data)
+// 		if err != nil {
+// 			return errors.WithStack(err)
+// 		} else if n != len(pkt.Data) {
+// 			return errors.New("remote helper: did not fully write packet")
+// 		}
 
-		files[hash].written += uint64(n)
-		if files[hash].written >= pkt.ObjLen {
-			err = files[hash].fileWriter.Close()
-			if err != nil {
-				return errors.WithStack(err)
-			}
+// 		files[hash].written += uint64(n)
+// 		if files[hash].written >= pkt.ObjLen {
+// 			err = files[hash].fileWriter.Close()
+// 			if err != nil {
+// 				return errors.WithStack(err)
+// 			}
 
-			h := files[hash].file.Hash()
-			if !bytes.Equal(pkt.ObjHash, h[:]) {
-				return errors.Errorf("remote helper: bad checksum for %v", hash)
-			}
+// 			h := files[hash].file.Hash()
+// 			if !bytes.Equal(pkt.ObjHash, h[:]) {
+// 				return errors.Errorf("remote helper: bad checksum for %v", hash)
+// 			}
 
-			_, err = Repo.Storer.SetEncodedObject(files[hash].file)
-			if err != nil {
-				return errors.WithStack(err)
-			}
+// 			_, err = Repo.Storer.SetEncodedObject(files[hash].file)
+// 			if err != nil {
+// 				return errors.WithStack(err)
+// 			}
 
-			delete(files, hash)
-		}
-	}
-	return nil
-}
+// 			delete(files, hash)
+// 		}
+// 	}
+// 	return nil
+// }
 
 // var inflightLimiter = make(chan struct{}, 5)
 

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -220,7 +219,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 	if len(location) == 0 {
 		location = s.node.Config.Node.ReplicationRoot
 	}
-	folder := filepath.Join(location, req.RepoID)
+	// folder := filepath.Join(location, req.RepoID)
 	remote := fmt.Sprintf("conscience://%s", req.RepoID)
 	ch := make(chan MaybeErr, 1)
 	go func() {
@@ -235,22 +234,22 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 		}
 	}()
 
-	for {
-		// non-blockin with a buffered channel
-		if len(ch) > 0 {
-			break
-		}
+	// for {
+	// 	// non-blockin with a buffered channel
+	// 	if len(ch) > 0 {
+	// 		break
+	// 	}
 
-		toFetch, fetched := s.node.GetFetchProgress(folder)
-		err := server.Send(&pb.CloneRepoResponsePacket{
-			ToFetch: toFetch,
-			Fetched: fetched,
-		})
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		time.Sleep(time.Second * 1)
-	}
+	// 	toFetch, fetched := s.node.GetFetchProgress(folder)
+	// 	err := server.Send(&pb.CloneRepoResponsePacket{
+	// 		ToFetch: toFetch,
+	// 		Fetched: fetched,
+	// 	})
+	// 	if err != nil {
+	// 		return errors.WithStack(err)
+	// 	}
+	// 	time.Sleep(time.Second * 1)
+	// }
 
 	result := <-ch
 	if result.Error != nil {
@@ -277,21 +276,45 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 }
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
-	ch := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, req.Commit)
-	for maybeChunk := range ch {
-		if maybeChunk.Error != nil {
-			return errors.WithStack(maybeChunk.Error)
+	ch, uncompressedSize := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, req.Commit)
+
+	err := server.Send(&pb.FetchFromCommitResponse{
+		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
+			UncompressedSize: uncompressedSize,
+		}},
+	})
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	for pkt := range ch {
+		switch {
+		case pkt.Error != nil:
+			return errors.WithStack(pkt.Error)
+
+		case pkt.PackfileHeader != nil:
+			err = server.Send(&pb.FetchFromCommitResponse{
+				Payload: &pb.FetchFromCommitResponse_PackfileHeader_{&pb.FetchFromCommitResponse_PackfileHeader{
+					PackfileID:       pkt.PackfileHeader.PackfileID,
+					UncompressedSize: pkt.PackfileHeader.UncompressedSize,
+				}},
+			})
+
+		case pkt.PackfileData != nil:
+			// toFetch, fetched := s.node.GetFetchProgress(req.Path)
+			err = server.Send(&pb.FetchFromCommitResponse{
+				Payload: &pb.FetchFromCommitResponse_PackfileData_{&pb.FetchFromCommitResponse_PackfileData{
+					ObjHash: pkt.ObjHash[:],
+					ObjType: int32(pkt.ObjType),
+					ObjLen:  pkt.ObjLen,
+					// ToFetch: toFetch,
+					// Fetched: fetched,
+					Data: pkt.Data,
+					End:  pkt.End,
+				}},
+			})
 		}
-		toFetch, fetched := s.node.GetFetchProgress(req.Path)
-		err := server.Send(&pb.FetchFromCommitResponsePacket{
-			ObjHash: maybeChunk.ObjHash[:],
-			ObjType: int32(maybeChunk.ObjType),
-			ObjLen:  maybeChunk.ObjLen,
-			ToFetch: toFetch,
-			Fetched: fetched,
-			Data:    maybeChunk.Data,
-			End:     maybeChunk.End,
-		})
+
 		if err != nil {
 			return errors.WithStack(err)
 		}

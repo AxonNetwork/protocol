@@ -39,13 +39,13 @@ import (
 )
 
 type Node struct {
-	host              host.Host
-	dht               *dht.IpfsDHT
-	eth               *nodeeth.Client
-	repoManager       *RepoManager
-	Config            config.Config
-	Shutdown          chan struct{}
-	currentP2PClients map[string]nodep2p.IStrategy
+	host        host.Host
+	dht         *dht.IpfsDHT
+	eth         *nodeeth.Client
+	repoManager *RepoManager
+	Config      config.Config
+	Shutdown    chan struct{}
+	// currentP2PClients map[string]nodep2p.IStrategy
 
 	bandwidthCounter *metrics.BandwidthCounter
 }
@@ -102,14 +102,14 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	log.SetField("username", username)
 
 	n := &Node{
-		host:              h,
-		dht:               d,
-		eth:               eth,
-		repoManager:       NewRepoManager(cfg),
-		Config:            *cfg,
-		Shutdown:          make(chan struct{}),
-		currentP2PClients: map[string]nodep2p.IStrategy{},
-		bandwidthCounter:  bandwidthCounter,
+		host:        h,
+		dht:         d,
+		eth:         eth,
+		repoManager: NewRepoManager(cfg),
+		Config:      *cfg,
+		Shutdown:    make(chan struct{}),
+		// currentP2PClients: map[string]nodep2p.IStrategy{},
+		bandwidthCounter: bandwidthCounter,
 	}
 
 	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
@@ -344,22 +344,30 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) <-chan nodep2p.MaybeChunk {
-	log.Debugln("FETCHING FOR:", path)
-	repo := n.repoManager.repos[repoID]
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
+	log.Debugln("FETCHING FOR:", path, "/ repoID:", repoID)
+
+	// repo, err := n.repoManager.RepoAtPathOrID(path, repoID)
+	repo := n.repoManager.Repo(repoID)
+	// if repo == nil {
+	// 	log.Errorln("[Node.FetchFromCommit] error getting repo")
+	// 	return nil, 0
+	// }
+
 	c := nodep2p.NewSmartPackfileClient(n, repo, &n.Config)
-	n.currentP2PClients[path] = c
+	// n.currentP2PClients[path] = c
+
 	return c.FetchFromCommit(ctx, repoID, commit)
 }
 
-func (n *Node) GetFetchProgress(path string) (int64, int64) {
-	c := n.currentP2PClients[path]
-	if c != nil {
-		return c.GetProgress()
-	} else {
-		return int64(0), int64(0)
-	}
-}
+// func (n *Node) GetFetchProgress(path string) (int64, int64) {
+// 	c := n.currentP2PClients[path]
+// 	if c != nil {
+// 		return c.GetProgress()
+// 	} else {
+// 		return int64(0), int64(0)
+// 	}
+// }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 	return n.Config.Update(func() error {

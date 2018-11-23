@@ -27,17 +27,27 @@ type (
 	}
 
 	IStrategy interface {
-		FetchFromCommit(ctx context.Context, repoID string, commit string) <-chan MaybeChunk
+		FetchFromCommit(ctx context.Context, repoID string, commit string) (ch <-chan MaybeFetchFromCommitPacket, uncompressedSize int64)
 		GetProgress() (int64, int64)
 	}
 
-	MaybeChunk struct {
+	MaybeFetchFromCommitPacket struct {
+		*PackfileHeader
+		*PackfileData
+		Error error
+	}
+
+	PackfileHeader struct {
+		PackfileID       []byte
+		UncompressedSize int64
+	}
+
+	PackfileData struct {
 		ObjHash gitplumbing.Hash
 		ObjType gitplumbing.ObjectType
 		ObjLen  uint64
 		Data    []byte
 		End     bool
-		Error   error
 	}
 
 	IPeerConnection interface {

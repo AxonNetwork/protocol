@@ -80,10 +80,11 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 			req := GetPackfileRequest{}
 			err := ReadStructPacket(stream, &req)
 			if err != nil {
-				log.Debugf("[p2p server] stream closed")
+				log.Debugf("[p2p server] stream closed (err: %v)", err)
 				return
 			}
 
+			log.Debugf("[p2p server] writing %v objects to packfile stream", len(req.ObjectIDs)/20)
 			shouldClose := s.writePackfileToStream(repoID, req.ObjectIDs, stream)
 			if shouldClose {
 				return

@@ -53,36 +53,61 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 }
 
 type MaybeFetchFromCommitPacket struct {
-	*pb.FetchFromCommitResponsePacket
-	Error error
+	PackfileHeader *pb.FetchFromCommitResponse_PackfileHeader
+	PackfileData   *pb.FetchFromCommitResponse_PackfileData
+	Error          error
 }
 
-func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (chan MaybeFetchFromCommitPacket, error) {
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (chan MaybeFetchFromCommitPacket, int64, error) {
 	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
 		RepoID: repoID,
 		Path:   path,
 		Commit: commit,
 	})
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, 0, errors.WithStack(err)
+	}
+
+	pkt, err := fetchFromCommitClient.Recv()
+	if err != nil {
+		return nil, 0, errors.WithStack(err)
+	}
+
+	header := pkt.GetHeader()
+	if header == nil {
+		return nil, 0, errors.New("[rpc client] FetchFromCommit: first response packet was not a Header")
 	}
 
 	ch := make(chan MaybeFetchFromCommitPacket)
 	go func() {
 		defer close(ch)
 		for {
-			packet, err := fetchFromCommitClient.Recv()
+			x, err := fetchFromCommitClient.Recv()
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				ch <- MaybeFetchFromCommitPacket{nil, errors.WithStack(err)}
+				ch <- MaybeFetchFromCommitPacket{Error: errors.WithStack(err)}
 				return
 			}
-			ch <- MaybeFetchFromCommitPacket{packet, nil}
+
+			dataPkt := x.GetPackfileData()
+			if dataPkt != nil {
+				ch <- MaybeFetchFromCommitPacket{PackfileData: dataPkt}
+				continue
+			}
+
+			headerPkt := x.GetPackfileHeader()
+			if headerPkt != nil {
+				ch <- MaybeFetchFromCommitPacket{PackfileHeader: headerPkt}
+				continue
+			}
+
+			ch <- MaybeFetchFromCommitPacket{Error: errors.New("[rpc client] expected PackfileData or PackfileHeader packet, got Header packet")}
+			return
 		}
 	}()
 
-	return ch, nil
+	return ch, header.UncompressedSize, nil
 }
 
 func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {

@@ -12,6 +12,7 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	. "github.com/Conscience/protocol/swarm/wire"
+	"github.com/pkg/errors"
 )
 
 func getManifest(r *repo.Repo) ([]ManifestObject, error) {
@@ -44,7 +45,12 @@ func getManifest(r *repo.Repo) ([]ManifestObject, error) {
 		if err != nil {
 			return nil, err
 		}
-		manifest = append(manifest, ManifestObject{Hash: hash[:], Size: size})
+
+		// If we don't copy the hash here, they all end up being the same
+		var h gitplumbing.Hash
+		copy(h[:], hash[:])
+
+		manifest = append(manifest, ManifestObject{Hash: h[:], Size: size})
 	}
 
 	err = createCachedManifest(repoID, manifest)
@@ -75,7 +81,7 @@ func getCachedManifest(repoID string) []ManifestObject {
 	for {
 		obj := ManifestObject{}
 		err = ReadStructPacket(f, &obj)
-		if err == io.EOF {
+		if errors.Cause(err) == io.EOF || errors.Cause(err) == io.ErrUnexpectedEOF {
 			break
 
 		} else if err != nil {

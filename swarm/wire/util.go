@@ -19,7 +19,7 @@ func ReadUint64(r io.Reader) (uint64, error) {
 	buf := make([]byte, 8)
 	_, err := io.ReadFull(r, buf)
 	if err != nil {
-		return 0, errors.Wrap(ErrUnexpectedEOF, "ReadUint64")
+		return 0, errors.Wrap(err, "ReadUint64")
 	}
 	return binary.LittleEndian.Uint64(buf), nil
 }
@@ -31,7 +31,7 @@ func WriteUint64(w io.Writer, n uint64) error {
 	if err != nil {
 		return err
 	} else if written < 8 {
-		return errors.Wrap(ErrUnexpectedEOF, "WriteUint64")
+		return errors.Wrap(err, "WriteUint64")
 	}
 	return nil
 }

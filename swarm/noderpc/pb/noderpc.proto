@@ -13,7 +13,7 @@ service NodeRPC {
   rpc CheckpointRepo(CheckpointRepoRequest) returns (CheckpointRepoResponse) {}
   rpc PullRepo(PullRepoRequest) returns (PullRepoResponse) {}
   rpc CloneRepo(CloneRepoRequest) returns (stream CloneRepoResponsePacket) {}
-  rpc FetchFromCommit(FetchFromCommitRequest) returns (stream FetchFromCommitResponsePacket) {}
+  rpc FetchFromCommit(FetchFromCommitRequest) returns (stream FetchFromCommitResponse) {}
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
@@ -96,14 +96,31 @@ message FetchFromCommitRequest {
     string commit = 3;
 }
 
-message FetchFromCommitResponsePacket {
-    bytes objHash = 1;
-    int32 objType = 2;
-    uint64 objLen = 3;
-    int64 toFetch = 4;
-    int64 fetched = 5;
-    bytes data = 6;
-    bool end = 7;
+message FetchFromCommitResponse {
+    message Header {
+        int64 uncompressedSize = 1;
+    }
+
+    message PackfileHeader {
+        bytes packfileID = 1;
+        int64 uncompressedSize = 2;
+    }
+
+    message PackfileData {
+        bytes objHash = 1;
+        int32 objType = 2;
+        uint64 objLen = 3;
+        int64 toFetch = 4;
+        int64 fetched = 5;
+        bytes data = 6;
+        bool end = 7;
+    }
+
+    oneof payload {
+        Header header = 1;
+        PackfileHeader packfileHeader = 2;
+        PackfileData packfileData = 3;
+    }
 }
 
 message GetObjectRequest {
