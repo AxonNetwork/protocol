@@ -215,7 +215,7 @@ func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peer
 
 	jobList := make([]job, resp.ManifestLen)
 	for i := range jobList {
-		obj := repo.ManifestObject{}
+		obj := ManifestObject{}
 		err = ReadStructPacket(stream, &obj)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break

@@ -124,7 +124,7 @@ func (nc *NaiveClient) requestManifestFromPeer(ctx context.Context, peerID peer.
 
 	allObjects := make([]byte, 0)
 	for {
-		obj := repo.ManifestObject{}
+		obj := ManifestObject{}
 		err = ReadStructPacket(stream, &obj)
 		if err == io.EOF {
 			break

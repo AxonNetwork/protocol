@@ -76,6 +76,12 @@ type GetManifestResponse struct {
 	ManifestLen int
 }
 
+type ManifestObject struct {
+	HashLen int `struc:"sizeof=Hash"`
+	Hash    []byte
+	Size    int64
+}
+
 type HandshakeRequest struct {
 	RepoIDLen    int `struc:"sizeof=RepoID"`
 	RepoID       string

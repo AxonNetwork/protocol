@@ -397,7 +397,7 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 		return
 	}
 
-	manifest, err := r.GetManifest()
+	manifest, err := getManifest(r)
 	if err != nil {
 		log.Warnf("[p2p server] cannot get manifest for repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
