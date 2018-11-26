@@ -11,7 +11,7 @@ service NodeRPC {
 
   rpc InitRepo(InitRepoRequest) returns (InitRepoResponse) {}
   rpc CheckpointRepo(CheckpointRepoRequest) returns (CheckpointRepoResponse) {}
-  rpc PullRepo(PullRepoRequest) returns (PullRepoResponse) {}
+  rpc PullRepo(PullRepoRequest) returns (stream PullRepoResponsePacket) {}
   rpc CloneRepo(CloneRepoRequest) returns (stream CloneRepoResponsePacket) {}
   rpc FetchFromCommit(FetchFromCommitRequest) returns (stream FetchFromCommitResponse) {}
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
@@ -74,8 +74,9 @@ message PullRepoRequest {
     string path = 1;
 }
 
-message PullRepoResponse {
-    bool ok = 1;
+message PullRepoResponsePacket {
+    int64 toFetch = 1;
+    int64 fetched = 2;
 }
 
 message CloneRepoRequest {

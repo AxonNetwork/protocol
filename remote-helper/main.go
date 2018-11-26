@@ -114,10 +114,10 @@ func speakGit(r io.Reader, w io.Writer) error {
 				return err
 			}
 
-			// err = trackRepo()
-			// if err != nil {
-			// 	return err
-			// }
+			err = trackRepo()
+			if err != nil {
+				return err
+			}
 
 			fmt.Fprintln(w)
 
@@ -145,10 +145,10 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		case text == "":
 			// The blank line is the stream terminator.  We return when we see this.
-			// err := trackRepo()
-			// if err != nil {
-			// 	return err
-			// }
+			err := trackRepo()
+			if err != nil {
+				return err
+			}
 			if runtime.GOOS == "windows" {
 				return nil
 			}

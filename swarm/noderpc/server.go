@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -179,8 +180,15 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 	return &pb.CheckpointRepoResponse{Ok: true}, nil
 }
 
-func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.PullRepoResponse, error) {
+type MaybeErr struct {
+	Done  bool
+	Error error
+}
+
+func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoServer) error {
+	// first stash any local changes
 	didStash := false
+	ctx := ctx.Background()
 	err := util.ExecAndScanStdout(ctx, []string{"git", "stash"}, req.Path, func(line string) error {
 		if line != "No local changes to save" {
 			didStash = true
@@ -190,12 +198,42 @@ func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.Pul
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	err = util.ExecAndScanStdout(ctx, []string{"git", "pull", "origin", "master"}, req.Path, func(line string) error {
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
+
+	// then pull changes from network and send progress udpates
+	ch := make(chan MaybeErr, 1)
+	go func() {
+		err = util.ExecAndScanStdout(ctx, []string{"git", "pull", "origin", "master"}, req.Path, func(line string) error {
+			return nil
+		})
+		if err != nil {
+			ch <- MaybeErr{Error: err}
+		} else {
+			ch <- MaybeErr{Done: true}
+		}
+	}()
+	for {
+		// non-blocking with a buffered channel
+		if len(ch) > 0 {
+			break
+		}
+
+		toFetch, fetched := s.node.GetFetchProgress(folder)
+		err := server.Send(&pb.PullRepoResponsePacket{
+			ToFetch: toFetch,
+			Fetched: fetched,
+		})
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		time.Sleep(time.Second * 1)
 	}
+
+	result := <-ch
+	if result.Error != nil {
+		return errors.WithStack(result.Error)
+	}
+
+	// finally pop any stashed chnages
 	if didStash {
 		// @@TODO: handle merge conflict on stash pop
 		err = util.ExecAndScanStdout(ctx, []string{"git", "stash", "apply"}, req.Path, func(line string) error {
@@ -209,22 +247,17 @@ func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.Pul
 	return &pb.PullRepoResponse{Ok: true}, nil
 }
 
-type MaybeErr struct {
-	Done  bool
-	Error error
-}
-
 func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepoServer) error {
 	location := req.Path
 	if len(location) == 0 {
 		location = s.node.Config.Node.ReplicationRoot
 	}
-	// folder := filepath.Join(location, req.RepoID)
+	folder := filepath.Join(location, req.RepoID)
 	remote := fmt.Sprintf("conscience://%s", req.RepoID)
 	ch := make(chan MaybeErr, 1)
 	go func() {
 		err := util.ExecAndScanStdout(context.Background(), []string{"git", "clone", remote}, location, func(line string) error {
-			log.Debugln("[git clone]", line)
+			log.Debugln("[git clone] ", line)
 			return nil
 		})
 		if err != nil {
@@ -234,22 +267,22 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 		}
 	}()
 
-	// for {
-	// 	// non-blockin with a buffered channel
-	// 	if len(ch) > 0 {
-	// 		break
-	// 	}
+	for {
+		// non-blocking with a buffered channel
+		if len(ch) > 0 {
+			break
+		}
 
-	// 	toFetch, fetched := s.node.GetFetchProgress(folder)
-	// 	err := server.Send(&pb.CloneRepoResponsePacket{
-	// 		ToFetch: toFetch,
-	// 		Fetched: fetched,
-	// 	})
-	// 	if err != nil {
-	// 		return errors.WithStack(err)
-	// 	}
-	// 	time.Sleep(time.Second * 1)
-	// }
+		toFetch, fetched := s.node.GetFetchProgress(folder)
+		err := server.Send(&pb.CloneRepoResponsePacket{
+			ToFetch: toFetch,
+			Fetched: fetched,
+		})
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		time.Sleep(time.Second * 1)
+	}
 
 	result := <-ch
 	if result.Error != nil {

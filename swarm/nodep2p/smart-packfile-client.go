@@ -19,11 +19,10 @@ import (
 )
 
 type SmartPackfileClient struct {
-	node INode
-	// repo   *repo.Repo
-	config *config.Config
-	// bytesToFetch int64
-	// bytesFetched int64
+	node         INode
+	config       *config.Config
+	bytesToFetch int64
+	bytesFetched int64
 }
 
 type job struct {
@@ -36,11 +35,10 @@ var ErrFetchingFromPeer = errors.New("fetching from peer")
 
 func NewSmartPackfileClient(node INode, repo *repo.Repo, config *config.Config) *SmartPackfileClient {
 	sc := &SmartPackfileClient{
-		node: node,
-		// repo:   repo,
-		config: config,
-		// bytesToFetch: 0,
-		// bytesFetched: 0,
+		node:         node,
+		config:       config,
+		bytesToFetch: 0,
+		bytesFetched: 0,
 	}
 	return sc
 }
@@ -63,6 +61,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 	for _, obj := range manifest {
 		uncompressedSize += obj.Size
 	}
+	sc.bytesToFetch = uncompressedSize
 
 	// Load the job queue up with everything in the manifest
 	jobQueue := make(chan job, len(manifest))
@@ -318,6 +317,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		},
 	}
 
+	bytesToFetch := uncompressedSize
 	for {
 		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(packfileReader, data)
@@ -344,8 +344,8 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 				Data:    data,
 			},
 		}
-		// sc.bytesFetched += int64(len(data))
-		// bytesToFetch -= int64(len(data))
+		sc.bytesFetched += int64(len(data))
+		bytesToFetch -= int64(len(data))
 	}
 
 	chOut <- MaybeFetchFromCommitPacket{
@@ -361,11 +361,12 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		wg.Done()
 	}
 
-	// sc.bytesFetched += bytesToFetch
+	// add (uncompressed size - size of packfile) to total fetched
+	sc.bytesFetched += bytesToFetch
 
 	return nil
 }
 
-// func (sc *SmartPackfileClient) GetProgress() (int64, int64) {
-// 	return sc.bytesToFetch, sc.bytesFetched
-// }
+func (sc *SmartPackfileClient) GetProgress() (int64, int64) {
+	return sc.bytesToFetch, sc.bytesFetched
+}
