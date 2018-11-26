@@ -10,6 +10,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p-protocol"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
+	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/util"
@@ -24,11 +25,13 @@ type (
 		AddrFromSignedHash(data, sig []byte) (nodeeth.Address, error)
 		AddressHasPullAccess(ctx context.Context, user nodeeth.Address, repoID string) (bool, error)
 		Repo(repoID string) *repo.Repo
+		GetConfig() config.Config
+		PullRepo(repoID string) error
+		SetReplicationPolicy(repoID string, shouldReplicate bool) error
 	}
 
 	IStrategy interface {
 		FetchFromCommit(ctx context.Context, repoID string, commit string) (ch <-chan MaybeFetchFromCommitPacket, uncompressedSize int64)
-		GetProgress() (int64, int64)
 	}
 
 	MaybeFetchFromCommitPacket struct {

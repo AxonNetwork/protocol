@@ -117,37 +117,57 @@ func logStdoutStderr(logfilePrefix string, stdout, stderr io.Reader) (io.Reader,
 	return io.TeeReader(stdout, logfile_stdout), io.TeeReader(stderr, logfile_stderr), closeFn
 }
 
-func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn func(string) error) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "error running %v", strings.Join(cmdAndArgs, " "))
-	}()
-
+func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (io.ReadCloser, io.ReadCloser, func() error, error) {
 	var args []string
 	if len(cmdAndArgs) == 1 {
 		args = []string{}
 	} else {
 		args = cmdAndArgs[1:]
 	}
+	fmt.Println("TICK 1")
 
 	cmd := exec.CommandContext(ctx, cmdAndArgs[0], args...)
 	cmd.Dir = cwd
 	cmd.Env = CopyEnv()
 
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	err = cmd.Start()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// caller's responsibility to call close
+	// closeCmd also closes stdout/stderr readers
+	closeCmd := func() error {
+		return cmd.Wait()
+	}
+
+	return stdout, stderr, closeCmd, nil
+}
+
+func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn func(string) error) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "error running %v", strings.Join(cmdAndArgs, " "))
+	}()
+	var stdout, stderr io.Reader
+
+	stdout, stderr, closeCmd, err := ExecCmd(ctx, cmdAndArgs, cwd)
+	if err != nil {
+		return
+	}
+
 	logfilePrefix := getLogfilePrefix(cmdAndArgs)
 	if logChildProcessesToFile {
-		logEnvironment(logfilePrefix, cmd.Env)
-	}
-
-	var stdout io.Reader
-	var stderr io.Reader
-
-	stdout, err = cmd.StdoutPipe()
-	if err != nil {
-		return
-	}
-	stderr, err = cmd.StderrPipe()
-	if err != nil {
-		return
+		logEnvironment(logfilePrefix, CopyEnv())
 	}
 
 	if logChildProcessesToFile {
@@ -163,11 +183,6 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 		}
 	}()
 
-	err = cmd.Start()
-	if err != nil {
-		return err
-	}
-
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -180,6 +195,6 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 		return
 	}
 
-	err = cmd.Wait()
+	err = closeCmd()
 	return
 }

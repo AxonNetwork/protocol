@@ -1,14 +1,16 @@
 package noderpc
 
 import (
+	"bufio"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -180,15 +182,45 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 	return &pb.CheckpointRepoResponse{Ok: true}, nil
 }
 
-type MaybeErr struct {
-	Done  bool
-	Error error
+type MaybeProgress struct {
+	Fetched int64
+	ToFetch int64
+	Error   error
+}
+
+func parseProgressFromStdErr(stderr io.ReadCloser, ch chan MaybeProgress) {
+	scanner := bufio.NewScanner(stderr)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, " ")
+		if len(parts) == 6 && parts[2] == "Progress:" {
+			progress := strings.Split(parts[3], "/")
+			Fetched, err := strconv.ParseInt(progress[0], 10, 64)
+			if err != nil {
+				ch <- MaybeProgress{Error: err}
+				break
+			}
+			ToFetch, err := strconv.ParseInt(progress[1], 10, 64)
+			if err != nil {
+				ch <- MaybeProgress{Error: err}
+				break
+			}
+			ch <- MaybeProgress{
+				Fetched: Fetched,
+				ToFetch: ToFetch,
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		ch <- MaybeProgress{Error: err}
+	}
+	close(ch)
 }
 
 func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoServer) error {
 	// first stash any local changes
 	didStash := false
-	ctx := ctx.Background()
+	ctx := context.Background()
 	err := util.ExecAndScanStdout(ctx, []string{"git", "stash"}, req.Path, func(line string) error {
 		if line != "No local changes to save" {
 			didStash = true
@@ -196,41 +228,39 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 		return nil
 	})
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
 	// then pull changes from network and send progress udpates
-	ch := make(chan MaybeErr, 1)
-	go func() {
-		err = util.ExecAndScanStdout(ctx, []string{"git", "pull", "origin", "master"}, req.Path, func(line string) error {
-			return nil
-		})
-		if err != nil {
-			ch <- MaybeErr{Error: err}
-		} else {
-			ch <- MaybeErr{Done: true}
-		}
-	}()
-	for {
-		// non-blocking with a buffered channel
-		if len(ch) > 0 {
-			break
-		}
+	stdout, stderr, closeCmd, err := util.ExecCmd(context.Background(), []string{"git", "pull", "origin", "master"}, req.Path)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	// we don't care about stdout
+	_, err = ioutil.ReadAll(stdout)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 
-		toFetch, fetched := s.node.GetFetchProgress(folder)
+	ch := make(chan MaybeProgress)
+	go parseProgressFromStdErr(stderr, ch)
+
+	for progress := range ch {
+		if progress.Error != nil {
+			return errors.WithStack(progress.Error)
+		}
 		err := server.Send(&pb.PullRepoResponsePacket{
-			ToFetch: toFetch,
-			Fetched: fetched,
+			ToFetch: progress.ToFetch,
+			Fetched: progress.Fetched,
 		})
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		time.Sleep(time.Second * 1)
 	}
 
-	result := <-ch
-	if result.Error != nil {
-		return errors.WithStack(result.Error)
+	err = closeCmd()
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
 	// finally pop any stashed chnages
@@ -240,11 +270,11 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 			return nil
 		})
 		if err != nil {
-			return nil, errors.WithStack(err)
+			return errors.WithStack(err)
 		}
 		// @@TODO: git stash drop
 	}
-	return &pb.PullRepoResponse{Ok: true}, nil
+	return nil
 }
 
 func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepoServer) error {
@@ -252,41 +282,38 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 	if len(location) == 0 {
 		location = s.node.Config.Node.ReplicationRoot
 	}
-	folder := filepath.Join(location, req.RepoID)
 	remote := fmt.Sprintf("conscience://%s", req.RepoID)
-	ch := make(chan MaybeErr, 1)
-	go func() {
-		err := util.ExecAndScanStdout(context.Background(), []string{"git", "clone", remote}, location, func(line string) error {
-			log.Debugln("[git clone] ", line)
-			return nil
-		})
-		if err != nil {
-			ch <- MaybeErr{Error: err}
-		} else {
-			ch <- MaybeErr{Done: true}
-		}
-	}()
+	stdout, stderr, closeCmd, err := util.ExecCmd(context.Background(), []string{"git", "clone", remote}, location)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	// we don't care about stdout
+	_, err = ioutil.ReadAll(stdout)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 
-	for {
-		// non-blocking with a buffered channel
-		if len(ch) > 0 {
-			break
-		}
+	ch := make(chan MaybeProgress)
+	go parseProgressFromStdErr(stderr, ch)
 
-		toFetch, fetched := s.node.GetFetchProgress(folder)
+	for progress := range ch {
+		if progress.Error != nil {
+			return errors.WithStack(progress.Error)
+		}
 		err := server.Send(&pb.CloneRepoResponsePacket{
-			ToFetch: toFetch,
-			Fetched: fetched,
+			Payload: &pb.CloneRepoResponsePacket_Progress_{&pb.CloneRepoResponsePacket_Progress{
+				ToFetch: progress.ToFetch,
+				Fetched: progress.Fetched,
+			}},
 		})
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		time.Sleep(time.Second * 1)
 	}
 
-	result := <-ch
-	if result.Error != nil {
-		return errors.WithStack(result.Error)
+	err = closeCmd()
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
 	name := req.RepoID
@@ -301,6 +328,15 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 	}
 
 	err = r.AddUserToConfig(req.Name, req.Email)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	err = server.Send(&pb.CloneRepoResponsePacket{
+		Payload: &pb.CloneRepoResponsePacket_Success_{&pb.CloneRepoResponsePacket_Success{
+			Path: repoPath,
+		}},
+	})
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -334,16 +370,13 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 			})
 
 		case pkt.PackfileData != nil:
-			// toFetch, fetched := s.node.GetFetchProgress(req.Path)
 			err = server.Send(&pb.FetchFromCommitResponse{
 				Payload: &pb.FetchFromCommitResponse_PackfileData_{&pb.FetchFromCommitResponse_PackfileData{
 					ObjHash: pkt.ObjHash[:],
 					ObjType: int32(pkt.ObjType),
 					ObjLen:  pkt.ObjLen,
-					// ToFetch: toFetch,
-					// Fetched: fetched,
-					Data: pkt.Data,
-					End:  pkt.End,
+					Data:    pkt.Data,
+					End:     pkt.End,
 				}},
 			})
 		}

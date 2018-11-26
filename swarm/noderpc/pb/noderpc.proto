@@ -87,8 +87,19 @@ message CloneRepoRequest {
 }
 
 message CloneRepoResponsePacket {
-    int64 toFetch = 1;
-    int64 fetched = 2;
+    message Progress {
+        int64 toFetch = 1;
+        int64 fetched = 2;
+    }
+
+    message Success {
+        string path = 1;
+    }
+
+    oneof payload {
+        Progress progress = 1;
+        Success success = 2;
+    }
 }
 
 message FetchFromCommitRequest {
