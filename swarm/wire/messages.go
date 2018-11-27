@@ -100,9 +100,12 @@ type ReplicationRequest struct {
 	RepoID    string
 }
 
-type ReplicationResponse struct {
+type ReplicationProgress struct {
 	ErrorLen int64 `struc:"sizeof=Error"`
 	Error    string
+	Fetched  int64
+	ToFetch  int64
+	Done     bool
 }
 
 type LocalRepo struct {

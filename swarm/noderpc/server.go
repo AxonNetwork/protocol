@@ -513,12 +513,19 @@ func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) 
 	return &pb.GetRepoUsersResponse{Total: total, Users: users}, nil
 }
 
-func (s *Server) RequestReplication(ctx context.Context, req *pb.ReplicationRequest) (*pb.ReplicationResponse, error) {
-	err := s.node.RequestReplication(ctx, req.RepoID)
-	if err != nil {
-		return nil, err
+func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRPC_RequestReplicationServer) error {
+	ctx := context.Background()
+	ch := s.node.RequestReplication(ctx, req.RepoID)
+	for progress := range ch {
+		if progress.Error != nil {
+			return errors.WithStack(progress.Error)
+		}
+		err := server.Send(&pb.ReplicationResponsePacket{Percent: int32(progress.Percent)})
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	}
-	return &pb.ReplicationResponse{}, nil
+	return nil
 }
 
 func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryRequest) (*pb.GetRepoHistoryResponse, error) {

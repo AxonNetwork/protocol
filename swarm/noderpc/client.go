@@ -297,9 +297,33 @@ func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodee
 	return resp.Users, resp.Total, nil
 }
 
-func (c *Client) RequestReplication(ctx context.Context, repoID string) error {
-	_, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
-	return errors.WithStack(err)
+type MaybeReplProgress struct {
+	Percent int32
+	Error   error
+}
+
+func (c *Client) RequestReplication(ctx context.Context, repoID string) chan MaybeReplProgress {
+	ch := make(chan MaybeReplProgress)
+	requestReplicationClient, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
+	if err != nil {
+		go func() {
+			defer close(ch)
+			ch <- MaybeReplProgress{Error: err}
+		}()
+		return ch
+	}
+	go func() {
+		defer close(ch)
+		for {
+			progress, err := requestReplicationClient.Recv()
+			if err != nil {
+				ch <- MaybeReplProgress{Error: err}
+				return
+			}
+			ch <- MaybeReplProgress{Percent: progress.Percent}
+		}
+	}()
+	return ch
 }
 
 func (c *Client) RepoHasObject(ctx context.Context, repoID string, objectID []byte) (bool, error) {

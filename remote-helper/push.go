@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 
@@ -42,6 +43,13 @@ func push(srcRefName string, destRefName string) error {
 	// @@TODO: give context a timeout and make it configurable
 	// ctx, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
 	// defer cancel3()
-	// return client.RequestReplication(ctx, repoID)
+	ch := client.RequestReplication(ctx, repoID)
+	for progress := range ch {
+		if progress.Error != nil {
+			log.Printf("Could not find replicator for repo")
+		}
+		log.Printf("Progress: %d%%", progress.Percent)
+	}
+
 	return nil
 }

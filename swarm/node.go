@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -194,8 +193,9 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 		for _, repoID := range n.Config.Node.ReplicateRepos {
 			log.Debugf("[content request] requesting repo '%v'", repoID)
 			ch := make(chan nodegit.MaybeProgress)
-			go n.PullRepo(repoID, ch)
+			go n.EnsureAndPullRepo(repoID, ch)
 			for progress := range ch {
+				// don't care about progress on periodic requests
 				if progress.Error != nil {
 					log.Errorf("[content request] error pulling repo (%v): %+v", repoID, progress.Error)
 				}
@@ -353,6 +353,14 @@ func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, 
 	return c.FetchFromCommit(ctx, repoID, commit)
 }
 
+func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {
+	return nodep2p.RequestBecomeReplicator(ctx, n, repoID)
+}
+
+func (n *Node) RequestReplication(ctx context.Context, repoID string) <-chan nodep2p.MaybeReplProgress {
+	return nodep2p.RequestReplication(ctx, n, repoID)
+}
+
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 	return n.Config.Update(func() error {
 		if shouldReplicate {
@@ -364,102 +372,9 @@ func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 	})
 }
 
-func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {
-	for _, pubkeyStr := range n.Config.Node.KnownReplicators {
-		peerID, err := peer.IDB58Decode(pubkeyStr)
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: bad pubkey string '%v': %v", pubkeyStr, err)
-			continue
-		}
-
-		stream, err := n.host.NewStream(ctx, peerID, nodep2p.BECOME_REPLICATOR_PROTO)
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: error connecting to peer %v: %v", peerID, err)
-			continue
-		}
-
-		err = WriteStructPacket(stream, &BecomeReplicatorRequest{RepoID: repoID})
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: error writing request: %v", err)
-			continue
-		}
-
-		resp := BecomeReplicatorResponse{}
-		err = ReadStructPacket(stream, &resp)
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: error reading response: %v", err)
-			continue
-		}
-
-		if resp.Error == "" {
-			log.Infof("RequestBecomeReplicator: peer %v agreed to replicate %v", peerID, repoID)
-		} else {
-			log.Infof("RequestBecomeReplicator: peer %v refused to replicate %v (err: %v)", peerID, repoID, resp.Error)
-		}
-	}
-	return nil
-}
-
-// Finds replicator nodes on the network that are hosting the given repository and issues requests
-// to them to pull from our local copy.
-func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
-	c, err := util.CidForString("replicate:" + repoID)
-	if err != nil {
-		return err
-	}
-
-	// @@TODO: configurable timeout
-	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	chProviders := n.dht.FindProvidersAsync(ctxTimeout, c, 8)
-
-	wg := &sync.WaitGroup{}
-	for provider := range chProviders {
-		if provider.ID == n.host.ID() {
-			continue
-		}
-
-		wg.Add(1)
-
-		go func(peerID peer.ID) {
-			defer wg.Done()
-
-			stream, err := n.host.NewStream(ctx, peerID, nodep2p.REPLICATION_PROTO)
-			if err != nil {
-				log.Errorf("[pull] error: %v", err)
-				return
-			}
-			defer stream.Close()
-
-			err = WriteStructPacket(stream, &ReplicationRequest{RepoID: repoID})
-			if err != nil {
-				log.Errorf("[pull] error: %v", err)
-				return
-			}
-
-			resp := ReplicationResponse{}
-			err = ReadStructPacket(stream, &resp)
-			if err != nil {
-				log.Errorf("[pull] error: %v", err)
-				return
-			}
-
-			if resp.Error != "" {
-				log.Printf("[pull] request rejected by peer %v (error: %v)", peerID.String(), resp.Error)
-				return
-			}
-			log.Printf("[pull] request accepted by peer %v", peerID.String())
-
-		}(provider.ID)
-	}
-	wg.Wait()
-
-	return nil
-}
-
 func (n *Node) EnsureAndPullRepo(repoID string, ch chan nodegit.MaybeProgress) {
 	r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
+	log.Println("ENSURE LOCAL CHECKOUT EXISTS: ", r.Path)
 	if err != nil {
 		ch <- nodegit.MaybeProgress{Error: err}
 		close(ch)

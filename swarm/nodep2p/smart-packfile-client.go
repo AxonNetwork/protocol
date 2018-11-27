@@ -303,9 +303,6 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		}
 		go sc.returnJobsToQueue(ctx, jobsToReturn, jobQueue)
 	}
-	debugObjectIDs("DESIRED: ", desiredObjectIDs)
-	debugObjectIDs("AVAILABLE: ", availableObjectIDs)
-	debugObjectIDs("MISSING: ", missingObjectIDs)
 
 	// Calculate the total uncompressed size of the objects in the packfile.
 	var uncompressedSize int64

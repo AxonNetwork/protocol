@@ -53,10 +53,10 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 	req := ReplicationRequest{}
 	err := ReadStructPacket(stream, &req)
 	if err != nil {
-		log.Errorf("[replication] error: %v", err)
+		log.Errorf("[replication server] error: %v", err)
 		return
 	}
-	log.Debugf("[replication] repoID: %v", req.RepoID)
+	log.Debugf("[replication server] repoID: %v", req.RepoID)
 
 	// Ensure that the repo has been whitelisted for replication.
 	whitelisted := false
@@ -69,9 +69,9 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 	}
 
 	if !whitelisted {
-		err = WriteStructPacket(stream, &ReplicationResponse{Error: "not a whitelisted repo"})
+		err = WriteStructPacket(stream, &ReplicationProgress{Error: "not a whitelisted repo"})
 		if err != nil {
-			log.Errorf("[replication] error: %v", err)
+			log.Errorf("[replication server] error: %v", err)
 		}
 		return
 	}
@@ -80,20 +80,28 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 	go s.node.PullRepo(req.RepoID, ch)
 	for progress := range ch {
 		if progress.Error != nil {
-			log.Errorf("[replication] error: %v", progress.Error)
+			log.Errorf("[replication server] error: %v", progress.Error)
 
-			err = WriteStructPacket(stream, &ReplicationResponse{Error: progress.Error.Error()})
+			err = WriteStructPacket(stream, &ReplicationProgress{Error: progress.Error.Error()})
 			if err != nil {
-				log.Errorf("[replication] error: %v", err)
+				log.Errorf("[replication server] error: %v", err)
 				return
 			}
 			return
 		}
+		err = WriteStructPacket(stream, &ReplicationProgress{
+			Fetched: progress.Fetched,
+			ToFetch: progress.ToFetch,
+		})
+		if err != nil {
+			log.Errorf("[replication server] error: %v", err)
+			return
+		}
 	}
 
-	err = WriteStructPacket(stream, &ReplicationResponse{Error: ""})
+	err = WriteStructPacket(stream, &ReplicationProgress{Done: true})
 	if err != nil {
-		log.Errorf("[replication] error: %v", err)
+		log.Errorf("[replication server] error: %v", err)
 		return
 	}
 }

@@ -25,7 +25,7 @@ service NodeRPC {
   rpc IsBehindRemote(IsBehindRemoteRequest) returns (IsBehindRemoteResponse) {}
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
-  rpc RequestReplication(ReplicationRequest) returns (ReplicationResponse) {}
+  rpc RequestReplication(ReplicationRequest) returns (stream ReplicationResponsePacket) {}
 
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
@@ -237,7 +237,9 @@ message ReplicationRequest {
     string repoID = 1;
 }
 
-message ReplicationResponse {}
+message ReplicationResponsePacket {
+    int32 percent = 1;
+}
 
 message GetRepoHistoryRequest {
     string repoID = 1;
