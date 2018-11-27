@@ -124,7 +124,6 @@ func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (io.ReadClose
 	} else {
 		args = cmdAndArgs[1:]
 	}
-	fmt.Println("TICK 1")
 
 	cmd := exec.CommandContext(ctx, cmdAndArgs[0], args...)
 	cmd.Dir = cwd

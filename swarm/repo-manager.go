@@ -27,7 +27,7 @@ func NewRepoManager(config *config.Config) *RepoManager {
 
 	foundRepos := []string{}
 	for _, path := range rm.config.Node.LocalRepos {
-		_, err := rm.openRepo(path)
+		_, err := rm.openRepo(path, false)
 		if errors.Cause(err) == git.ErrRepositoryNotExists {
 			log.Errorf("[repo manager] removing missing repo: %v", path)
 			continue
@@ -88,8 +88,8 @@ func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, err
 	return r, nil
 }
 
-func (rm *RepoManager) TrackRepo(repoPath string) (*repo.Repo, error) {
-	r, err := rm.openRepo(repoPath)
+func (rm *RepoManager) TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error) {
+	r, err := rm.openRepo(repoPath, forceReload)
 	if r == nil {
 		return nil, err
 	}
@@ -104,10 +104,12 @@ func (rm *RepoManager) TrackRepo(repoPath string) (*repo.Repo, error) {
 	return r, nil
 }
 
-func (rm *RepoManager) openRepo(repoPath string) (*repo.Repo, error) {
-	if r, exists := rm.reposByPath[repoPath]; exists {
-		log.Warnf("[repo manager] already opened repo at path '%v' (doing nothing)", repoPath)
-		return r, nil
+func (rm *RepoManager) openRepo(repoPath string, forceReload bool) (*repo.Repo, error) {
+	if !forceReload {
+		if r, exists := rm.reposByPath[repoPath]; exists {
+			log.Warnf("[repo manager] already opened repo at path '%v' (doing nothing)", repoPath)
+			return r, nil
+		}
 	}
 
 	r, err := repo.Open(repoPath)

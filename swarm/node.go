@@ -1,14 +1,11 @@
 package swarm
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"sync"
 	"time"
 
@@ -33,6 +30,7 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/nodegit"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
@@ -48,11 +46,6 @@ type Node struct {
 
 	bandwidthCounter *metrics.BandwidthCounter
 }
-
-const (
-	REPLICATION_PROTO       = "/conscience/replication/1.0.0"
-	BECOME_REPLICATOR_PROTO = "/conscience/become-replicator/1.0.0"
-)
 
 func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	if cfg == nil {
@@ -118,8 +111,8 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	n.host.SetStreamHandler(nodep2p.MANIFEST_PROTO, ns.HandleManifestRequest)
 	n.host.SetStreamHandler(nodep2p.OBJECT_PROTO, ns.HandleObjectStreamRequest)
 	n.host.SetStreamHandler(nodep2p.PACKFILE_PROTO, ns.HandlePackfileStreamRequest)
-	n.host.SetStreamHandler(REPLICATION_PROTO, n.handleReplicationRequest)
-	n.host.SetStreamHandler(BECOME_REPLICATOR_PROTO, n.handleBecomeReplicatorRequest)
+	n.host.SetStreamHandler(nodep2p.REPLICATION_PROTO, ns.HandleReplicationRequest)
+	n.host.SetStreamHandler(nodep2p.BECOME_REPLICATOR_PROTO, ns.HandleBecomeReplicatorRequest)
 
 	// Connect to our list of bootstrap peers
 	go func() {
@@ -200,9 +193,12 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 
 		for _, repoID := range n.Config.Node.ReplicateRepos {
 			log.Debugf("[content request] requesting repo '%v'", repoID)
-			err := n.pullRepo(repoID)
-			if err != nil {
-				log.Errorf("[content request] error pulling repo (%v): %+v", repoID, err)
+			ch := make(chan nodegit.MaybeProgress)
+			go n.PullRepo(repoID, ch)
+			for progress := range ch {
+				if progress.Error != nil {
+					log.Errorf("[content request] error pulling repo (%v): %+v", repoID, progress.Error)
+				}
 			}
 		}
 	}
@@ -376,7 +372,7 @@ func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error
 			continue
 		}
 
-		stream, err := n.host.NewStream(ctx, peerID, BECOME_REPLICATOR_PROTO)
+		stream, err := n.host.NewStream(ctx, peerID, nodep2p.BECOME_REPLICATOR_PROTO)
 		if err != nil {
 			log.Errorf("RequestBecomeReplicator: error connecting to peer %v: %v", peerID, err)
 			continue
@@ -429,7 +425,7 @@ func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
 		go func(peerID peer.ID) {
 			defer wg.Done()
 
-			stream, err := n.host.NewStream(ctx, peerID, REPLICATION_PROTO)
+			stream, err := n.host.NewStream(ctx, peerID, nodep2p.REPLICATION_PROTO)
 			if err != nil {
 				log.Errorf("[pull] error: %v", err)
 				return
@@ -462,132 +458,22 @@ func (n *Node) RequestReplication(ctx context.Context, repoID string) error {
 	return nil
 }
 
-func (n *Node) handleBecomeReplicatorRequest(stream netp2p.Stream) {
-	log.Printf("[become replicator] receiving 'become replicator' request")
-	defer stream.Close()
-
-	req := BecomeReplicatorRequest{}
-	err := ReadStructPacket(stream, &req)
-	if err != nil {
-		log.Errorf("[become replicator] error: %v", err)
-		return
-	}
-	log.Debugf("[become replicator] repoID: %v", req.RepoID)
-
-	if n.Config.Node.ReplicateEverything {
-		err = n.SetReplicationPolicy(req.RepoID, true)
-		if err != nil {
-			log.Errorf("[become replicator] error: %v", err)
-			_ = WriteStructPacket(stream, &BecomeReplicatorResponse{Error: err.Error()})
-			return
-		}
-
-		// Acknowledge that we will now replicate the repo
-		err = WriteStructPacket(stream, &BecomeReplicatorResponse{Error: ""})
-		if err != nil {
-			log.Errorf("[become replicator] error: %v", err)
-			return
-		}
-
-	} else {
-		err = WriteStructPacket(stream, &BecomeReplicatorResponse{Error: "no"})
-		if err != nil {
-			log.Errorf("[become replicator] error: %v", err)
-			return
-		}
-	}
-}
-
-// Handles an incoming request to replicate (pull changes from) a given repository.
-func (n *Node) handleReplicationRequest(stream netp2p.Stream) {
-	log.Printf("[replication] receiving replication request")
-	defer stream.Close()
-
-	req := ReplicationRequest{}
-	err := ReadStructPacket(stream, &req)
-	if err != nil {
-		log.Errorf("[replication] error: %v", err)
-		return
-	}
-	log.Debugf("[replication] repoID: %v", req.RepoID)
-
-	// Ensure that the repo has been whitelisted for replication.
-	whitelisted := false
-	for _, repo := range n.Config.Node.ReplicateRepos {
-		if repo == req.RepoID {
-			whitelisted = true
-			break
-		}
-	}
-
-	if !whitelisted {
-		err = WriteStructPacket(stream, &ReplicationResponse{Error: "not a whitelisted repo"})
-		if err != nil {
-			log.Errorf("[replication] error: %v", err)
-		}
-		return
-	}
-
-	err = n.pullRepo(req.RepoID)
-	if err != nil {
-		log.Errorf("[replication] error: %v", err)
-
-		err = WriteStructPacket(stream, &ReplicationResponse{Error: err.Error()})
-		if err != nil {
-			log.Errorf("[replication] error: %v", err)
-			return
-		}
-		return
-	}
-
-	err = WriteStructPacket(stream, &ReplicationResponse{Error: ""})
-	if err != nil {
-		log.Errorf("[replication] error: %v", err)
-		return
-	}
-}
-
-func (n *Node) pullRepo(repoID string) error {
+func (n *Node) EnsureAndPullRepo(repoID string, ch chan nodegit.MaybeProgress) {
 	r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
 	if err != nil {
-		return err
+		ch <- nodegit.MaybeProgress{Error: err}
+		close(ch)
+		return
 	}
+	n.PullRepo(r.Path, ch)
+}
 
-	// Start a git-pull process
-	// @@TODO: make timeout configurable
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+func (n *Node) PullRepo(path string, ch chan nodegit.MaybeProgress) {
+	nodegit.PullRepo(path, ch)
+}
 
-	cmd := exec.CommandContext(ctx, "git", "pull", "origin", "master")
-	cmd.Dir = r.Path
-	cmd.Env = util.CopyEnv()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	err = cmd.Run()
-	if err != nil {
-		log.Errorf("[pull repo] error running git pull: %v", string(stderr.Bytes()))
-		return err
-	}
-
-	scan := bufio.NewScanner(stdout)
-	for scan.Scan() {
-		log.Debugf("[pull repo] git (stdout): %v", scan.Text())
-	}
-	if err = scan.Err(); err != nil {
-		return err
-	}
-
-	scan = bufio.NewScanner(stderr)
-	for scan.Scan() {
-		log.Debugf("[pull repo] git (stderr): %v", scan.Text())
-	}
-	if err = scan.Err(); err != nil {
-		return err
-	}
-
-	return nil
+func (n *Node) GetConfig() config.Config {
+	return n.Config
 }
 
 func (n *Node) RepoManager() *RepoManager {

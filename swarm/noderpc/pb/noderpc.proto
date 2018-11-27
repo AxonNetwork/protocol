@@ -152,6 +152,7 @@ message RegisterRepoIDResponse {}
 
 message TrackLocalRepoRequest {
     string repoPath = 1;
+    bool forceReload = 2;
 }
 
 message TrackLocalRepoResponse {}

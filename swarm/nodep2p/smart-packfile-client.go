@@ -264,6 +264,17 @@ func (sc *SmartPackfileClient) returnJobsToQueue(ctx context.Context, jobs []job
 	}
 }
 
+func debugObjectIDs(prefix string, objects [][]byte) {
+	log.Debugln(prefix)
+	for i := range objects {
+		b := objects[i]
+		id := [20]byte{}
+		copy(id[:], b[:])
+		hash := gitplumbing.Hash(id)
+		log.Debugln(hash.String())
+	}
+}
+
 func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
@@ -292,6 +303,9 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		}
 		go sc.returnJobsToQueue(ctx, jobsToReturn, jobQueue)
 	}
+	debugObjectIDs("DESIRED: ", desiredObjectIDs)
+	debugObjectIDs("AVAILABLE: ", availableObjectIDs)
+	debugObjectIDs("MISSING: ", missingObjectIDs)
 
 	// Calculate the total uncompressed size of the objects in the packfile.
 	var uncompressedSize int64

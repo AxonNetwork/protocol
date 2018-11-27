@@ -114,7 +114,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 				return err
 			}
 
-			err = trackRepo()
+			err = trackRepo(true)
 			if err != nil {
 				return err
 			}
@@ -145,7 +145,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		case text == "":
 			// The blank line is the stream terminator.  We return when we see this.
-			err := trackRepo()
+			err := trackRepo(false)
 			if err != nil {
 				return err
 			}
@@ -165,7 +165,7 @@ func die(err error) {
 	os.Exit(1)
 }
 
-func trackRepo() error {
+func trackRepo(forceReload bool) error {
 	// Tell the node to track this repo
 	fullpath, err := filepath.Abs(filepath.Dir(GIT_DIR))
 	if err != nil {
@@ -175,7 +175,7 @@ func trackRepo() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	err = client.TrackLocalRepo(ctx, fullpath)
+	err = client.TrackLocalRepo(ctx, fullpath, forceReload)
 	if err != nil {
 		return err
 	}

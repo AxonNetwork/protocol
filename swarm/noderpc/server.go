@@ -23,6 +23,7 @@ import (
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/nodegit"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/util"
 )
@@ -141,7 +142,7 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 
 	// Have the node track the local repo
-	_, err = s.node.RepoManager().TrackRepo(path)
+	_, err = s.node.RepoManager().TrackRepo(path, true)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -218,32 +219,8 @@ func parseProgressFromStdErr(stderr io.ReadCloser, ch chan MaybeProgress) {
 }
 
 func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoServer) error {
-	// first stash any local changes
-	didStash := false
-	ctx := context.Background()
-	err := util.ExecAndScanStdout(ctx, []string{"git", "stash"}, req.Path, func(line string) error {
-		if line != "No local changes to save" {
-			didStash = true
-		}
-		return nil
-	})
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	// then pull changes from network and send progress udpates
-	stdout, stderr, closeCmd, err := util.ExecCmd(context.Background(), []string{"git", "pull", "origin", "master"}, req.Path)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	// we don't care about stdout
-	_, err = ioutil.ReadAll(stdout)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	ch := make(chan MaybeProgress)
-	go parseProgressFromStdErr(stderr, ch)
+	ch := make(chan nodegit.MaybeProgress)
+	go s.node.PullRepo(req.Path, ch)
 
 	for progress := range ch {
 		if progress.Error != nil {
@@ -256,23 +233,6 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 		if err != nil {
 			return errors.WithStack(err)
 		}
-	}
-
-	err = closeCmd()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	// finally pop any stashed chnages
-	if didStash {
-		// @@TODO: handle merge conflict on stash pop
-		err = util.ExecAndScanStdout(ctx, []string{"git", "stash", "apply"}, req.Path, func(line string) error {
-			return nil
-		})
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		// @@TODO: git stash drop
 	}
 	return nil
 }
@@ -451,7 +411,7 @@ func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDReque
 }
 
 func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoRequest) (*pb.TrackLocalRepoResponse, error) {
-	_, err := s.node.RepoManager().TrackRepo(req.RepoPath)
+	_, err := s.node.RepoManager().TrackRepo(req.RepoPath, req.ForceReload)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -575,7 +535,6 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		if r == nil {
 			return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
 		}
-
 	} else {
 		return nil, errors.Errorf("must provide either repoID or path")
 	}

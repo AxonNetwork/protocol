@@ -175,8 +175,8 @@ func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {
 	return errors.WithStack(err)
 }
 
-func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string) error {
-	_, err := c.client.TrackLocalRepo(ctx, &pb.TrackLocalRepoRequest{RepoPath: repoPath})
+func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string, forceReload bool) error {
+	_, err := c.client.TrackLocalRepo(ctx, &pb.TrackLocalRepoRequest{RepoPath: repoPath, ForceReload: forceReload})
 	return errors.WithStack(err)
 }
 
