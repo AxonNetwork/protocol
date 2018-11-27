@@ -133,11 +133,13 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 }
 func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh chan MaybeReplProgress) {
 	defer close(progressCh)
+	if len(peerChs) == 0 {
+		err := errors.Errorf("no replicators available")
+		progressCh <- MaybeReplProgress{Error: err}
+	}
 	maxPercent := 0
 	percentMutex := &sync.Mutex{}
 	done := false
-	numErrors := 0
-	errorsMutex := &sync.Mutex{}
 	wg := &sync.WaitGroup{}
 	for _, ch := range peerChs {
 		go func() {
@@ -148,13 +150,6 @@ func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh
 					return
 				}
 				if progress.Error != nil {
-					errorsMutex.Lock()
-					numErrors++
-					errorsMutex.Unlock()
-					if numErrors == len(peerChs) {
-						err := errors.Errorf("every replicator failed to replicate repo")
-						progressCh <- MaybeReplProgress{Error: err}
-					}
 					return
 				}
 				percent := int(progress.Fetched / progress.ToFetch)
@@ -165,8 +160,13 @@ func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh
 					progressCh <- MaybeReplProgress{Percent: percent}
 				}
 			}
+			// peer successfully replicated repo
 			done = true
 		}()
 	}
 	wg.Wait()
+	if !done {
+		err := errors.Errorf("every replicator failed to replicate repo")
+		progressCh <- MaybeReplProgress{Error: err}
+	}
 }
