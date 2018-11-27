@@ -200,7 +200,7 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 
 		for _, repoID := range n.Config.Node.ReplicateRepos {
 			log.Debugf("[content request] requesting repo '%v'", repoID)
-			err := n.pullRepo(repoID)
+			err := n.PullRepo(repoID)
 			if err != nil {
 				log.Errorf("[content request] error pulling repo (%v): %+v", repoID, err)
 			}
@@ -528,7 +528,7 @@ func (n *Node) handleReplicationRequest(stream netp2p.Stream) {
 		return
 	}
 
-	err = n.pullRepo(req.RepoID)
+	err = n.PullRepo(req.RepoID)
 	if err != nil {
 		log.Errorf("[replication] error: %v", err)
 
@@ -547,7 +547,7 @@ func (n *Node) handleReplicationRequest(stream netp2p.Stream) {
 	}
 }
 
-func (n *Node) pullRepo(repoID string) error {
+func (n *Node) PullRepo(repoID string) error {
 	r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
 	if err != nil {
 		return err
@@ -588,6 +588,10 @@ func (n *Node) pullRepo(repoID string) error {
 	}
 
 	return nil
+}
+
+func (n *Node) GetConfig() config.Config {
+	return n.Config
 }
 
 func (n *Node) RepoManager() *RepoManager {
