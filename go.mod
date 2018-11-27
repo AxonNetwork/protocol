@@ -8,7 +8,7 @@ require (
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20181109020153-5faa74ffbed7 // indirect
 	github.com/brynbellomy/debugcharts v0.0.0-20180826220201-c3f57e57ea6f
-	github.com/btcsuite/btcd v0.0.0-20181013004428-67e573d211ac
+	github.com/btcsuite/btcd v0.0.0-20181123190223-3dcf298fed2d
 	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f // indirect
 	github.com/btcsuite/btcutil v0.0.0-20180706230648-ab6388e0c60a
 	github.com/btcsuite/go-socks v0.0.0-20170105172521-4720035b7bfd // indirect
