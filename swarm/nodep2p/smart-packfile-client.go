@@ -148,7 +148,9 @@ func aggregateWork(ctx context.Context, jobQueue chan job, batchSize int, batchT
 					}
 
 				case <-timeout:
-					chBatch <- current
+					if len(current) > 0 {
+						chBatch <- current
+					}
 					continue Outer
 
 				case <-ctx.Done():
