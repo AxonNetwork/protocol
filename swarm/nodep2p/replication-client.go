@@ -136,13 +136,14 @@ func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh
 	if len(peerChs) == 0 {
 		err := errors.Errorf("no replicators available")
 		progressCh <- MaybeReplProgress{Error: err}
+		return
 	}
 	maxPercent := 0
 	percentMutex := &sync.Mutex{}
 	done := false
 	wg := &sync.WaitGroup{}
-	for _, ch := range peerChs {
-		go func() {
+	for _, peerCh := range peerChs {
+		go func(ch chan nodegit.MaybeProgress) {
 			defer wg.Done()
 			wg.Add(1)
 			for progress := range ch {
@@ -162,7 +163,7 @@ func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh
 			}
 			// peer successfully replicated repo
 			done = true
-		}()
+		}(peerCh)
 	}
 	wg.Wait()
 	if !done {
