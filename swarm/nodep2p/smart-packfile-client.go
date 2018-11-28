@@ -354,7 +354,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 				Data:    data,
 			},
 		}
-		timeSpentLocked = timeSpentLocked.Add(start)
+		timeSpentLocked = timeSpentLocked.Add(time.Now().Sub(start))
 	}
 
 	start := time.Now()
@@ -366,7 +366,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 			End:     true,
 		},
 	}
-	timeSpentLocked = timeSpentLocked.Add(start)
+	timeSpentLocked = timeSpentLocked.Add(time.Now().Sub(start))
 
 	for range availableObjectIDs {
 		wg.Done()
