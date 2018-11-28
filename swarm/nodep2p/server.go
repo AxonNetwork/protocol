@@ -184,7 +184,7 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsFlattened []byte,
 }
 
 func getCachedPackfile(objectIDs [][]byte) *os.File {
-	return nil
+	// return nil
 	sorted := SortByteSlices(objectIDs)
 	flattened := FlattenObjectIDs(sorted)
 	hash := sha256.Sum256(flattened)

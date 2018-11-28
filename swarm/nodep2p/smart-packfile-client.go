@@ -322,9 +322,14 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		},
 	}
 
+	timeSpentReading := time.Time{}
+	timeSpentLocked := time.Time{}
 	for {
+		start := time.Now()
+
 		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(packfileReader, data)
+		timeSpentReading = timeSpentReading.Add(time.Now().Sub(start))
 		if err == io.EOF {
 			// read no bytes
 			break
@@ -340,6 +345,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 			go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
 			return err
 		}
+		start = time.Now()
 		chOut <- MaybeFetchFromCommitPacket{
 			PackfileData: &PackfileData{
 				ObjHash: packfileTempID,
@@ -348,8 +354,10 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 				Data:    data,
 			},
 		}
+		timeSpentLocked = timeSpentLocked.Add(start)
 	}
 
+	start := time.Now()
 	chOut <- MaybeFetchFromCommitPacket{
 		PackfileData: &PackfileData{
 			ObjHash: packfileTempID,
@@ -358,10 +366,14 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 			End:     true,
 		},
 	}
+	timeSpentLocked = timeSpentLocked.Add(start)
 
 	for range availableObjectIDs {
 		wg.Done()
 	}
+
+	log.Infoln("[packfile client] time spent locked: %v", timeSpentLocked)
+	log.Infoln("[packfile client] time spent reading: %v", timeSpentReading)
 
 	return nil
 }

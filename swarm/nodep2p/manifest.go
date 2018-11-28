@@ -62,7 +62,7 @@ func getManifest(r *repo.Repo) ([]ManifestObject, error) {
 }
 
 func getCachedManifest(repoID string) []ManifestObject {
-	return nil
+	// return nil
 	cacheDir := filepath.Join(os.TempDir(), "conscience-manifest-cache")
 	err := os.MkdirAll(cacheDir, os.ModePerm)
 	if err != nil {
