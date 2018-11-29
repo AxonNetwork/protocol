@@ -36,12 +36,22 @@ func main() {
 
 	bandwidthCounter := metrics.NewBandwidthCounter()
 
+	var key crypto.PrivKey
+	var port int
+	if server {
+		key = obtainKey()
+		port = 9991
+	} else {
+		key = makeKey()
+		port = 9992
+	}
+
 	// Initialize the p2p host
 	host, err := libp2p.New(ctx,
 		libp2p.ListenAddrStrings(
-			fmt.Sprintf("/ip4/%v/tcp/%v", "0.0.0.0", 9991),
+			fmt.Sprintf("/ip4/%v/tcp/%v", "0.0.0.0", port),
 		),
-		libp2p.Identity(obtainKey()),
+		libp2p.Identity(key),
 		libp2p.NATPortMap(),
 		libp2p.BandwidthReporter(bandwidthCounter),
 	)
@@ -156,6 +166,14 @@ func obtainKey() crypto.PrivKey {
 		panic(err)
 	}
 	return k
+}
+
+func makeKey() crypto.PrivKey {
+	privkey, _, err := crypto.GenerateKeyPair(crypto.Secp256k1, 0)
+	if err != nil {
+		panic(err)
+	}
+	return privkey
 }
 
 type blankValidator struct{}
