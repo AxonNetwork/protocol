@@ -16,15 +16,6 @@ import (
 )
 
 func getManifest(r *repo.Repo) ([]ManifestObject, error) {
-	repoID, err := r.RepoID()
-	if err != nil {
-		return nil, err
-	}
-
-	cached := getCachedManifest(repoID)
-	if cached != nil {
-		return cached, nil
-	}
 
 	// Build the manifest
 
@@ -51,11 +42,6 @@ func getManifest(r *repo.Repo) ([]ManifestObject, error) {
 		copy(h[:], hash[:])
 
 		manifest = append(manifest, ManifestObject{Hash: h[:], Size: size})
-	}
-
-	err = createCachedManifest(repoID, manifest)
-	if err != nil {
-		log.Errorln("[repo] error caching manifest:", err)
 	}
 
 	return manifest, nil
@@ -150,16 +136,27 @@ func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[g
 		}
 
 		walker := gitobject.NewTreeWalker(tree, true, seen)
-		defer walker.Close()
 
 		for {
 			_, entry, err := walker.Next()
 			if err == io.EOF {
+				walker.Close()
 				break
 			} else if err != nil {
+				walker.Close()
 				return err
 			}
-			seen[entry.Hash] = true
+			obj, err := r.Object(gitplumbing.AnyObject, entry.Hash)
+			if err != nil {
+				log.Printf("[err] error on r.Object: %v\n", err)
+				continue
+			}
+			switch obj.Type() {
+			case gitplumbing.TreeObject, gitplumbing.BlobObject:
+				seen[entry.Hash] = true
+			default:
+				log.Printf("found weird object: %v (%v)\n", entry.Hash.String(), obj.Type())
+			}
 		}
 
 		seen[commit.Hash] = true

@@ -140,7 +140,6 @@ func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[g
 			case gitplumbing.TreeObject, gitplumbing.BlobObject:
 				seen[entry.Hash] = true
 			default:
-				seen[entry.Hash] = false
 				fmt.Printf("found weird object: %v (%v)\n", entry.Hash.String(), obj.Type())
 			}
 		}
