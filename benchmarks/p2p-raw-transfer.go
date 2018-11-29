@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	cid "github.com/ipfs/go-cid"
@@ -20,8 +21,9 @@ import (
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	ma "github.com/multiformats/go-multiaddr"
 	multihash "github.com/multiformats/go-multihash"
-
 	"github.com/pkg/errors"
+
+	"github.com/Conscience/protocol/config"
 )
 
 func main() {
@@ -157,14 +159,16 @@ func cidForString(s string) (cid.Cid, error) {
 }
 
 func obtainKey() crypto.PrivKey {
-	data, err := ioutil.ReadFile("/home/bryn/.conscience.key")
+	data, err := ioutil.ReadFile(filepath.Join(config.HOME, ".conscience.key"))
 	if err != nil {
-		panic(err)
+		return makeKey()
 	}
+
 	k, err := crypto.UnmarshalPrivateKey(data)
 	if err != nil {
 		panic(err)
 	}
+
 	return k
 }
 
