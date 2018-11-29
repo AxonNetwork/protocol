@@ -124,12 +124,24 @@ func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[g
 	stack := []gitplumbing.Hash{commitHash}
 
 	for len(stack) > 0 {
+		if seen[stack[0]] {
+			stack = stack[1:]
+			continue
+		}
+
 		commit, err := r.CommitObject(stack[0])
 		if err != nil {
 			return err
 		}
 
-		stack = append(stack[1:], commit.ParentHashes...)
+		parentHashes := []gitplumbing.Hash{}
+		for _, h := range commit.ParentHashes {
+			if _, wasSeen := seen[h]; !wasSeen {
+				parentHashes = append(parentHashes, h)
+			}
+		}
+
+		stack = append(stack[1:], parentHashes...)
 
 		// Walk the tree for this commit
 		tree, err := r.TreeObject(commit.TreeHash)
