@@ -76,8 +76,15 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		return
 	}
 
+	repo := s.node.Repo(req.RepoID)
+	if repo == nil {
+		log.Errorf("[replication server] don't have this repo locally")
+		return
+	}
+
 	ch := make(chan nodegit.MaybeProgress)
-	go s.node.PullRepo(req.RepoID, ch)
+	go s.node.PullRepo(repo.Path, ch)
+
 	for progress := range ch {
 		if progress.Error != nil {
 			log.Errorf("[replication server] error: %v", progress.Error)

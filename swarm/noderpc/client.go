@@ -316,7 +316,9 @@ func (c *Client) RequestReplication(ctx context.Context, repoID string) chan May
 		defer close(ch)
 		for {
 			progress, err := requestReplicationClient.Recv()
-			if err != nil {
+			if err == io.EOF {
+				return
+			} else if err != nil {
 				ch <- MaybeReplProgress{Error: err}
 				return
 			}

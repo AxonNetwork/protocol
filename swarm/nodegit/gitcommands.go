@@ -21,8 +21,10 @@ type MaybeProgress struct {
 func PullRepo(path string, ch chan MaybeProgress) {
 	var err error
 	defer func() {
-		ch <- MaybeProgress{Error: err}
-		close(ch)
+		defer close(ch)
+		if err != nil {
+			ch <- MaybeProgress{Error: err}
+		}
 	}()
 
 	// first stash any local changes

@@ -58,6 +58,10 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 						p.chProviders = node.FindProvidersAsync(p.ctx, cid, 999)
 						continue
 					}
+					// if self
+					if peerInfo.ID == node.ID() {
+						continue
+					}
 					peerID = peerInfo.ID
 				case <-p.ctx.Done():
 					return

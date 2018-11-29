@@ -47,6 +47,7 @@ func push(srcRefName string, destRefName string) error {
 	for progress := range ch {
 		if progress.Error != nil {
 			log.Printf("Could not find replicator for repo")
+			return nil
 		}
 		log.Printf("Progress: %d%%", progress.Percent)
 	}

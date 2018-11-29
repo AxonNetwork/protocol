@@ -9,7 +9,6 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/nodegit"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
@@ -56,6 +55,13 @@ type MaybeReplProgress struct {
 	Error   error
 }
 
+type MaybePeerProgress struct {
+	Fetched int64
+	ToFetch int64
+	Error   error
+	Done    bool
+}
+
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
 func RequestReplication(ctx context.Context, n INode, repoID string) <-chan MaybeReplProgress {
@@ -75,13 +81,13 @@ func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Mayb
 
 	chProviders := n.FindProvidersAsync(ctxTimeout, c, 8)
 
-	peerChs := make(map[peer.ID](chan nodegit.MaybeProgress))
+	peerChs := make(map[peer.ID](chan MaybePeerProgress))
 	for provider := range chProviders {
 		if provider.ID == n.ID() {
 			continue
 		}
 
-		peerCh := make(chan nodegit.MaybeProgress)
+		peerCh := make(chan MaybePeerProgress)
 		go requestPeerReplication(ctx, n, repoID, provider.ID, peerCh)
 		peerChs[provider.ID] = peerCh
 	}
@@ -91,14 +97,13 @@ func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Mayb
 	return progressCh
 }
 
-func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID peer.ID, ch chan nodegit.MaybeProgress) {
-	defer close(ch)
+func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID peer.ID, peerCh chan MaybePeerProgress) {
 	var err error
 	defer func() {
-		defer close(ch)
+		defer close(peerCh)
 		if err != nil {
 			log.Errorf("[pull error: %v]", err)
-			ch <- nodegit.MaybeProgress{Error: err}
+			peerCh <- MaybePeerProgress{Error: err}
 		}
 	}()
 	stream, err := n.NewStream(ctx, peerID, REPLICATION_PROTO)
@@ -120,18 +125,20 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 		}
 		if resp.Error != "" {
 			err = errors.Errorf(resp.Error)
-			return
 		}
-		if resp.Done == true {
-			return
-		}
-		ch <- nodegit.MaybeProgress{
+
+		peerCh <- MaybePeerProgress{
 			Fetched: resp.Fetched,
 			ToFetch: resp.ToFetch,
+			Done:    resp.Done,
+			Error:   err,
+		}
+		if resp.Done == true || err != nil {
+			return
 		}
 	}
 }
-func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh chan MaybeReplProgress) {
+func combinePeerChs(peerChs map[peer.ID](chan MaybePeerProgress), progressCh chan MaybeReplProgress) {
 	defer close(progressCh)
 	if len(peerChs) == 0 {
 		err := errors.Errorf("no replicators available")
@@ -143,17 +150,20 @@ func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh
 	done := false
 	wg := &sync.WaitGroup{}
 	for _, peerCh := range peerChs {
-		go func(ch chan nodegit.MaybeProgress) {
+		wg.Add(1)
+		go func(ch chan MaybePeerProgress) {
 			defer wg.Done()
-			wg.Add(1)
 			for progress := range ch {
-				if done {
+				if progress.Done == true {
+					done = true
+				}
+				if done || progress.Error != nil {
 					return
 				}
-				if progress.Error != nil {
-					return
+				percent := 0
+				if progress.ToFetch > 0 {
+					percent = int(100 * progress.Fetched / progress.ToFetch)
 				}
-				percent := int(progress.Fetched / progress.ToFetch)
 				if percent > maxPercent {
 					percentMutex.Lock()
 					maxPercent = percent
@@ -161,11 +171,10 @@ func combinePeerChs(peerChs map[peer.ID](chan nodegit.MaybeProgress), progressCh
 					progressCh <- MaybeReplProgress{Percent: percent}
 				}
 			}
-			// peer successfully replicated repo
-			done = true
 		}(peerCh)
 	}
 	wg.Wait()
+
 	if !done {
 		err := errors.Errorf("every replicator failed to replicate repo")
 		progressCh <- MaybeReplProgress{Error: err}
