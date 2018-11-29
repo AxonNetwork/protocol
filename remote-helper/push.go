@@ -43,10 +43,12 @@ func push(srcRefName string, destRefName string) error {
 	// @@TODO: give context a timeout and make it configurable
 	// ctx, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
 	// defer cancel3()
-	ch := client.RequestReplication(ctx, repoID)
+	log.Println("Contacting peers for replication...")
+	ch := client.RequestReplication(context.Background(), repoID)
 	for progress := range ch {
 		if progress.Error != nil {
 			log.Printf("Could not find replicator for repo")
+			return nil
 		}
 		log.Printf("Progress: %d%%", progress.Percent)
 	}
