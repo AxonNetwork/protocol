@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -14,21 +15,34 @@ import (
 	dsync "github.com/ipfs/go-datastore/sync"
 	libp2p "github.com/libp2p/go-libp2p"
 	crypto "github.com/libp2p/go-libp2p-crypto"
+	host "github.com/libp2p/go-libp2p-host"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	kbucket "github.com/libp2p/go-libp2p-kbucket"
 	metrics "github.com/libp2p/go-libp2p-metrics"
 	netp2p "github.com/libp2p/go-libp2p-net"
+	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	ma "github.com/multiformats/go-multiaddr"
 	multihash "github.com/multiformats/go-multihash"
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/config"
+	. "github.com/Conscience/protocol/swarm/wire"
 )
 
-func main() {
-	const PACK_SIZE = 1024 * 1024 * 20
+const MB = 1024 * 1024
+const PACK_MULTIPLIER = 64
+const PACK_SIZE = MB * PACK_MULTIPLIER
+const CHUNK_MULTIPLIER = 1
+const CHUNK_SIZE = MB * CHUNK_MULTIPLIER
 
+type StreamChunk struct {
+	End     bool
+	DataLen int `struc:"sizeof=Data"`
+	Data    []byte
+}
+
+func main() {
 	var server bool
 	if len(os.Args) < 2 || os.Args[1] == "" {
 		server = true
@@ -70,18 +84,9 @@ func main() {
 			fmt.Println(addr.String() + "/ipfs/" + host.ID().Pretty())
 		}
 
-		host.SetStreamHandler("test-proto", func(stream netp2p.Stream) {
-			defer stream.Close()
-			fmt.Println("[server] transfer starting")
-
-			data, err := ioutil.ReadAll(stream)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Printf("[server] transferred %v bytes\n", len(data))
-			fmt.Println("[server] finished")
-		})
+		host.SetStreamHandler("test-file-proto", testFileServer)
+		host.SetStreamHandler("test-chunk-proto", testFileServer)
+		host.SetStreamHandler("test-struct-proto", testStructServer)
 
 		go periodicallyAnnounceContent(ctx, d)
 
@@ -103,29 +108,190 @@ func main() {
 			panic(errors.Wrapf(err, "could not connect to peer '%v'", os.Args[1]).Error())
 		}
 
-		stream, err := host.NewStream(ctx, pinfo.ID, "test-proto")
-		if err != nil {
-			panic(err)
-		}
-		defer stream.Close()
-
-		fmt.Println("[client] connected to server")
-
-		f, err := os.Open("/dev/urandom")
+		fileTime, err := testFileClient(host, pinfo.ID)
 		if err != nil {
 			panic(err)
 		}
 
-		r := io.LimitReader(f, PACK_SIZE)
-
-		n, err := io.Copy(stream, r)
-		if err != nil && err != io.EOF {
+		chunkTime, err := testChunkClient(host, pinfo.ID)
+		if err != nil {
 			panic(err)
-		} else if err == io.EOF {
 		}
-		fmt.Printf("[client] transferred %v bytes\n", n)
+
+		structTime, err := testStructClient(host, pinfo.ID)
+		if err != nil {
+			panic(err)
+		}
+
 		fmt.Println("[client] done")
+
+		fmt.Printf("File Size: %vMB\n", PACK_MULTIPLIER)
+		fmt.Printf("Chunk Size: %vMB\n", CHUNK_MULTIPLIER)
+		fmt.Println("Full File Transfer time: ", fileTime)
+		fmt.Println("Chunked File Transfer time: ", chunkTime)
+		fmt.Println("Struct Chunked File Transfer time: ", structTime)
 	}
+}
+
+func testFileServer(stream netp2p.Stream) {
+	defer stream.Close()
+	fmt.Println("[server] transfer starting")
+
+	data := make([]byte, PACK_SIZE)
+	var total int
+	for {
+		n, err := io.ReadFull(stream, data)
+		if err == io.EOF {
+			break
+		} else if err == io.ErrUnexpectedEOF {
+			continue
+		} else if err != nil {
+			panic(err)
+		}
+
+		total += n
+	}
+
+	fmt.Printf("[server] read %v bytes\n", total)
+	fmt.Println("[server] finished")
+}
+
+func testStructServer(stream netp2p.Stream) {
+	defer stream.Close()
+	fmt.Println("[server] transfer starting")
+
+	var total int
+	for {
+		chunk := StreamChunk{}
+		err := ReadStructPacket(stream, &chunk)
+		if err != nil {
+			fmt.Println("err: ", err)
+			return
+		}
+		total += len(chunk.Data)
+		if chunk.End {
+			break
+		}
+	}
+	fmt.Printf("[server] read %v bytes\n", total)
+	fmt.Println("[server] finished")
+}
+
+func testFileClient(host host.Host, id peer.ID) (time.Duration, error) {
+	start := time.Now()
+
+	ctx := context.Background()
+	stream, err := host.NewStream(ctx, id, "test-file-proto")
+	if err != nil {
+		return 0, err
+	}
+	defer stream.Close()
+
+	fmt.Println("[client] connected to server")
+
+	f, err := os.Open("/dev/urandom")
+	if err != nil {
+		return 0, err
+	}
+
+	r := io.LimitReader(f, PACK_SIZE)
+
+	n, err := io.Copy(stream, r)
+	if err != nil && err != io.EOF {
+		return 0, err
+	} else if err == io.EOF {
+	}
+	fmt.Printf("[client] transferred %v bytes\n", n)
+	fmt.Println("[client] done")
+
+	total := time.Now().Sub(start)
+	return total, nil
+}
+
+func testChunkClient(host host.Host, id peer.ID) (time.Duration, error) {
+	start := time.Now()
+
+	ctx := context.Background()
+	stream, err := host.NewStream(ctx, id, "test-chunk-proto")
+	if err != nil {
+		return 0, err
+	}
+	defer stream.Close()
+
+	fmt.Println("[client] connected to server")
+
+	f, err := os.Open("/dev/urandom")
+	if err != nil {
+		return 0, err
+	}
+
+	r := io.LimitReader(f, PACK_SIZE)
+	data := make([]byte, CHUNK_SIZE)
+	transferred := 0
+	for {
+		n, err := io.ReadFull(r, data)
+		if err == io.EOF {
+			break
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
+		} else if err != nil {
+			return 0, err
+		}
+		transferred += n
+
+		buf := bytes.NewBuffer(data)
+		_, err = buf.WriteTo(stream)
+		if err != nil {
+			return 0, err
+		}
+	}
+	fmt.Printf("[client] transferred %v bytes\n", transferred)
+
+	total := time.Now().Sub(start)
+	return total, nil
+}
+
+func testStructClient(host host.Host, id peer.ID) (time.Duration, error) {
+	start := time.Now()
+
+	ctx := context.Background()
+	stream, err := host.NewStream(ctx, id, "test-struct-proto")
+	if err != nil {
+		return 0, err
+	}
+	defer stream.Close()
+
+	fmt.Println("[client] connected to server")
+
+	f, err := os.Open("/dev/urandom")
+	if err != nil {
+		return 0, err
+	}
+
+	r := io.LimitReader(f, PACK_SIZE)
+	data := make([]byte, CHUNK_SIZE)
+	transferred := 0
+	end := false
+	for {
+		n, err := io.ReadFull(r, data)
+		if err == io.EOF {
+			break
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
+			end = true
+		} else if err != nil {
+			return 0, err
+		}
+		err = WriteStructPacket(stream, &StreamChunk{End: end, Data: data})
+		if err != nil {
+			return 0, err
+		}
+		transferred += n
+	}
+	fmt.Printf("[client] transferred %v bytes\n", transferred)
+
+	total := time.Now().Sub(start)
+	return total, nil
 }
 
 var fakeRepos = []string{"one", "two", "three", "four"}
