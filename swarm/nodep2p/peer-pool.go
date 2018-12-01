@@ -112,12 +112,12 @@ func (p *peerPool) Close() error {
 	p.chProviders = nil
 	p.peers = nil
 
-	for _, conn := range p.peerList {
-		err := conn.Close()
-		if err != nil {
-			log.Errorln("[peer pool] Close: error closing connection", err)
-		}
-	}
+	// for _, conn := range p.peerList {
+	// 	err := conn.Close()
+	// 	if err != nil {
+	// 		log.Errorln("[peer pool] Close: error closing connection", err)
+	// 	}
+	// }
 
 	return nil
 }
@@ -137,10 +137,10 @@ func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 			delete(p.peerList, conn.peerID)
 		}
 
-		err := conn.Close()
-		if err != nil {
-			log.Errorln("[peer pool] ReturnConn: error closing connection", err)
-		}
+		// err := conn.Close()
+		// if err != nil {
+		// 	log.Errorln("[peer pool] ReturnConn: error closing connection", err)
+		// }
 
 		select {
 		case p.needNewPeer <- struct{}{}:

@@ -26,7 +26,8 @@ func NewServer(node INode) *Server {
 }
 
 func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
-	req := HandshakeRequest{}
+	defer stream.Close()
+	req := GetPackfileRequest{}
 	err := ReadStructPacket(stream, &req)
 	if err != nil {
 		log.Errorf("[p2p server] %v", err)
@@ -51,7 +52,7 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 
 	if hasAccess == false {
 		log.Warnf("[p2p server] address 0x%0x does not have pull access", addr.Bytes())
-		err := WriteStructPacket(stream, &HandshakeResponse{Authorized: false})
+		err := WriteStructPacket(stream, &GetPackfileResponse{Authorized: false})
 		if err != nil {
 			log.Errorf("[p2p server] %v", err)
 			return
@@ -59,38 +60,10 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 		return
 	}
 
-	repo := s.node.Repo(req.RepoID)
-	commit, err := repo.HeadHash()
-	if err != nil {
-		log.Errorf("[p2p server] %v", err)
-		return
-	}
-
-	err = WriteStructPacket(stream, &HandshakeResponse{Authorized: true, Commit: commit})
-	if err != nil {
-		log.Errorf("[p2p server] %v", err)
-		return
-	}
-
 	repoID := req.RepoID
-	go func() {
-		defer stream.Close()
 
-		for {
-			req := GetPackfileRequest{}
-			err := ReadStructPacket(stream, &req)
-			if err != nil {
-				log.Debugf("[p2p server] stream closed (err: %v)", err)
-				return
-			}
-
-			log.Debugf("[p2p server] writing %v objects to packfile stream", len(req.ObjectIDs)/20)
-			shouldClose := s.writePackfileToStream(repoID, req.ObjectIDs, stream)
-			if shouldClose {
-				return
-			}
-		}
-	}()
+	log.Debugf("[p2p server] writing %v objects to packfile stream", len(req.ObjectIDs)/20)
+	_ = s.writePackfileToStream(repoID, req.ObjectIDs, stream)
 }
 
 func (s *Server) writePackfileToStream(repoID string, objectIDsFlattened []byte, stream netp2p.Stream) (shouldClose bool) {
@@ -122,69 +95,38 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsFlattened []byte,
 		return false
 	}
 
-	pr, pw := io.Pipe()
-	go func() {
-		var err error
-		defer func() { pw.CloseWithError(err) }()
-
-		cached := getCachedPackfile(availableObjectIDs)
-		if cached != nil {
-			_, err = io.Copy(pw, cached)
-			if err != nil {
-				log.Errorln("[p2p server] error reading cached packfile:", err)
-			}
-			return
-		}
-
-		cached = createCachedPackfile(availableObjectIDs)
+	cached := getCachedPackfile(availableObjectIDs)
+	if cached != nil {
 		defer cached.Close()
-
-		availableHashes := make([]gitplumbing.Hash, len(availableObjectIDs))
-		for i := range availableObjectIDs {
-			var hash gitplumbing.Hash
-			copy(hash[:], availableObjectIDs[i])
-			availableHashes[i] = hash
-		}
-
-		mw := io.MultiWriter(pw, cached)
-		enc := packfile.NewEncoder(mw, r.Storer, false)
-		_, err = enc.Encode(availableHashes, 10) // @@TODO: do we need to negotiate the packfile window with the client?
+		_, err = io.Copy(stream, cached)
 		if err != nil {
-			log.Errorln("[p2p server] error encoding packfile:", err)
+			log.Errorln("[p2p server] error reading cached packfile:", err)
 		}
-	}()
-
-	data := make([]byte, OBJ_CHUNK_SIZE)
-	for {
-		n, err := io.ReadFull(pr, data)
-		if err == io.EOF {
-			// no data was read
-			break
-		} else if err == io.ErrUnexpectedEOF {
-			data = data[:n]
-		} else if err != nil {
-			log.Errorln("[p2p server] error reading packfile stream:", err)
-			return true
-		}
-
-		err = WriteStructPacket(stream, &PackfileStreamChunk{Data: data})
-		if err != nil {
-			log.Errorln("[p2p server] error writing packfile stream:", err)
-			return true
-		}
+		return false
 	}
 
-	err = WriteStructPacket(stream, &PackfileStreamChunk{End: true})
+	cached = createCachedPackfile(availableObjectIDs)
+	defer cached.Close()
+
+	availableHashes := make([]gitplumbing.Hash, len(availableObjectIDs))
+	for i := range availableObjectIDs {
+		var hash gitplumbing.Hash
+		copy(hash[:], availableObjectIDs[i])
+		availableHashes[i] = hash
+	}
+
+	mw := io.MultiWriter(stream, cached)
+	enc := packfile.NewEncoder(mw, r.Storer, false)
+	_, err = enc.Encode(availableHashes, 10) // @@TODO: do we need to negotiate the packfile window with the client?
 	if err != nil {
-		log.Errorln("[p2p server] error ending packfile stream:", err)
-		return true
+		log.Errorln("[p2p server] error encoding packfile:", err)
 	}
 
 	return false
 }
 
 func getCachedPackfile(objectIDs [][]byte) *os.File {
-	// return nil
+	return nil
 	sorted := SortByteSlices(objectIDs)
 	flattened := FlattenObjectIDs(sorted)
 	hash := sha256.Sum256(flattened)

@@ -23,11 +23,16 @@ const (
 )
 
 type GetPackfileRequest struct {
+	RepoIDLen    int `struc:"sizeof=RepoID"`
+	RepoID       string
+	SignatureLen int `struc:"sizeof=Signature"`
+	Signature    []byte
 	ObjectIDsLen int `struc:"sizeof=ObjectIDs"`
 	ObjectIDs    []byte
 }
 
 type GetPackfileResponse struct {
+	Authorized   bool
 	ObjectIDsLen int `struc:"sizeof=ObjectIDs"`
 	ObjectIDs    []byte
 }
