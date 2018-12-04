@@ -85,7 +85,10 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsFlattened []byte,
 		}
 	}
 
-	err := WriteStructPacket(stream, &GetPackfileResponse{ObjectIDs: FlattenObjectIDs(availableObjectIDs)})
+	err := WriteStructPacket(stream, &GetPackfileResponse{
+		Authorized: true,
+		ObjectIDs:  FlattenObjectIDs(availableObjectIDs),
+	})
 	if err != nil {
 		log.Errorf("[p2p server] %v", err)
 		return false
@@ -126,7 +129,6 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsFlattened []byte,
 }
 
 func getCachedPackfile(objectIDs [][]byte) *os.File {
-	return nil
 	sorted := SortByteSlices(objectIDs)
 	flattened := FlattenObjectIDs(sorted)
 	hash := sha256.Sum256(flattened)
