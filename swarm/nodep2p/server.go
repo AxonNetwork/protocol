@@ -33,7 +33,7 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 		log.Errorf("[p2p server] %v", err)
 		return
 	}
-	log.Debugf("[p2p server] incoming handshake %+v", req)
+	log.Debugf("[p2p server] incoming handshake")
 
 	addr, err := s.node.AddrFromSignedHash([]byte(req.RepoID), req.Signature)
 	if err != nil {

@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-const PAYLOAD_SIZE = 20 * 1024 * 1024
+const PAYLOAD_SIZE = 1024 * 1024 * 1024
 
 func main() {
 	var server bool
