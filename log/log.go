@@ -5,10 +5,11 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Conscience/protocol/constants"
 	"github.com/Shopify/logrus-bugsnag"
 	bugsnag "github.com/bugsnag/bugsnag-go"
 	"github.com/sirupsen/logrus"
+
+	"github.com/Conscience/protocol/config/env"
 )
 
 type Fields = logrus.Fields
@@ -16,38 +17,36 @@ type Fields = logrus.Fields
 var (
 	DebugLevel = logrus.DebugLevel
 	InfoLevel  = logrus.InfoLevel
-
-	bugsnagEnabled = os.Getenv("BUGSNAG_ENABLED") != ""
 )
 
-var loggerWithFields = Fields{}
-var loggerWithFieldsMutex = &sync.RWMutex{}
+var globalFields = Fields{}
+var globalFieldsMutex = &sync.RWMutex{}
 
 func SetField(key string, value interface{}) {
-	if bugsnagEnabled {
-		loggerWithFieldsMutex.Lock()
-		defer loggerWithFieldsMutex.Unlock()
-		loggerWithFields[key] = value
+	if env.BugsnagEnabled {
+		globalFieldsMutex.Lock()
+		defer globalFieldsMutex.Unlock()
+		globalFields[key] = value
 	}
 }
 
 func getFieldsCopy() Fields {
-	loggerWithFieldsMutex.RLock()
-	defer loggerWithFieldsMutex.RUnlock()
+	globalFieldsMutex.RLock()
+	defer globalFieldsMutex.RUnlock()
 
 	fields := Fields{}
-	for k, v := range loggerWithFields {
+	for k, v := range globalFields {
 		fields[k] = v
 	}
 	return fields
 }
 
 func init() {
-	if bugsnagEnabled {
+	if env.BugsnagEnabled {
 		bugsnag.Configure(bugsnag.Configuration{
-			APIKey:       constants.BugsnagAPIKey,
-			ReleaseStage: constants.ReleaseStage,
-			AppVersion:   constants.AppVersion,
+			APIKey:       env.BugsnagAPIKey,
+			ReleaseStage: env.ReleaseStage,
+			AppVersion:   env.AppVersion,
 		})
 		hook, err := logrus_bugsnag.NewBugsnagHook()
 		if err != nil {
@@ -62,8 +61,7 @@ func init() {
 	SetField("env.CONSCIENCE_APP_PATH", os.Getenv("CONSCIENCE_APP_PATH"))
 	SetField("env.CONSCIENCE_BINARIES_PATH", os.Getenv("CONSCIENCE_BINARIES_PATH"))
 
-	enableConsoleLogging := os.Getenv("CONSOLE_LOGGING") != ""
-	if enableConsoleLogging == false {
+	if env.ConsoleLoggingEnabled == false {
 		logrus.SetOutput(ioutil.Discard)
 	}
 }

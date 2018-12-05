@@ -58,19 +58,6 @@ func main() {
 	}
 }
 
-// func appendLog(msg string) {
-//  f, err := os.OpenFile("c:\\Users\\bryn\\remote-helper.txt", os.O_APPEND|os.O_WRONLY, 0600)
-//  if err != nil {
-//      panic(err)
-//  }
-
-//  defer f.Close()
-
-//  if _, err = f.WriteString(msg + "\r\n"); err != nil {
-//      panic(err)
-//  }
-// }
-
 func speakGit(r io.Reader, w io.Writer) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {

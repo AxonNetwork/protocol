@@ -1,15 +1,15 @@
 package config
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/mitchellh/go-homedir"
+	"github.com/pkg/errors"
 
+	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/log"
 )
 
@@ -52,22 +52,9 @@ type RPCClientConfig struct {
 	Host string
 }
 
-var HOME = func() string {
-	dir, err := homedir.Dir()
-	if err != nil {
-		panic(err)
-	}
-	log.SetField("Calculated HOME", dir)
-	return dir
-}()
-
 var DefaultConfig = Config{
-	User: &UserConfig{
-		Username: "nobody",
-		JWT:      "",
-	},
 	Node: &NodeConfig{
-		PrivateKeyFile: filepath.Join(HOME, ".conscience.key"),
+		PrivateKeyFile: filepath.Join(env.HOME, ".conscience.key"),
 		P2PListenAddr:  "0.0.0.0",
 		P2PListenPort:  1337,
 		// RPCListenNetwork:        "unix",
@@ -82,7 +69,7 @@ var DefaultConfig = Config{
 		ContentRequestInterval:  Duration(15 * time.Second),
 		FindProviderTimeout:     Duration(10 * time.Second),
 		LocalRepos:              []string{},
-		ReplicationRoot:         filepath.Join(HOME, "conscience"),
+		ReplicationRoot:         filepath.Join(env.HOME, "conscience"),
 		ReplicateRepos:          []string{},
 		BootstrapPeers:          []string{"/dns4/node.conscience.network/tcp/1337/p2p/16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
 		KnownReplicators:        []string{"16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
@@ -95,33 +82,22 @@ var DefaultConfig = Config{
 }
 
 func ReadConfig() (*Config, error) {
-	dir, err := homedir.Dir()
+	configPath, err := filepath.Abs(filepath.Join(env.HOME, ".consciencerc"))
 	if err != nil {
-		return nil, err
-	}
-	log.Printf("home dir = %v", dir)
-
-	configPath, err := filepath.Abs(filepath.Join(dir, ".consciencerc"))
-	if err != nil {
-		log.Errorf("ReadConfig error on filepath.Abs: %v", err)
-		return nil, err
+		return nil, errors.Wrapf(err, "[config] calling filepath.Abs")
 	}
 
 	return ReadConfigAtPath(configPath)
 }
 
 func ReadConfigAtPath(configPath string) (*Config, error) {
-	log.Debugf("reading config at %v", configPath)
+	log.Debugf("[config] reading config at %v", configPath)
+
+	// Copy the default config
 	cfg := DefaultConfig
 
-	bs, err := ioutil.ReadFile(configPath)
-	if err != nil {
-		log.Errorf("could not read config!")
-	} else {
-		log.Printf("read config.  contents = %v", string(bs))
-	}
-
-	_, err = toml.DecodeFile(configPath, &cfg)
+	// Decode the config file on top of the defaults
+	_, err := toml.DecodeFile(configPath, &cfg)
 	// If the file can't be found, we ignore the error.  Otherwise, return it.
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -132,6 +108,7 @@ func ReadConfigAtPath(configPath string) (*Config, error) {
 }
 
 func AttachToLogger(cfg *Config) {
+	log.SetField("config path", cfg.configPath)
 	log.SetField("config.Node.PrivateKeyFile", cfg.Node.PrivateKeyFile)
 	log.SetField("config.Node.P2PListenAddr", cfg.Node.P2PListenAddr)
 	log.SetField("config.Node.P2PListenPort", cfg.Node.P2PListenPort)

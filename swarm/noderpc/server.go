@@ -1,11 +1,8 @@
 package noderpc
 
 import (
-	"bufio"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -183,44 +180,10 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 	return &pb.CheckpointRepoResponse{Ok: true}, nil
 }
 
-type MaybeProgress struct {
-	Fetched int64
-	ToFetch int64
-	Error   error
-}
-
-func parseProgressFromStdErr(stderr io.ReadCloser, ch chan MaybeProgress) {
-	scanner := bufio.NewScanner(stderr)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, " ")
-		if len(parts) == 6 && parts[2] == "Progress:" {
-			progress := strings.Split(parts[3], "/")
-			Fetched, err := strconv.ParseInt(progress[0], 10, 64)
-			if err != nil {
-				ch <- MaybeProgress{Error: err}
-				break
-			}
-			ToFetch, err := strconv.ParseInt(progress[1], 10, 64)
-			if err != nil {
-				ch <- MaybeProgress{Error: err}
-				break
-			}
-			ch <- MaybeProgress{
-				Fetched: Fetched,
-				ToFetch: ToFetch,
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		ch <- MaybeProgress{Error: err}
-	}
-	close(ch)
-}
-
 func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoServer) error {
-	ch := make(chan nodegit.MaybeProgress)
-	go s.node.PullRepo(req.Path, ch)
+	// @@TODO: give context a timeout and make it configurable
+	ctx := context.Background()
+	ch := nodegit.PullRepo(ctx, req.Path)
 
 	for progress := range ch {
 		if progress.Error != nil {
@@ -238,28 +201,19 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 }
 
 func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepoServer) error {
-	location := req.Path
-	if len(location) == 0 {
-		location = s.node.Config.Node.ReplicationRoot
-	}
-	remote := fmt.Sprintf("conscience://%s", req.RepoID)
-	stdout, stderr, closeCmd, err := util.ExecCmd(context.Background(), []string{"git", "clone", remote}, location)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	// we don't care about stdout
-	_, err = ioutil.ReadAll(stdout)
-	if err != nil {
-		return errors.WithStack(err)
+	repoRoot := req.Path
+	if len(repoRoot) == 0 {
+		repoRoot = s.node.Config.Node.ReplicationRoot
 	}
 
-	ch := make(chan MaybeProgress)
-	go parseProgressFromStdErr(stderr, ch)
+	ctx := context.Background()
+	ch := nodegit.CloneRepo(ctx, repoRoot, req.RepoID)
 
 	for progress := range ch {
 		if progress.Error != nil {
 			return errors.WithStack(progress.Error)
 		}
+
 		err := server.Send(&pb.CloneRepoResponsePacket{
 			Payload: &pb.CloneRepoResponsePacket_Progress_{&pb.CloneRepoResponsePacket_Progress{
 				ToFetch: progress.ToFetch,
@@ -271,18 +225,13 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 		}
 	}
 
-	err = closeCmd()
-	if err != nil {
-		return errors.WithStack(err)
+	repoFolder := req.RepoID
+	if strings.Contains(repoFolder, "/") {
+		parts := strings.Split(repoFolder, "/")
+		repoFolder = parts[len(parts)-1]
 	}
 
-	name := req.RepoID
-	if strings.Contains(name, "/") {
-		name = strings.Split(name, "/")[1]
-	}
-
-	repoPath := filepath.Join(location, name)
-	r, err := repo.Open(repoPath)
+	r, err := repo.Open(filepath.Join(repoRoot, repoFolder))
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -294,7 +243,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 
 	err = server.Send(&pb.CloneRepoResponsePacket{
 		Payload: &pb.CloneRepoResponsePacket_Success_{&pb.CloneRepoResponsePacket_Success{
-			Path: repoPath,
+			Path: r.Path,
 		}},
 	})
 	if err != nil {

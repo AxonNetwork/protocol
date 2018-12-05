@@ -1,6 +1,8 @@
 package nodep2p
 
 import (
+	"context"
+
 	netp2p "github.com/libp2p/go-libp2p-net"
 
 	"github.com/Conscience/protocol/log"
@@ -82,8 +84,9 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		return
 	}
 
-	ch := make(chan nodegit.MaybeProgress)
-	go s.node.PullRepo(repo.Path, ch)
+	// @@TODO: give context a timeout and make it configurable
+	ctx := context.Background()
+	ch := nodegit.PullRepo(ctx, repo.Path)
 
 	for progress := range ch {
 		if progress.Error != nil {

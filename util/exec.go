@@ -15,7 +15,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/log"
 )
 
@@ -60,7 +60,7 @@ func PrependToPathList(PATH string, newPaths ...string) string {
 	return strings.Join(pathListFiltered, string(os.PathListSeparator))
 }
 
-// Copies the current environment (from `os.environ()`), prepends the path in CONSCIENCE_BINARIES_PATH,
+// Copies the current environment (from `os.Environ()`), prepends the path in CONSCIENCE_BINARIES_PATH,
 // and returns the result.
 func CopyEnv() []string {
 	envMap := EnvToMap(os.Environ())
@@ -78,29 +78,29 @@ func getLogfilePrefix(cmdAndArgs []string) string {
 	return fmt.Sprintf("cmd--%v--%v", strings.Join(sanitized, "-"), time.Now().UTC().UnixNano())
 }
 
-func logEnvironment(logfilePrefix string, env []string) {
-	logfile_env, err := os.Create(filepath.Join(config.HOME, fmt.Sprintf("%v--env.txt", logfilePrefix)))
+func logEnvironment(logfilePrefix string, vars []string) {
+	logfile_env, err := os.Create(filepath.Join(env.HOME, fmt.Sprintf("%v--env.txt", logfilePrefix)))
 	if err != nil {
-		log.Errorln("ExecAndScanStdout error (writing environment):", err)
+		log.Errorln("ExecCmd error (writing environment):", err)
 		return
 	}
 	defer logfile_env.Close()
 
-	for _, line := range env {
+	for _, line := range vars {
 		logfile_env.WriteString(fmt.Sprintf("%v\r\n", line))
 	}
 }
 
 func logStdoutStderr(logfilePrefix string, stdout, stderr io.Reader) (io.Reader, io.Reader, func()) {
-	logfile_stdout, err := os.Create(filepath.Join(config.HOME, fmt.Sprintf("%v--stdout.txt", logfilePrefix)))
+	logfile_stdout, err := os.Create(filepath.Join(env.HOME, fmt.Sprintf("%v--stdout.txt", logfilePrefix)))
 	if err != nil {
-		log.Errorln("ExecAndScanStdout error (writing stdout):", err)
+		log.Errorln("ExecCmd error (writing stdout):", err)
 		return stdout, stderr, func() {}
 	}
 
-	logfile_stderr, err := os.Create(filepath.Join(config.HOME, fmt.Sprintf("%v--stderr.txt", logfilePrefix)))
+	logfile_stderr, err := os.Create(filepath.Join(env.HOME, fmt.Sprintf("%v--stderr.txt", logfilePrefix)))
 	if err != nil {
-		log.Errorln("ExecAndScanStdout error (writing stderr):", err)
+		log.Errorln("ExecCmd error (writing stderr):", err)
 		logfile_stdout.Close()
 		return stdout, stderr, func() {}
 	}
@@ -117,7 +117,11 @@ func logStdoutStderr(logfilePrefix string, stdout, stderr io.Reader) (io.Reader,
 	return io.TeeReader(stdout, logfile_stdout), io.TeeReader(stderr, logfile_stderr), closeFn
 }
 
-func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (io.ReadCloser, io.ReadCloser, func() error, error) {
+func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (stdout io.Reader, stderr io.Reader, closeProc func() error, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "error running '%v'", strings.Join(cmdAndArgs, " "))
+	}()
+
 	var args []string
 	if len(cmdAndArgs) == 1 {
 		args = []string{}
@@ -129,51 +133,50 @@ func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (io.ReadClose
 	cmd.Dir = cwd
 	cmd.Env = CopyEnv()
 
-	stdout, err := cmd.StdoutPipe()
+	stdout, err = cmd.StdoutPipe()
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	stderr, err := cmd.StderrPipe()
+	stderr, err = cmd.StderrPipe()
 	if err != nil {
 		return nil, nil, nil, err
+	}
+
+	var closeLogfiles func()
+	if env.ChildProcLoggingEnabled {
+		logfilePrefix := getLogfilePrefix(cmdAndArgs)
+
+		logEnvironment(logfilePrefix, CopyEnv())
+		stdout, stderr, closeLogfiles = logStdoutStderr(logfilePrefix, stdout, stderr)
 	}
 
 	err = cmd.Start()
 	if err != nil {
+		if closeLogfiles != nil {
+			closeLogfiles()
+		}
 		return nil, nil, nil, err
 	}
 
 	// caller's responsibility to call close
-	// closeCmd also closes stdout/stderr readers
-	closeCmd := func() error {
+	// closeProc also closes stdout/stderr readers
+	closeProc = func() error {
+		if closeLogfiles != nil {
+			closeLogfiles()
+		}
 		return cmd.Wait()
 	}
 
-	return stdout, stderr, closeCmd, nil
+	return stdout, stderr, closeProc, nil
 }
 
 func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn func(string) error) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "error running %v", strings.Join(cmdAndArgs, " "))
-	}()
-	var stdout, stderr io.Reader
-
-	stdout, stderr, closeCmd, err := ExecCmd(ctx, cmdAndArgs, cwd)
+	stdout, stderr, closeProc, err := ExecCmd(ctx, cmdAndArgs, cwd)
 	if err != nil {
 		return
 	}
-
-	logfilePrefix := getLogfilePrefix(cmdAndArgs)
-	if logChildProcessesToFile {
-		logEnvironment(logfilePrefix, CopyEnv())
-	}
-
-	if logChildProcessesToFile {
-		var closeLogfiles func()
-		stdout, stderr, closeLogfiles = logStdoutStderr(logfilePrefix, stdout, stderr)
-		defer closeLogfiles()
-	}
+	defer CheckCloseFunc(closeProc, &err)
 
 	defer func() {
 		stderrBytes, _ := ioutil.ReadAll(stderr)
@@ -194,6 +197,5 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 		return
 	}
 
-	err = closeCmd()
 	return
 }

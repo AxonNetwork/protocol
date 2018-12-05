@@ -7,12 +7,13 @@ import (
 
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
-	gitioutil "gopkg.in/src-d/go-git.v4/utils/ioutil"
+
+	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	. "github.com/Conscience/protocol/swarm/wire"
-	"github.com/pkg/errors"
+	"github.com/Conscience/protocol/util"
 )
 
 func getManifest(r *repo.Repo) ([]ManifestObject, error) {
@@ -95,7 +96,7 @@ func createCachedManifest(repoID string, manifest []ManifestObject) (err error) 
 	if err != nil {
 		return
 	}
-	defer gitioutil.CheckClose(f, &err)
+	defer util.CheckClose(f, &err)
 
 	for i := range manifest {
 		err = WriteStructPacket(f, &manifest[i])

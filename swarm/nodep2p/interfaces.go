@@ -13,7 +13,6 @@ import (
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
-	"github.com/Conscience/protocol/swarm/nodegit"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -27,18 +26,12 @@ type (
 		AddressHasPullAccess(ctx context.Context, user nodeeth.Address, repoID string) (bool, error)
 		Repo(repoID string) *repo.Repo
 		GetConfig() config.Config
-		PullRepo(repoID string, ch chan nodegit.MaybeProgress)
+		// PullRepo(repoID string, ch chan nodegit.MaybeProgress)
 		SetReplicationPolicy(repoID string, shouldReplicate bool) error
 	}
 
 	IStrategy interface {
 		FetchFromCommit(ctx context.Context, repoID string, commit string) (ch <-chan MaybeFetchFromCommitPacket, uncompressedSize int64)
-	}
-
-	MaybeProgress struct {
-		Fetched int64
-		ToFetch int64
-		Error   error
 	}
 
 	MaybeFetchFromCommitPacket struct {

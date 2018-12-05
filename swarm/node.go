@@ -192,12 +192,18 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 
 		for _, repoID := range n.Config.Node.ReplicateRepos {
 			log.Debugf("[content request] requesting repo '%v'", repoID)
-			ch := make(chan nodegit.MaybeProgress)
-			go n.EnsureAndPullRepo(repoID, ch)
+
+			r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
+			if err != nil {
+				log.Errorf("[content request] error ensuring repo exists (%v): %v", repoID, err)
+				continue
+			}
+
+			ch := nodegit.PullRepo(ctx, r.Path)
 			for progress := range ch {
 				// don't care about progress on periodic requests
 				if progress.Error != nil {
-					log.Errorf("[content request] error pulling repo (%v): %+v", repoID, progress.Error)
+					log.Errorf("[content request] error pulling repo (%v): %v", repoID, progress.Error)
 				}
 			}
 		}
@@ -370,21 +376,6 @@ func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
 		}
 		return nil
 	})
-}
-
-func (n *Node) EnsureAndPullRepo(repoID string, ch chan nodegit.MaybeProgress) {
-	r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
-	log.Println("ENSURE LOCAL CHECKOUT EXISTS: ", r.Path)
-	if err != nil {
-		ch <- nodegit.MaybeProgress{Error: err}
-		close(ch)
-		return
-	}
-	n.PullRepo(r.Path, ch)
-}
-
-func (n *Node) PullRepo(path string, ch chan nodegit.MaybeProgress) {
-	nodegit.PullRepo(path, ch)
 }
 
 func (n *Node) GetConfig() config.Config {

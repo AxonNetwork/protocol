@@ -18,7 +18,7 @@ $ cat ../<whatever>.pack | git unpack-objects
 
 ## p2p raw transfer
 
-Benchmarks the transfer of a large chunk of raw data with no processing at either end of the connection.
+Benchmarks the transfer of a large chunk of raw data over a libp2p stream with no processing at either end of the connection.
 
 Run the server: 
 
@@ -26,9 +26,27 @@ Run the server:
 $ go run p2p-raw-transfer.go
 ```
 
+The server will spit out a list of multiaddresses that it's listening on.
+
 Run the client:
 
 ```sh
 $ go run p2p-raw-transfer.go <server multiaddress>
+```
+
+## net raw transfer
+
+Benchmarks the transfer of a large chunk of raw data over a simple TCP stream with no processing at either end of the connection.
+
+Run the server: 
+
+```sh
+$ go run net-raw-transfer.go
+```
+
+Run the client:
+
+```sh
+$ go run net-raw-transfer.go <server IP>:9991
 ```
 
