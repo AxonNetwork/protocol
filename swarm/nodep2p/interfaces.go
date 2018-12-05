@@ -25,13 +25,10 @@ type (
 		AddrFromSignedHash(data, sig []byte) (nodeeth.Address, error)
 		AddressHasPullAccess(ctx context.Context, user nodeeth.Address, repoID string) (bool, error)
 		Repo(repoID string) *repo.Repo
+		RepoAtPathOrID(path string, repoID string) (*repo.Repo, error)
 		GetConfig() config.Config
 		// PullRepo(repoID string, ch chan nodegit.MaybeProgress)
 		SetReplicationPolicy(repoID string, shouldReplicate bool) error
-	}
-
-	IStrategy interface {
-		FetchFromCommit(ctx context.Context, repoID string, commit string) (ch <-chan MaybeFetchFromCommitPacket, uncompressedSize int64)
 	}
 
 	MaybeFetchFromCommitPacket struct {

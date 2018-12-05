@@ -47,7 +47,12 @@ func main() {
 	}
 	defer client.Close()
 
-	Repo, err = repo.Open(filepath.Dir(GIT_DIR))
+	gitDir, err := filepath.Abs(filepath.Dir(GIT_DIR))
+	if err != nil {
+		die(err)
+	}
+
+	Repo, err = repo.Open(gitDir)
 	if err != nil {
 		die(err)
 	}

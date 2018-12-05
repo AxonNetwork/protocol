@@ -21,6 +21,8 @@ import (
 type SmartPackfileClient struct {
 	node   INode
 	config *config.Config
+	repo   *repo.Repo
+	repoID string
 }
 
 type job struct {
@@ -31,25 +33,41 @@ type job struct {
 
 var ErrFetchingFromPeer = errors.New("fetching from peer")
 
-func NewSmartPackfileClient(node INode, repo *repo.Repo, config *config.Config) *SmartPackfileClient {
+func NewSmartPackfileClient(node INode, repoID string, repoPath string, config *config.Config) *SmartPackfileClient {
+	r, _ := node.RepoAtPathOrID(repoPath, repoID)
+
 	sc := &SmartPackfileClient{
 		node:   node,
 		config: config,
+		repo:   r,
+		repoID: repoID,
 	}
 	return sc
 }
 
-func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID string, commit string) (<-chan MaybeFetchFromCommitPacket, int64) {
+func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit string) (<-chan MaybeFetchFromCommitPacket, int64) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 	wg := &sync.WaitGroup{}
 
-	manifest, err := sc.requestManifestFromSwarm(ctx, repoID, commit)
+	manifest, err := sc.requestManifestFromSwarm(ctx, sc.repoID, commit)
 	if err != nil {
 		go func() {
 			defer close(chOut)
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 		}()
 		return chOut, 0
+	}
+
+	// If we're pulling (instead of cloning), filter objects we already have
+	if sc.repo != nil {
+		filteredManifest := []ManifestObject{}
+		for i := range manifest {
+			if !sc.repo.HasObject(manifest[i].Hash) {
+				filteredManifest = append(filteredManifest, manifest[i])
+			}
+		}
+		manifest = filteredManifest
+		log.Infoln("LENGTH OF FILTERED MANIFEST =", len(manifest))
 	}
 
 	// Calculate the uncompressed size of the entire tree of commits that will be transferred.
@@ -81,7 +99,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, repoID strin
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, repoID, NUM_PEERS)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, NUM_PEERS)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
@@ -205,7 +223,7 @@ func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peer
 		return nil, err
 	}
 
-	// // Read the response
+	// Read the response
 	resp := GetManifestResponse{}
 	err = ReadStructPacket(stream, &resp)
 	if err != nil {
@@ -266,17 +284,6 @@ func (sc *SmartPackfileClient) returnJobsToQueue(ctx context.Context, jobs []job
 	}
 }
 
-func debugObjectIDs(prefix string, objects [][]byte) {
-	log.Debugln(prefix)
-	for i := range objects {
-		b := objects[i]
-		id := [20]byte{}
-		copy(id[:], b[:])
-		hash := gitplumbing.Hash(id)
-		log.Debugln(hash.String())
-	}
-}
-
 func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
@@ -322,14 +329,9 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		},
 	}
 
-	timeSpentReading := time.Time{}
-	timeSpentLocked := time.Time{}
 	for {
-		start := time.Now()
-
 		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(packfileReader, data)
-		timeSpentReading = timeSpentReading.Add(time.Now().Sub(start))
 		if err == io.EOF {
 			// read no bytes
 			break
@@ -345,7 +347,6 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 			go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
 			return err
 		}
-		start = time.Now()
 		chOut <- MaybeFetchFromCommitPacket{
 			PackfileData: &PackfileData{
 				ObjHash: packfileTempID,
@@ -354,10 +355,8 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 				Data:    data,
 			},
 		}
-		timeSpentLocked = timeSpentLocked.Add(time.Now().Sub(start))
 	}
 
-	start := time.Now()
 	chOut <- MaybeFetchFromCommitPacket{
 		PackfileData: &PackfileData{
 			ObjHash: packfileTempID,
@@ -366,14 +365,10 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 			End:     true,
 		},
 	}
-	timeSpentLocked = timeSpentLocked.Add(time.Now().Sub(start))
 
 	for range availableObjectIDs {
 		wg.Done()
 	}
-
-	log.Infoln("[packfile client] time spent locked: %v", timeSpentLocked)
-	log.Infoln("[packfile client] time spent reading: %v", timeSpentReading)
 
 	return nil
 }

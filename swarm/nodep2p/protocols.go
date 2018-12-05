@@ -10,4 +10,4 @@ const (
 )
 
 // @@TODO: make configurable
-const OBJ_CHUNK_SIZE = 3 * 1024 * 1024 // 1mb
+const OBJ_CHUNK_SIZE = 2 * 1024 * 1024 // 2mb

@@ -344,19 +344,9 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
-	log.Debugln("FETCHING FOR:", path, "/ repoID:", repoID)
-
-	// repo, err := n.repoManager.RepoAtPathOrID(path, repoID)
-	repo := n.repoManager.Repo(repoID)
-	// if repo == nil {
-	// 	log.Errorln("[Node.FetchFromCommit] error getting repo")
-	// 	return nil, 0
-	// }
-
-	c := nodep2p.NewSmartPackfileClient(n, repo, &n.Config)
-
-	return c.FetchFromCommit(ctx, repoID, commit)
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit string) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
+	c := nodep2p.NewSmartPackfileClient(n, repoID, repoPath, &n.Config)
+	return c.FetchFromCommit(ctx, commit)
 }
 
 func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {
@@ -388,6 +378,9 @@ func (n *Node) RepoManager() *RepoManager {
 
 func (n *Node) Repo(repoID string) *repo.Repo {
 	return n.repoManager.Repo(repoID)
+}
+func (n *Node) RepoAtPathOrID(path string, repoID string) (*repo.Repo, error) {
+	return n.repoManager.RepoAtPathOrID(path, repoID)
 }
 
 func (n *Node) ID() peer.ID {

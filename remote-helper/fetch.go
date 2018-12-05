@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 
@@ -87,7 +88,8 @@ func fetchFromCommit_packfile(commitHash string) error {
 		}
 
 		progressWriter.Printf("Progress: %v/%v = %.02f%%", writtenBytes, uncompressedSize, 100*(float64(writtenBytes)/float64(uncompressedSize)))
-
 	}
+	fmt.Fprint(os.Stderr, "\n")
+
 	return nil
 }

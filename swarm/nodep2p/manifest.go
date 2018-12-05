@@ -16,17 +16,9 @@ import (
 	"github.com/Conscience/protocol/util"
 )
 
-func getManifest(r *repo.Repo) ([]ManifestObject, error) {
-
-	// Build the manifest
-
-	head, err := r.Head()
-	if err != nil {
-		return nil, err
-	}
-
+func getManifest(r *repo.Repo, commitHash gitplumbing.Hash) ([]ManifestObject, error) {
 	objectHashes := make(map[gitplumbing.Hash]bool)
-	err = objectHashesForCommit(r, head.Hash(), objectHashes)
+	err := objectHashesForCommit(r, commitHash, objectHashes)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package nodep2p
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -343,7 +344,17 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 		return
 	}
 
-	manifest, err := getManifest(r)
+	var commitHash gitplumbing.Hash
+	{
+		bs, err := hex.DecodeString(req.Commit)
+		if err != nil || len(bs) != 20 {
+			log.Errorf("[p2p server] bad commit hash: %v", req.Commit)
+			return
+		}
+		copy(commitHash[:], bs)
+	}
+
+	manifest, err := getManifest(r, commitHash)
 	if err != nil {
 		log.Warnf("[p2p server] cannot get manifest for repo %v", req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{HasCommit: false})
