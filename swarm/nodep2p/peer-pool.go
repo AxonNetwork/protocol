@@ -2,12 +2,10 @@ package nodep2p
 
 import (
 	"context"
-	"time"
 
 	peer "github.com/libp2p/go-libp2p-peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 
-	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -22,7 +20,7 @@ type peerPool struct {
 	cancel func()
 }
 
-func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns int) (*peerPool, error) {
+func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns uint) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -71,13 +69,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 					continue
 				}
 
-				_peerConn, err := NewPeerConnection(p.ctx, node, peerID, repoID)
-				if err != nil {
-					log.Errorln("[peer pool] error opening NewPeerConnection", err)
-					time.Sleep(1 * time.Second)
-					continue
-				}
-				peerConn = _peerConn
+				peerConn = NewPeerConnection(node, peerID, repoID)
 				break
 			}
 
@@ -93,7 +85,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 
 	// This goroutine fills the peer pool with the desired number of peers.
 	go func() {
-		for i := 0; i < concurrentConns; i++ {
+		for i := uint(0); i < concurrentConns; i++ {
 			select {
 			case <-p.ctx.Done():
 				return
@@ -112,13 +104,6 @@ func (p *peerPool) Close() error {
 	p.chProviders = nil
 	p.peers = nil
 
-	// for _, conn := range p.peerList {
-	// 	err := conn.Close()
-	// 	if err != nil {
-	// 		log.Errorln("[peer pool] Close: error closing connection", err)
-	// 	}
-	// }
-
 	return nil
 }
 
@@ -136,11 +121,6 @@ func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 		if _, exists := p.peerList[conn.peerID]; exists {
 			delete(p.peerList, conn.peerID)
 		}
-
-		// err := conn.Close()
-		// if err != nil {
-		// 	log.Errorln("[peer pool] ReturnConn: error closing connection", err)
-		// }
 
 		select {
 		case p.needNewPeer <- struct{}{}:

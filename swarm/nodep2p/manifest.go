@@ -41,7 +41,6 @@ func getManifest(r *repo.Repo, commitHash gitplumbing.Hash) ([]ManifestObject, e
 }
 
 func getCachedManifest(repoID string) []ManifestObject {
-	// return nil
 	cacheDir := filepath.Join(os.TempDir(), "conscience-manifest-cache")
 	err := os.MkdirAll(cacheDir, os.ModePerm)
 	if err != nil {

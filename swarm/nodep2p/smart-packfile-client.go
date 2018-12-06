@@ -67,7 +67,6 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit strin
 			}
 		}
 		manifest = filteredManifest
-		log.Infoln("LENGTH OF FILTERED MANIFEST =", len(manifest))
 	}
 
 	// Calculate the uncompressed size of the entire tree of commits that will be transferred.
@@ -94,19 +93,18 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit strin
 		wg.Wait()
 	}()
 
-	// @@TODO: make configurable
-	const NUM_PEERS = 1
+	maxPeers := sc.config.Node.MaxConcurrentPeers
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, NUM_PEERS)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
 		}
 		defer pool.Close()
 
-		for batch := range aggregateWork(ctx, jobQueue, len(manifest)/NUM_PEERS, 5*time.Second) {
+		for batch := range aggregateWork(ctx, jobQueue, uint(len(manifest))/maxPeers, 5*time.Second) {
 			conn := pool.GetConn()
 			if conn == nil {
 				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
@@ -135,7 +133,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit strin
 
 // Takes a job queue and batches received jobs up to `batchSize`.  Batches are also time-constrained.
 // If `batchSize` jobs aren't received within `batchTimeout`, the batch is sent anyway.
-func aggregateWork(ctx context.Context, jobQueue chan job, batchSize int, batchTimeout time.Duration) chan []job {
+func aggregateWork(ctx context.Context, jobQueue chan job, batchSize uint, batchTimeout time.Duration) chan []job {
 	chBatch := make(chan []job)
 	go func() {
 		defer close(chBatch)
@@ -153,7 +151,7 @@ func aggregateWork(ctx context.Context, jobQueue chan job, batchSize int, batchT
 					// If it's closed, send whatever we have and close the batch channel.
 					if open {
 						current = append(current, j)
-						if len(current) >= batchSize {
+						if uint(len(current)) >= batchSize {
 							chBatch <- current
 							continue Outer
 						}

@@ -99,6 +99,7 @@ func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Mayb
 
 func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID peer.ID, peerCh chan MaybePeerProgress) {
 	var err error
+
 	defer func() {
 		defer close(peerCh)
 		if err != nil {
@@ -106,6 +107,7 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 			peerCh <- MaybePeerProgress{Error: err}
 		}
 	}()
+
 	stream, err := n.NewStream(ctx, peerID, REPLICATION_PROTO)
 	if err != nil {
 		return
@@ -138,44 +140,57 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 		}
 	}
 }
-func combinePeerChs(peerChs map[peer.ID](chan MaybePeerProgress), progressCh chan MaybeReplProgress) {
+
+func combinePeerChs(peerChs map[peer.ID]chan MaybePeerProgress, progressCh chan MaybeReplProgress) {
 	defer close(progressCh)
+
 	if len(peerChs) == 0 {
 		err := errors.Errorf("no replicators available")
 		progressCh <- MaybeReplProgress{Error: err}
 		return
 	}
+
 	maxPercent := 0
-	percentMutex := &sync.Mutex{}
-	done := false
+	chPercent := make(chan int)
+	someoneFinished := false
 	wg := &sync.WaitGroup{}
+	chDone := make(chan struct{})
+
+	go func() {
+		defer close(chDone)
+		for p := range chPercent {
+			if maxPercent < p {
+				maxPercent = p
+				progressCh <- MaybeReplProgress{Percent: maxPercent}
+			}
+		}
+	}()
+
 	for _, peerCh := range peerChs {
 		wg.Add(1)
-		go func(ch chan MaybePeerProgress) {
+		go func(peerCh chan MaybePeerProgress) {
 			defer wg.Done()
-			for progress := range ch {
+			for progress := range peerCh {
 				if progress.Done == true {
-					done = true
+					someoneFinished = true
 				}
-				if done || progress.Error != nil {
+				if progress.Error != nil {
 					return
 				}
 				percent := 0
 				if progress.ToFetch > 0 {
 					percent = int(100 * progress.Fetched / progress.ToFetch)
 				}
-				if percent > maxPercent {
-					percentMutex.Lock()
-					maxPercent = percent
-					percentMutex.Unlock()
-					progressCh <- MaybeReplProgress{Percent: percent}
-				}
+				chPercent <- percent
 			}
 		}(peerCh)
 	}
-	wg.Wait()
 
-	if !done {
+	wg.Wait()
+	close(chPercent)
+	<-chDone
+
+	if !someoneFinished {
 		err := errors.Errorf("every replicator failed to replicate repo")
 		progressCh <- MaybeReplProgress{Error: err}
 	}

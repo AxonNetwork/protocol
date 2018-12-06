@@ -1,10 +1,12 @@
 package nodehttp
 
 import (
+	"context"
 	"expvar"
 	"fmt"
 	"html/template"
 	"net/http"
+	"time"
 
 	"github.com/brynbellomy/debugcharts"
 
@@ -136,9 +138,19 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), s.node.ID().Pretty()))
 		}
 
+		var username string
+		{
+			var err error
+			ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+			username, err = s.node.GetUsername(ctx)
+			if err != nil {
+				username = "<error fetching username>"
+			}
+		}
+
 		var state State
 
-		state.Username = s.node.Config.User.Username
+		state.Username = username
 		state.EthAddress = s.node.EthAddress().Hex()
 		state.RPCListenAddr = s.node.Config.Node.RPCListenNetwork + ":" + s.node.Config.Node.RPCListenHost
 		state.Addrs = addrs

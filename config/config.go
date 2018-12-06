@@ -14,17 +14,11 @@ import (
 )
 
 type Config struct {
-	User      *UserConfig      `toml:"user"`
 	Node      *NodeConfig      `toml:"node"`
 	RPCClient *RPCClientConfig `toml:"rpcclient"`
 
 	configPath string
 	mu         sync.Mutex
-}
-
-type UserConfig struct {
-	Username string
-	JWT      string
 }
 
 type NodeConfig struct {
@@ -46,6 +40,7 @@ type NodeConfig struct {
 	ReplicateRepos          []string
 	KnownReplicators        []string
 	ReplicateEverything     bool
+	MaxConcurrentPeers      uint
 }
 
 type RPCClientConfig struct {
@@ -74,6 +69,7 @@ var DefaultConfig = Config{
 		BootstrapPeers:          []string{"/dns4/node.conscience.network/tcp/1337/p2p/16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
 		KnownReplicators:        []string{"16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
 		ReplicateEverything:     false,
+		MaxConcurrentPeers:      4,
 	},
 	RPCClient: &RPCClientConfig{
 		// Host: "unix:///tmp/conscience.sock",

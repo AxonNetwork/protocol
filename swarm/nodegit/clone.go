@@ -21,9 +21,7 @@ func CloneRepo(ctx context.Context, repoRoot string, repoID string) chan MaybePr
 			close(ch)
 		}()
 
-		remote := "conscience://" + repoID
-
-		_, stderr, closeCmd, err := util.ExecCmd(ctx, []string{"git", "clone", remote}, repoRoot)
+		_, stderr, closeCmd, err := util.ExecCmd(ctx, []string{"git", "clone", "conscience://" + repoID}, repoRoot)
 		if err != nil {
 			return
 		}
