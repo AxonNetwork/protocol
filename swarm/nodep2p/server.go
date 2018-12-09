@@ -28,6 +28,7 @@ func NewServer(node INode) *Server {
 
 func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 	defer stream.Close()
+
 	req := GetPackfileRequest{}
 	err := ReadStructPacket(stream, &req)
 	if err != nil {
@@ -102,6 +103,9 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsFlattened []byte,
 	cached := getCachedPackfile(availableObjectIDs)
 	if cached != nil {
 		defer cached.Close()
+
+		log.Infoln("[p2p server] using cached packfile")
+
 		_, err = io.Copy(stream, cached)
 		if err != nil {
 			log.Errorln("[p2p server] error reading cached packfile:", err)
@@ -109,6 +113,7 @@ func (s *Server) writePackfileToStream(repoID string, objectIDsFlattened []byte,
 		return false
 	}
 
+	log.Infoln("[p2p server] caching new packfile")
 	cached = createCachedPackfile(availableObjectIDs)
 	defer cached.Close()
 

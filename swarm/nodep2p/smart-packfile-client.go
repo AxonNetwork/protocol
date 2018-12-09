@@ -31,6 +31,25 @@ type job struct {
 	failedPeers map[peer.ID]bool
 }
 
+type MaybeFetchFromCommitPacket struct {
+	*PackfileHeader
+	*PackfileData
+	Error error
+}
+
+type PackfileHeader struct {
+	PackfileID       []byte
+	UncompressedSize int64
+}
+
+type PackfileData struct {
+	ObjHash gitplumbing.Hash
+	ObjType gitplumbing.ObjectType
+	ObjLen  uint64
+	Data    []byte
+	End     bool
+}
+
 var ErrFetchingFromPeer = errors.New("fetching from peer")
 
 func NewSmartPackfileClient(node INode, repoID string, repoPath string, config *config.Config) *SmartPackfileClient {

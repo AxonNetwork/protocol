@@ -8,49 +8,21 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 	protocol "github.com/libp2p/go-libp2p-protocol"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
-	"github.com/Conscience/protocol/util"
 )
 
-type (
-	INode interface {
-		ID() peer.ID
-		FindProvidersAsync(ctx context.Context, key cid.Cid, count int) <-chan peerstore.PeerInfo
-		NewStream(ctx context.Context, peerID peer.ID, pids ...protocol.ID) (netp2p.Stream, error)
-		SignHash(data []byte) ([]byte, error)
-		AddrFromSignedHash(data, sig []byte) (nodeeth.Address, error)
-		AddressHasPullAccess(ctx context.Context, user nodeeth.Address, repoID string) (bool, error)
-		Repo(repoID string) *repo.Repo
-		RepoAtPathOrID(path string, repoID string) (*repo.Repo, error)
-		GetConfig() config.Config
-		// PullRepo(repoID string, ch chan nodegit.MaybeProgress)
-		SetReplicationPolicy(repoID string, shouldReplicate bool) error
-	}
-
-	MaybeFetchFromCommitPacket struct {
-		*PackfileHeader
-		*PackfileData
-		Error error
-	}
-
-	PackfileHeader struct {
-		PackfileID       []byte
-		UncompressedSize int64
-	}
-
-	PackfileData struct {
-		ObjHash gitplumbing.Hash
-		ObjType gitplumbing.ObjectType
-		ObjLen  uint64
-		Data    []byte
-		End     bool
-	}
-
-	IPeerConnection interface {
-		RequestObject(ctx context.Context, objectID []byte) (*util.ObjectReader, error)
-	}
-)
+type INode interface {
+	ID() peer.ID
+	FindProvidersAsync(ctx context.Context, key cid.Cid, count int) <-chan peerstore.PeerInfo
+	NewStream(ctx context.Context, peerID peer.ID, pids ...protocol.ID) (netp2p.Stream, error)
+	SignHash(data []byte) ([]byte, error)
+	AddrFromSignedHash(data, sig []byte) (nodeeth.Address, error)
+	AddressHasPullAccess(ctx context.Context, user nodeeth.Address, repoID string) (bool, error)
+	Repo(repoID string) *repo.Repo
+	RepoAtPathOrID(path string, repoID string) (*repo.Repo, error)
+	GetConfig() config.Config
+	SetReplicationPolicy(repoID string, shouldReplicate bool) error
+}

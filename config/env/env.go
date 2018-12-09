@@ -17,11 +17,21 @@ var (
 		return dir
 	}()
 
-	BugsnagAPIKey           = getenv("BUGSNAG_API_KEY", "5e15c785447c2580f572c382234ecdb1")
-	ReleaseStage            = getenv("RELEASE_STAGE", "dev")
-	BugsnagEnabled          = getenv("BUGSNAG_ENABLED", "") != ""
-	ConsoleLoggingEnabled   = getenv("CONSOLE_LOGGING", "") != ""
+	BugsnagEnabled = getenv("BUGSNAG_ENABLED", "") != ""
+	BugsnagAPIKey  = getenv("BUGSNAG_API_KEY", "5e15c785447c2580f572c382234ecdb1")
+	ReleaseStage   = getenv("RELEASE_STAGE", "dev")
+
+	// This controls whether or not log messages are displayed in the console.
+	ConsoleLoggingEnabled = getenv("CONSOLE_LOGGING", "") != ""
+
+	// This determines whether stdout and stderr for child processes spawned by the node (such as
+	// git) will be logged to files for debugging purposes.
 	ChildProcLoggingEnabled = getenv("LOG_CHILD_PROCS", "") != ""
+
+	// This controls the output of the git-remote-conscience helper.  If enabled, the helper will
+	// output progress information in a format more easily readable by other programs.  Otherwise,
+	// it will print human-friendly output.
+	MachineOutputEnabled = getenv("MACHINE_OUTPUT", "") != ""
 )
 
 func getenv(envvar string, defaultVal string) string {

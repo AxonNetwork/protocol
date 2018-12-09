@@ -5,10 +5,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 
+	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -20,12 +23,14 @@ func fetchFromCommit_packfile(commitHash string) error {
 		return nil
 	}
 
+	// @@TODO: give context a timeout and make it configurable
 	ch, uncompressedSize, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
 	if err != nil {
 		return err
 	}
 
-	progressWriter := util.NewSingleLineWriter(os.Stderr)
+	progressWriter := newProgressWriter()
+	fmt.Fprintf(os.Stderr, "\n")
 
 	type PackfileDownload struct {
 		io.WriteCloser
@@ -33,16 +38,18 @@ func fetchFromCommit_packfile(commitHash string) error {
 		written          int64
 	}
 
-	packfiles := make(map[string]PackfileDownload)
-	var writtenBytes int64
+	packfiles := make(map[string]*PackfileDownload)
+	var written int64
 
 	for pkt := range ch {
+		var packfileID string
+
 		switch {
 		case pkt.Error != nil:
 			return pkt.Error
 
 		case pkt.PackfileHeader != nil:
-			packfileID := hex.EncodeToString(pkt.PackfileHeader.PackfileID)
+			packfileID = hex.EncodeToString(pkt.PackfileHeader.PackfileID)
 
 			if _, exists := packfiles[packfileID]; !exists {
 				pw, err := Repo.PackfileWriter()
@@ -50,15 +57,17 @@ func fetchFromCommit_packfile(commitHash string) error {
 					return err
 				}
 
-				packfiles[packfileID] = PackfileDownload{
+				packfiles[packfileID] = &PackfileDownload{
 					WriteCloser:      pw,
 					uncompressedSize: pkt.PackfileHeader.UncompressedSize,
 					written:          0,
 				}
+
+				progressWriter.addDownload(packfileID)
 			}
 
 		case pkt.PackfileData != nil:
-			packfileID := hex.EncodeToString(pkt.PackfileData.ObjHash)
+			packfileID = hex.EncodeToString(pkt.PackfileData.ObjHash)
 
 			if pkt.PackfileData.End {
 				err = packfiles[packfileID].Close()
@@ -66,10 +75,11 @@ func fetchFromCommit_packfile(commitHash string) error {
 					return errors.WithStack(err)
 				}
 
-				writtenBytes -= packfiles[packfileID].written          // subtract the compressed byte count from writtenBytes
-				writtenBytes += packfiles[packfileID].uncompressedSize // add the uncompressed byte count
+				written -= packfiles[packfileID].written          // subtract the compressed byte count from written
+				written += packfiles[packfileID].uncompressedSize // add the uncompressed byte count
 
-				delete(packfiles, packfileID)
+				packfiles[packfileID].written = packfiles[packfileID].uncompressedSize // we can assume we have the full packfile now, so update `written` to reflect its uncompressed size
+				packfiles[packfileID].WriteCloser = nil                                // don't need the io.WriteCloser any longer, let it dealloc
 
 			} else {
 				n, err := packfiles[packfileID].Write(pkt.PackfileData.Data)
@@ -79,17 +89,63 @@ func fetchFromCommit_packfile(commitHash string) error {
 					return errors.New("remote helper: did not fully write packet")
 				}
 
-				x := packfiles[packfileID]
-				x.written += int64(n)
-				packfiles[packfileID] = x
-
-				writtenBytes += int64(n)
+				packfiles[packfileID].written += int64(n)
+				written += int64(n)
 			}
 		}
 
-		progressWriter.Printf("Progress: %v/%v = %.02f%%", writtenBytes, uncompressedSize, 100*(float64(writtenBytes)/float64(uncompressedSize)))
+		packfile := packfiles[packfileID]
+		progressWriter.update(packfileID, packfile.written, packfile.uncompressedSize, written, uncompressedSize)
 	}
 	fmt.Fprint(os.Stderr, "\n")
 
 	return nil
+}
+
+type progressWriter struct {
+	singleLineWriter *util.SingleLineWriter
+	multiLineWriter  *util.MultiLineWriter
+	lines            map[string]int
+}
+
+func newProgressWriter() *progressWriter {
+	return &progressWriter{
+		singleLineWriter: util.NewSingleLineWriter(os.Stderr),
+		multiLineWriter:  util.NewMultiLineWriter(os.Stderr),
+		lines:            map[string]int{},
+	}
+}
+
+func humanize(x int64) string {
+	return util.HumanizeBytes(float64(x))
+}
+
+func (pw *progressWriter) update(packfileID string, packfileWritten, packfileTotal int64, written, total int64) {
+	if env.MachineOutputEnabled {
+		pw.singleLineWriter.Printf("Progress: %v/%v = %.02f%%", humanize(written), humanize(total), 100*(float64(written)/float64(total)))
+	} else {
+		pw.multiLineWriter.Printf(0, "Total:      %v %v/%v = %.02f%%", getProgressBar(written, total), humanize(written), humanize(total), 100*(float64(written)/float64(total)))
+		pw.multiLineWriter.Printf(pw.lines[packfileID], "pack %v %v %v/%v = %.02f%%", packfileID[:6], getProgressBar(packfileWritten, packfileTotal), humanize(packfileWritten), humanize(packfileTotal), 100*(float64(packfileWritten)/float64(packfileTotal)))
+	}
+}
+
+func (pw *progressWriter) addDownload(packfileID string) {
+	pw.lines[packfileID] = len(pw.lines) + 2
+}
+
+func getProgressBar(done, total int64) string {
+	const barWidth = 39
+
+	percent := float64(done) / float64(total)
+	numDashes := int(math.Round(barWidth * percent))
+	numSpaces := int(math.Round(barWidth * (1 - percent)))
+
+	if numDashes+numSpaces > barWidth {
+		numSpaces--
+	}
+
+	dashes := strings.Repeat("=", numDashes)
+	spaces := strings.Repeat(" ", numSpaces)
+
+	return "[" + dashes + ">" + spaces + "]"
 }

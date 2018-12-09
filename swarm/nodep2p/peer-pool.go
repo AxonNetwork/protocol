@@ -13,11 +13,8 @@ type peerPool struct {
 	peers       chan *PeerConnection
 	chProviders <-chan peerstore.PeerInfo
 	needNewPeer chan struct{}
-
-	peerList map[peer.ID]*PeerConnection // This is only used to close peers when .Close() is called.
-
-	ctx    context.Context
-	cancel func()
+	ctx         context.Context
+	cancel      func()
 }
 
 func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns uint) (*peerPool, error) {
@@ -32,7 +29,6 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 		peers:       make(chan *PeerConnection, concurrentConns),
 		chProviders: node.FindProvidersAsync(ctxInner, cid, 999),
 		needNewPeer: make(chan struct{}),
-		peerList:    make(map[peer.ID]*PeerConnection),
 		ctx:         ctxInner,
 		cancel:      cancel,
 	}
@@ -65,15 +61,15 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 					return
 				}
 
-				if _, exists := p.peerList[peerID]; exists {
-					continue
-				}
+				// if _, exists := p.peerList[peerID]; exists {
+				// 	continue
+				// }
 
 				peerConn = NewPeerConnection(node, peerID, repoID)
 				break
 			}
 
-			p.peerList[peerConn.peerID] = peerConn
+			// p.peerList[peerConn.peerID] = peerConn
 
 			select {
 			case p.peers <- peerConn:
@@ -118,9 +114,9 @@ func (p *peerPool) GetConn() *PeerConnection {
 
 func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 	if strike {
-		if _, exists := p.peerList[conn.peerID]; exists {
-			delete(p.peerList, conn.peerID)
-		}
+		// if _, exists := p.peerList[conn.peerID]; exists {
+		// 	delete(p.peerList, conn.peerID)
+		// }
 
 		select {
 		case p.needNewPeer <- struct{}{}:
