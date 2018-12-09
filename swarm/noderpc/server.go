@@ -297,51 +297,6 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 	return nil
 }
 
-func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
-	// objectReader, err := s.node.GetObjectReader(server.Context(), req.RepoID, req.ObjectID)
-	// if err != nil {
-	// 	return errors.WithStack(err)
-	// }
-	// defer objectReader.Close()
-
-	// // First, send a special header packet containing the type and length of the object
-	// {
-	// 	headerbuf := &bytes.Buffer{}
-	// 	err = wire.WriteStructPacket(headerbuf, &wire.ObjectMetadata{Type: objectReader.Type(), Len: objectReader.Len()})
-	// 	if err != nil {
-	// 		return errors.WithStack(err)
-	// 	}
-
-	// 	err = server.Send(&pb.GetObjectResponsePacket{Data: headerbuf.Bytes()})
-	// 	if err != nil {
-	// 		return errors.WithStack(err)
-	// 	}
-	// }
-
-	// // @@TODO: make this configurable
-	// const CHUNK_SIZE = 1048576 // 1 MiB
-	// data := &bytes.Buffer{}
-
-	// eof := false
-	// for !eof {
-	// 	_, err = io.CopyN(data, objectReader, CHUNK_SIZE)
-	// 	if err == io.EOF {
-	// 		eof = true
-	// 	} else if err != nil {
-	// 		return errors.WithStack(err)
-	// 	}
-
-	// 	err = server.Send(&pb.GetObjectResponsePacket{Data: data.Bytes()})
-	// 	if err != nil {
-	// 		return errors.WithStack(err)
-	// 	}
-
-	// 	data.Reset()
-	// }
-	// return nil
-	panic("NOT IMPLEMENTED ANYMORE")
-}
-
 func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDRequest) (*pb.RegisterRepoIDResponse, error) {
 	tx, err := s.node.EnsureRepoIDRegistered(ctx, req.RepoID)
 	if err != nil {

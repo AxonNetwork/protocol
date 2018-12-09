@@ -14,7 +14,6 @@ service NodeRPC {
   rpc PullRepo(PullRepoRequest) returns (stream PullRepoResponsePacket) {}
   rpc CloneRepo(CloneRepoRequest) returns (stream CloneRepoResponsePacket) {}
   rpc FetchFromCommit(FetchFromCommitRequest) returns (stream FetchFromCommitResponse) {}
-  rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
   rpc GetLocalRepos(GetLocalReposRequest) returns (stream GetLocalReposResponsePacket) {}
@@ -133,15 +132,6 @@ message FetchFromCommitResponse {
         PackfileHeader packfileHeader = 2;
         PackfileData packfileData = 3;
     }
-}
-
-message GetObjectRequest {
-    string repoID = 1;
-    bytes objectID = 2;
-}
-
-message GetObjectResponsePacket {
-    bytes data = 1;
 }
 
 message RegisterRepoIDRequest {

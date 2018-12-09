@@ -77,29 +77,29 @@ function build_native {
     mv main ../build/native/git-remote-conscience
     cd -
 
-    mkdir -p build/native
-    cd filters/encode
-    GO111MODULE=on go build -o main ./*.go
-    mv main ../../build/native/conscience_encode
-    cd -
+    # mkdir -p build/native
+    # cd filters/encode
+    # GO111MODULE=on go build -o main ./*.go
+    # mv main ../../build/native/conscience_encode
+    # cd -
 
-    mkdir -p build/native
-    cd filters/decode
-    GO111MODULE=on go build -o main ./*.go
-    mv main ../../build/native/conscience_decode
-    cd -
+    # mkdir -p build/native
+    # cd filters/decode
+    # GO111MODULE=on go build -o main ./*.go
+    # mv main ../../build/native/conscience_decode
+    # cd -
 
-    mkdir -p build/native
-    cd filters/diff
-    GO111MODULE=on go build -o main ./*.go
-    mv main ../../build/native/conscience_diff
-    cd -
+    # mkdir -p build/native
+    # cd filters/diff
+    # GO111MODULE=on go build -o main ./*.go
+    # mv main ../../build/native/conscience_diff
+    # cd -
 
-    mkdir -p build/native
-    cd cmd
-    GO111MODULE=on go build -o main ./*.go
-    mv main ../build/native/conscience
-    cd -
+    # mkdir -p build/native
+    # cd cmd
+    # GO111MODULE=on go build -o main ./*.go
+    # mv main ../build/native/conscience
+    # cd -
 }
 
 function build_darwin {
@@ -115,29 +115,29 @@ function build_darwin {
     mv main-darwin-10.6-amd64 ../build/darwin/git-remote-conscience
     cd -
 
-    mkdir -p build/darwin
-    cd filters/encode
-    xgo --targets=darwin/amd64 -out main .
-    mv main-darwin-10.6-amd64 ../../build/darwin/conscience_encode
-    cd -
+    # mkdir -p build/darwin
+    # cd filters/encode
+    # xgo --targets=darwin/amd64 -out main .
+    # mv main-darwin-10.6-amd64 ../../build/darwin/conscience_encode
+    # cd -
 
-    mkdir -p build/darwin
-    cd filters/decode
-    xgo --targets=darwin/amd64 -out main .
-    mv main-darwin-10.6-amd64 ../../build/darwin/conscience_decode
-    cd -
+    # mkdir -p build/darwin
+    # cd filters/decode
+    # xgo --targets=darwin/amd64 -out main .
+    # mv main-darwin-10.6-amd64 ../../build/darwin/conscience_decode
+    # cd -
 
-    mkdir -p build/darwin
-    cd filters/diff
-    xgo --targets=darwin/amd64 -out main .
-    mv main-darwin-10.6-amd64 ../../build/darwin/conscience_diff
-    cd -
+    # mkdir -p build/darwin
+    # cd filters/diff
+    # xgo --targets=darwin/amd64 -out main .
+    # mv main-darwin-10.6-amd64 ../../build/darwin/conscience_diff
+    # cd -
 
-    mkdir -p build/darwin
-    cd cmd
-    xgo --targets=darwin/amd64 -out main .
-    mv main-darwin-10.6-amd64 ../build/darwin/conscience
-    cd -
+    # mkdir -p build/darwin
+    # cd cmd
+    # xgo --targets=darwin/amd64 -out main .
+    # mv main-darwin-10.6-amd64 ../build/darwin/conscience
+    # cd -
 }
 
 function build_linux {
@@ -153,29 +153,29 @@ function build_linux {
     mv main-linux-amd64 ../build/linux/git-remote-conscience
     cd -
 
-    mkdir -p build/linux
-    cd filters/encode
-    xgo --targets=linux/amd64 -out main .
-    mv main-linux-amd64 ../../build/linux/conscience_encode
-    cd -
+    # mkdir -p build/linux
+    # cd filters/encode
+    # xgo --targets=linux/amd64 -out main .
+    # mv main-linux-amd64 ../../build/linux/conscience_encode
+    # cd -
 
-    mkdir -p build/linux
-    cd filters/decode
-    xgo --targets=linux/amd64 -out main .
-    mv main-linux-amd64 ../../build/linux/conscience_decode
-    cd -
+    # mkdir -p build/linux
+    # cd filters/decode
+    # xgo --targets=linux/amd64 -out main .
+    # mv main-linux-amd64 ../../build/linux/conscience_decode
+    # cd -
 
-    mkdir -p build/linux
-    cd filters/diff
-    xgo --targets=linux/amd64 -out main .
-    mv main-linux-amd64 ../../build/linux/conscience_diff
-    cd -
+    # mkdir -p build/linux
+    # cd filters/diff
+    # xgo --targets=linux/amd64 -out main .
+    # mv main-linux-amd64 ../../build/linux/conscience_diff
+    # cd -
 
-    mkdir -p build/linux
-    cd cmd
-    xgo --targets=linux/amd64 -out main .
-    mv main-linux-amd64 ../build/linux/conscience
-    cd -
+    # mkdir -p build/linux
+    # cd cmd
+    # xgo --targets=linux/amd64 -out main .
+    # mv main-linux-amd64 ../build/linux/conscience
+    # cd -
 }
 
 function build_windows {

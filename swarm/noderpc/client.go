@@ -1,7 +1,6 @@
 package noderpc
 
 import (
-	"bytes"
 	"context"
 	"io"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
-	"github.com/Conscience/protocol/util"
 )
 
 type Client struct {
@@ -108,66 +106,6 @@ func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string
 	}()
 
 	return ch, header.UncompressedSize, nil
-}
-
-func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
-	getObjectClient, err := c.client.GetObject(ctx, &pb.GetObjectRequest{RepoID: repoID, ObjectID: objectID})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	// First, read the special header packet containing a wire.ObjectMetadata{} struct
-	var meta wire.ObjectMetadata
-	{
-		packet, err := getObjectClient.Recv()
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		headerbuf := bytes.NewBuffer(packet.Data)
-		err = wire.ReadStructPacket(headerbuf, &meta)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-	}
-
-	// Second, receive protobuf packets and pipe their blob payloads into an io.Reader so that
-	// consumers can interact with them as a regular byte stream.
-	r, w := io.Pipe()
-	go func() {
-		var err error
-		defer func() {
-			if err != nil && err != io.EOF {
-				w.CloseWithError(err)
-			} else {
-				w.Close()
-			}
-		}()
-
-		var packet *pb.GetObjectResponsePacket
-		for {
-			packet, err = getObjectClient.Recv()
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				err = errors.WithStack(err)
-				return
-			}
-
-			_, err = w.Write(packet.Data)
-			if err != nil {
-				err = errors.WithStack(err)
-				return
-			}
-		}
-	}()
-
-	return &util.ObjectReader{
-		Reader:     r,
-		Closer:     r,
-		ObjectLen:  meta.Len,
-		ObjectType: meta.Type,
-	}, nil
 }
 
 func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {
