@@ -34,7 +34,7 @@ func getManifest(r *repo.Repo, commitHash gitplumbing.Hash) ([]ManifestObject, e
 		var h gitplumbing.Hash
 		copy(h[:], hash[:])
 
-		manifest = append(manifest, ManifestObject{Hash: h[:], Size: size})
+		manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: size})
 	}
 
 	return manifest, nil

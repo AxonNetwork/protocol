@@ -254,7 +254,9 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 }
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
-	ch, uncompressedSize := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, req.Commit)
+	var commitHash gitplumbing.Hash
+	copy(commitHash[:], req.Commit)
+	ch, uncompressedSize := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash)
 
 	err := server.Send(&pb.FetchFromCommitResponse{
 		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{

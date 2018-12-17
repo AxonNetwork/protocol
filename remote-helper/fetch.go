@@ -10,18 +10,22 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/util"
 )
 
-func fetchFromCommit_packfile(commitHash string) error {
-	hash, err := hex.DecodeString(commitHash)
+func fetchFromCommit_packfile(commitHashStr string) error {
+	commitHashSlice, err := hex.DecodeString(commitHashStr)
 	if err != nil {
 		return err
-	} else if Repo.HasObject(hash) {
+	} else if Repo.HasObject(commitHashSlice) {
 		return nil
 	}
+
+	var commitHash gitplumbing.Hash
+	copy(commitHash[:], commitHashSlice)
 
 	// @@TODO: give context a timeout and make it configurable
 	ch, uncompressedSize, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)

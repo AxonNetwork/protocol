@@ -49,7 +49,7 @@ func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byt
 	err = ReadStructPacket(stream, &resp)
 	if err != nil {
 		return nil, nil, err
-	} else if !resp.Authorized {
+	} else if resp.ErrUnauthorized {
 		return nil, nil, errors.Wrapf(ErrUnauthorized, "%v", pc.repoID)
 	}
 

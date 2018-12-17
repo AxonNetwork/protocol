@@ -104,7 +104,7 @@ message CloneRepoResponsePacket {
 message FetchFromCommitRequest {
     string repoID = 1;
     string path = 2;
-    string commit = 3;
+    bytes commit = 3;
 }
 
 message FetchFromCommitResponse {

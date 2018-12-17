@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
@@ -56,11 +58,11 @@ type MaybeFetchFromCommitPacket struct {
 	Error          error
 }
 
-func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit string) (chan MaybeFetchFromCommitPacket, int64, error) {
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit gitplumbing.Hash) (chan MaybeFetchFromCommitPacket, int64, error) {
 	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
 		RepoID: repoID,
 		Path:   path,
-		Commit: commit,
+		Commit: commit[:],
 	})
 	if err != nil {
 		return nil, 0, errors.WithStack(err)

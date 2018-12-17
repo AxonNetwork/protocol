@@ -25,6 +25,8 @@ import (
 	protocol "github.com/libp2p/go-libp2p-protocol"
 	ma "github.com/multiformats/go-multiaddr"
 
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
@@ -106,9 +108,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	go n.periodicallyRequestContent(ctx)  // Start a goroutine for pulling content from repos we are replicating
 
 	ns := nodep2p.NewServer(n)
-	// n.host.SetStreamHandler(nodep2p.OBJECT_PROTO, ns.HandleObjectRequest)
 	n.host.SetStreamHandler(nodep2p.MANIFEST_PROTO, ns.HandleManifestRequest)
-	n.host.SetStreamHandler(nodep2p.OBJECT_PROTO, ns.HandleObjectStreamRequest)
 	n.host.SetStreamHandler(nodep2p.PACKFILE_PROTO, ns.HandlePackfileStreamRequest)
 	n.host.SetStreamHandler(nodep2p.REPLICATION_PROTO, ns.HandleReplicationRequest)
 	n.host.SetStreamHandler(nodep2p.BECOME_REPLICATOR_PROTO, ns.HandleBecomeReplicatorRequest)
@@ -344,7 +344,7 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit string) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit gitplumbing.Hash) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
 	c := nodep2p.NewSmartPackfileClient(n, repoID, repoPath, &n.Config)
 	return c.FetchFromCommit(ctx, commit)
 }

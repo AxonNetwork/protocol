@@ -64,7 +64,7 @@ func NewSmartPackfileClient(node INode, repoID string, repoPath string, config *
 	return sc
 }
 
-func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit string) (<-chan MaybeFetchFromCommitPacket, int64) {
+func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit gitplumbing.Hash) (<-chan MaybeFetchFromCommitPacket, int64) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 	wg := &sync.WaitGroup{}
 
@@ -91,7 +91,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit strin
 	// Calculate the uncompressed size of the entire tree of commits that will be transferred.
 	var uncompressedSize int64
 	for _, obj := range manifest {
-		uncompressedSize += obj.Size
+		uncompressedSize += obj.UncompressedSize
 	}
 
 	// Load the job queue up with everything in the manifest
@@ -103,7 +103,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit strin
 		for _, obj := range manifest {
 			wg.Add(1)
 			jobQueue <- job{
-				size:        obj.Size,
+				size:        obj.UncompressedSize,
 				objectID:    obj.Hash,
 				failedPeers: make(map[peer.ID]bool),
 			}
@@ -197,7 +197,7 @@ func aggregateWork(ctx context.Context, jobQueue chan job, batchSize uint, batch
 	return chBatch
 }
 
-func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit string) ([]ManifestObject, error) {
+func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit gitplumbing.Hash) ([]ManifestObject, error) {
 	c, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -220,7 +220,7 @@ func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, rep
 	return nil, errors.Errorf("could not find provider for repo '%v'", repoID)
 }
 
-func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit string) ([]ManifestObject, error) {
+func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit gitplumbing.Hash) ([]ManifestObject, error) {
 	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", repoID, commit, peerID.Pretty())
 
 	// Open the stream
@@ -229,7 +229,7 @@ func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peer
 		return nil, err
 	}
 
-	sig, err := sc.node.SignHash([]byte(commit))
+	sig, err := sc.node.SignHash(commit[:])
 	if err != nil {
 		return nil, err
 	}
@@ -245,9 +245,9 @@ func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peer
 	err = ReadStructPacket(stream, &resp)
 	if err != nil {
 		return nil, err
-	} else if !resp.Authorized {
+	} else if resp.ErrUnauthorized {
 		return nil, errors.Wrapf(ErrUnauthorized, "%v:%0x", repoID, commit)
-	} else if !resp.HasCommit {
+	} else if resp.ErrMissingCommit {
 		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%0x", repoID, commit)
 	}
 
@@ -255,14 +255,12 @@ func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peer
 
 	manifest := make([]ManifestObject, resp.ManifestLen)
 	for i := range manifest {
-		var obj ManifestObject
-		err = ReadStructPacket(stream, &obj)
+		err = ReadStructPacket(stream, &manifest[i])
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		manifest[i] = obj
 	}
 
 	return manifest, nil
