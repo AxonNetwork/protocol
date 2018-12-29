@@ -118,13 +118,9 @@ message FetchFromCommitResponse {
     }
 
     message PackfileData {
-        bytes objHash = 1;
-        int32 objType = 2;
-        uint64 objLen = 3;
-        int64 toFetch = 4;
-        int64 fetched = 5;
-        bytes data = 6;
-        bool end = 7;
+        bytes packfileID = 1;
+        bytes data = 2;
+        bool end = 3;
     }
 
     oneof payload {

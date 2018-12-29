@@ -71,7 +71,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 			}
 
 		case pkt.PackfileData != nil:
-			packfileID = hex.EncodeToString(pkt.PackfileData.ObjHash)
+			packfileID = hex.EncodeToString(pkt.PackfileData.PackfileID)
 
 			if pkt.PackfileData.End {
 				err = packfiles[packfileID].Close()

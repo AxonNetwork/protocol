@@ -256,6 +256,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
 	var commitHash gitplumbing.Hash
 	copy(commitHash[:], req.Commit)
+	// @@TODO: give context a timeout and make it configurable
 	ch, uncompressedSize := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash)
 
 	err := server.Send(&pb.FetchFromCommitResponse{
@@ -283,11 +284,9 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 		case pkt.PackfileData != nil:
 			err = server.Send(&pb.FetchFromCommitResponse{
 				Payload: &pb.FetchFromCommitResponse_PackfileData_{&pb.FetchFromCommitResponse_PackfileData{
-					ObjHash: pkt.ObjHash[:],
-					ObjType: int32(pkt.ObjType),
-					ObjLen:  pkt.ObjLen,
-					Data:    pkt.Data,
-					End:     pkt.End,
+					PackfileID: pkt.PackfileData.PackfileID,
+					Data:       pkt.PackfileData.Data,
+					End:        pkt.PackfileData.End,
 				}},
 			})
 		}

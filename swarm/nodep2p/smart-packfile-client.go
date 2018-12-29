@@ -43,11 +43,9 @@ type PackfileHeader struct {
 }
 
 type PackfileData struct {
-	ObjHash gitplumbing.Hash
-	ObjType gitplumbing.ObjectType
-	ObjLen  uint64
-	Data    []byte
-	End     bool
+	PackfileID []byte
+	Data       []byte
+	End        bool
 }
 
 var ErrFetchingFromPeer = errors.New("fetching from peer")
@@ -123,7 +121,10 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit gitpl
 		}
 		defer pool.Close()
 
-		for batch := range aggregateWork(ctx, jobQueue, uint(len(manifest))/maxPeers, 5*time.Second) {
+		batchSize := uint(len(manifest)) / maxPeers
+		batchTimeout := 5 * time.Second
+
+		for batch := range aggregateWork(ctx, jobQueue, batchSize, batchTimeout) {
 			conn := pool.GetConn()
 			if conn == nil {
 				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
@@ -334,12 +335,11 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		uncompressedSize += jobMap[string(objectID)].size
 	}
 
-	var packfileTempID gitplumbing.Hash
-	copy(packfileTempID[:], makePackfileTempID(availableObjectIDs))
+	packfileTempID := makePackfileTempID(availableObjectIDs)
 
 	chOut <- MaybeFetchFromCommitPacket{
 		PackfileHeader: &PackfileHeader{
-			PackfileID:       packfileTempID[:],
+			PackfileID:       packfileTempID,
 			UncompressedSize: uncompressedSize,
 		},
 	}
@@ -364,20 +364,16 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		}
 		chOut <- MaybeFetchFromCommitPacket{
 			PackfileData: &PackfileData{
-				ObjHash: packfileTempID,
-				ObjType: -1,
-				ObjLen:  0,
-				Data:    data,
+				PackfileID: packfileTempID,
+				Data:       data,
 			},
 		}
 	}
 
 	chOut <- MaybeFetchFromCommitPacket{
 		PackfileData: &PackfileData{
-			ObjHash: packfileTempID,
-			ObjType: -1,
-			ObjLen:  0,
-			End:     true,
+			PackfileID: packfileTempID,
+			End:        true,
 		},
 	}
 
