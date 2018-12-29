@@ -1,14 +1,16 @@
 package nodehttp
 
 import (
+	"context"
 	"expvar"
 	"fmt"
 	"html/template"
 	"net/http"
+	"time"
 
 	"github.com/brynbellomy/debugcharts"
 
-	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
@@ -136,9 +138,19 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), s.node.ID().Pretty()))
 		}
 
+		var username string
+		{
+			var err error
+			ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+			username, err = s.node.GetUsername(ctx)
+			if err != nil {
+				username = "<error fetching username>"
+			}
+		}
+
 		var state State
 
-		state.Username = s.node.Config.User.Username
+		state.Username = username
 		state.EthAddress = s.node.EthAddress().Hex()
 		state.RPCListenAddr = s.node.Config.Node.RPCListenNetwork + ":" + s.node.Config.Node.RPCListenHost
 		state.Addrs = addrs
@@ -151,7 +163,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			state.Peers = append(state.Peers, p)
 		}
 
-		err := s.node.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+		err := s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
 			if err != nil {
 				return err

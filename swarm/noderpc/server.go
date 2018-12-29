@@ -1,10 +1,8 @@
 package noderpc
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -22,8 +20,8 @@ import (
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/nodegit"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
-	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -141,7 +139,7 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 
 	// Have the node track the local repo
-	_, err = s.node.RepoManager.TrackRepo(path)
+	_, err = s.node.RepoManager().TrackRepo(path, true)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -182,108 +180,120 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 	return &pb.CheckpointRepoResponse{Ok: true}, nil
 }
 
-func (s *Server) PullRepo(ctx context.Context, req *pb.PullRepoRequest) (*pb.PullRepoResponse, error) {
-	didStash := false
-	err := util.ExecAndScanStdout(ctx, []string{"git", "stash"}, req.Path, func(line string) error {
-		if line != "No local changes to save" {
-			didStash = true
+func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoServer) error {
+	// @@TODO: give context a timeout and make it configurable
+	ctx := context.Background()
+	ch := nodegit.PullRepo(ctx, req.Path)
+
+	for progress := range ch {
+		if progress.Error != nil {
+			return errors.WithStack(progress.Error)
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	err = util.ExecAndScanStdout(ctx, []string{"git", "pull", "origin", "master"}, req.Path, func(line string) error {
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	if didStash {
-		// @@TODO: handle merge conflict on stash pop
-		err = util.ExecAndScanStdout(ctx, []string{"git", "stash", "apply"}, req.Path, func(line string) error {
-			return nil
+		err := server.Send(&pb.PullRepoResponsePacket{
+			ToFetch: progress.ToFetch,
+			Fetched: progress.Fetched,
 		})
 		if err != nil {
-			return nil, errors.WithStack(err)
+			return errors.WithStack(err)
 		}
-		// @@TODO: git stash drop
 	}
-	return &pb.PullRepoResponse{Ok: true}, nil
+	return nil
 }
 
-func (s *Server) CloneRepo(ctx context.Context, req *pb.CloneRepoRequest) (*pb.CloneRepoResponse, error) {
-	location := req.Path
-	if len(location) == 0 {
-		location = s.node.Config.Node.ReplicationRoot
-	}
-	remote := fmt.Sprintf("conscience://%s", req.RepoID)
-	err := util.ExecAndScanStdout(ctx, []string{"git", "clone", remote}, location, func(line string) error {
-		log.Debugln("[git clone]", line)
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	name := req.RepoID
-	if strings.Contains(name, "/") {
-		name = strings.Split(name, "/")[1]
+func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepoServer) error {
+	repoRoot := req.Path
+	if len(repoRoot) == 0 {
+		repoRoot = s.node.Config.Node.ReplicationRoot
 	}
 
-	repoPath := filepath.Join(location, name)
-	r, err := repo.Open(repoPath)
+	ctx := context.Background()
+	ch := nodegit.CloneRepo(ctx, repoRoot, req.RepoID)
+
+	for progress := range ch {
+		if progress.Error != nil {
+			return errors.WithStack(progress.Error)
+		}
+
+		err := server.Send(&pb.CloneRepoResponsePacket{
+			Payload: &pb.CloneRepoResponsePacket_Progress_{&pb.CloneRepoResponsePacket_Progress{
+				ToFetch: progress.ToFetch,
+				Fetched: progress.Fetched,
+			}},
+		})
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	repoFolder := req.RepoID
+	if strings.Contains(repoFolder, "/") {
+		parts := strings.Split(repoFolder, "/")
+		repoFolder = parts[len(parts)-1]
+	}
+
+	r, err := repo.Open(filepath.Join(repoRoot, repoFolder))
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
 	err = r.AddUserToConfig(req.Name, req.Email)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
-	return &pb.CloneRepoResponse{Path: repoPath}, nil
-}
-
-func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
-	objectReader, err := s.node.GetObjectReader(server.Context(), req.RepoID, req.ObjectID)
+	err = server.Send(&pb.CloneRepoResponsePacket{
+		Payload: &pb.CloneRepoResponsePacket_Success_{&pb.CloneRepoResponsePacket_Success{
+			Path: r.Path,
+		}},
+	})
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	defer objectReader.Close()
 
-	// First, send a special header packet containing the type and length of the object
-	{
-		headerbuf := &bytes.Buffer{}
-		err = wire.WriteStructPacket(headerbuf, &wire.ObjectMetadata{Type: objectReader.Type(), Len: objectReader.Len()})
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	return nil
+}
 
-		err = server.Send(&pb.GetObjectResponsePacket{Data: headerbuf.Bytes()})
-		if err != nil {
-			return errors.WithStack(err)
-		}
+func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
+	var commitHash gitplumbing.Hash
+	copy(commitHash[:], req.Commit)
+	// @@TODO: give context a timeout and make it configurable
+	ch, uncompressedSize := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash)
+
+	err := server.Send(&pb.FetchFromCommitResponse{
+		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
+			UncompressedSize: uncompressedSize,
+		}},
+	})
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
-	// @@TODO: make this configurable
-	const CHUNK_SIZE = 1048576 // 1 MiB
-	data := &bytes.Buffer{}
+	for pkt := range ch {
+		switch {
+		case pkt.Error != nil:
+			return errors.WithStack(pkt.Error)
 
-	eof := false
-	for !eof {
-		_, err = io.CopyN(data, objectReader, CHUNK_SIZE)
-		if err == io.EOF {
-			eof = true
-		} else if err != nil {
-			return errors.WithStack(err)
+		case pkt.PackfileHeader != nil:
+			err = server.Send(&pb.FetchFromCommitResponse{
+				Payload: &pb.FetchFromCommitResponse_PackfileHeader_{&pb.FetchFromCommitResponse_PackfileHeader{
+					PackfileID:       pkt.PackfileHeader.PackfileID,
+					UncompressedSize: pkt.PackfileHeader.UncompressedSize,
+				}},
+			})
+
+		case pkt.PackfileData != nil:
+			err = server.Send(&pb.FetchFromCommitResponse{
+				Payload: &pb.FetchFromCommitResponse_PackfileData_{&pb.FetchFromCommitResponse_PackfileData{
+					PackfileID: pkt.PackfileData.PackfileID,
+					Data:       pkt.PackfileData.Data,
+					End:        pkt.PackfileData.End,
+				}},
+			})
 		}
 
-		err = server.Send(&pb.GetObjectResponsePacket{Data: data.Bytes()})
 		if err != nil {
 			return errors.WithStack(err)
 		}
-
-		data.Reset()
 	}
 	return nil
 }
@@ -306,7 +316,7 @@ func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDReque
 }
 
 func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoRequest) (*pb.TrackLocalRepoResponse, error) {
-	_, err := s.node.RepoManager.TrackRepo(req.RepoPath)
+	_, err := s.node.RepoManager().TrackRepo(req.RepoPath, req.ForceReload)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -314,7 +324,7 @@ func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoReque
 }
 
 func (s *Server) GetLocalRepos(req *pb.GetLocalReposRequest, server pb.NodeRPC_GetLocalReposServer) error {
-	return s.node.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+	return s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 		select {
 		case <-server.Context().Done():
 			return errors.WithStack(server.Context().Err())
@@ -408,29 +418,35 @@ func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) 
 	return &pb.GetRepoUsersResponse{Total: total, Users: users}, nil
 }
 
-func (s *Server) RequestReplication(ctx context.Context, req *pb.ReplicationRequest) (*pb.ReplicationResponse, error) {
-	err := s.node.RequestReplication(ctx, req.RepoID)
-	if err != nil {
-		return nil, err
+func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRPC_RequestReplicationServer) error {
+	ctx := context.Background()
+	ch := s.node.RequestReplication(ctx, req.RepoID)
+	for progress := range ch {
+		if progress.Error != nil {
+			return errors.WithStack(progress.Error)
+		}
+		err := server.Send(&pb.ReplicationResponsePacket{Percent: int32(progress.Percent)})
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	}
-	return &pb.ReplicationResponse{}, nil
+	return nil
 }
 
 func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryRequest) (*pb.GetRepoHistoryResponse, error) {
 	var r *repo.Repo
 
 	if len(req.Path) > 0 {
-		r = s.node.RepoManager.RepoAtPath(req.Path)
+		r = s.node.RepoManager().RepoAtPath(req.Path)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
 		}
 
 	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager.Repo(req.RepoID)
+		r = s.node.RepoManager().Repo(req.RepoID)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
 		}
-
 	} else {
 		return nil, errors.Errorf("must provide either repoID or path")
 	}
@@ -615,13 +631,13 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	var r *repo.Repo
 
 	if len(req.Path) > 0 {
-		r = s.node.RepoManager.RepoAtPath(req.Path)
+		r = s.node.RepoManager().RepoAtPath(req.Path)
 		if r == nil {
 			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
 		}
 
 	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager.Repo(req.RepoID)
+		r = s.node.RepoManager().Repo(req.RepoID)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
 		}
@@ -686,13 +702,13 @@ func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest
 	var r *repo.Repo
 
 	if len(req.Path) > 0 {
-		r = s.node.RepoManager.RepoAtPath(req.Path)
+		r = s.node.RepoManager().RepoAtPath(req.Path)
 		if r == nil {
 			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
 		}
 
 	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager.Repo(req.RepoID)
+		r = s.node.RepoManager().Repo(req.RepoID)
 		if r == nil {
 			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
 		}

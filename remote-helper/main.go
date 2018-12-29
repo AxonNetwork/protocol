@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -48,7 +47,12 @@ func main() {
 	}
 	defer client.Close()
 
-	Repo, err = repo.Open(filepath.Dir(GIT_DIR))
+	gitDir, err := filepath.Abs(filepath.Dir(GIT_DIR))
+	if err != nil {
+		die(err)
+	}
+
+	Repo, err = repo.Open(gitDir)
 	if err != nil {
 		die(err)
 	}
@@ -58,19 +62,6 @@ func main() {
 		die(err)
 	}
 }
-
-// func appendLog(msg string) {
-//  f, err := os.OpenFile("c:\\Users\\bryn\\remote-helper.txt", os.O_APPEND|os.O_WRONLY, 0600)
-//  if err != nil {
-//      panic(err)
-//  }
-
-//  defer f.Close()
-
-//  if _, err = f.WriteString(msg + "\r\n"); err != nil {
-//      panic(err)
-//  }
-// }
 
 func speakGit(r io.Reader, w io.Writer) error {
 	scanner := bufio.NewScanner(r)
@@ -109,13 +100,13 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		case strings.HasPrefix(text, "fetch"):
 			fetchArgs := strings.Split(text, " ")
-			objHash := fetchArgs[1]
-			err := fetch(gitplumbing.NewHash(objHash))
+			commitHash := fetchArgs[1]
+			err := fetchFromCommit_packfile(commitHash)
 			if err != nil {
 				return err
 			}
 
-			err = trackRepo()
+			err = trackRepo(true)
 			if err != nil {
 				return err
 			}
@@ -146,7 +137,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 
 		case text == "":
 			// The blank line is the stream terminator.  We return when we see this.
-			err := trackRepo()
+			err := trackRepo(false)
 			if err != nil {
 				return err
 			}
@@ -166,7 +157,7 @@ func die(err error) {
 	os.Exit(1)
 }
 
-func trackRepo() error {
+func trackRepo(forceReload bool) error {
 	// Tell the node to track this repo
 	fullpath, err := filepath.Abs(filepath.Dir(GIT_DIR))
 	if err != nil {
@@ -176,7 +167,7 @@ func trackRepo() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	err = client.TrackLocalRepo(ctx, fullpath)
+	err = client.TrackLocalRepo(ctx, fullpath, forceReload)
 	if err != nil {
 		return err
 	}

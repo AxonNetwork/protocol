@@ -4,27 +4,45 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-type GetObjectRequest struct {
-	RepoIDLen   int `struc:"sizeof=RepoID"`
-	RepoID      string
-	ObjectIDLen int `struc:"sizeof=ObjectID"`
-	ObjectID    []byte
-}
-
-type GetObjectRequestSigned struct {
+type GetPackfileRequest struct {
 	RepoIDLen    int `struc:"sizeof=RepoID"`
 	RepoID       string
-	ObjectIDLen  int `struc:"sizeof=ObjectID"`
-	ObjectID     []byte
+	SignatureLen int `struc:"sizeof=Signature"`
+	Signature    []byte
+	ObjectIDsLen int `struc:"sizeof=ObjectIDs"`
+	ObjectIDs    []byte
+}
+
+type GetPackfileResponse struct {
+	ErrUnauthorized bool
+	ObjectIDsLen    int `struc:"sizeof=ObjectIDs"`
+	ObjectIDs       []byte
+}
+
+type PackfileStreamChunk struct {
+	End     bool
+	DataLen int `struc:"sizeof=Data"`
+	Data    []byte
+}
+
+type GetManifestRequest struct {
+	RepoIDLen    int `struc:"sizeof=RepoID"`
+	RepoID       string
+	Commit       gitplumbing.Hash
 	SignatureLen int `struc:"sizeof=Signature"`
 	Signature    []byte
 }
 
-type GetObjectResponse struct {
-	Unauthorized bool
-	HasObject    bool
-	ObjectType   gitplumbing.ObjectType
-	ObjectLen    uint64
+type GetManifestResponse struct {
+	ErrUnauthorized  bool
+	ErrMissingCommit bool
+	ManifestLen      int
+}
+
+type ManifestObject struct {
+	HashLen          int `struc:"sizeof=Hash"`
+	Hash             []byte
+	UncompressedSize int64
 }
 
 type ReplicationRequest struct {
@@ -32,9 +50,12 @@ type ReplicationRequest struct {
 	RepoID    string
 }
 
-type ReplicationResponse struct {
+type ReplicationProgress struct {
 	ErrorLen int64 `struc:"sizeof=Error"`
 	Error    string
+	Fetched  int64
+	ToFetch  int64
+	Done     bool
 }
 
 type LocalRepo struct {
@@ -45,11 +66,6 @@ type LocalRepo struct {
 type Ref struct {
 	RefName    string
 	CommitHash string
-}
-
-type ObjectMetadata struct {
-	Type gitplumbing.ObjectType
-	Len  uint64
 }
 
 type BecomeReplicatorRequest struct {

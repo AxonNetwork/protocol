@@ -17,6 +17,7 @@ func getRefs() ([]string, error) {
 	refsList := []string{}
 	for _, ref := range refs {
 		refsList = append(refsList, fmt.Sprintf("%s %s", ref.CommitHash, ref.RefName))
+		// refsList = append(refsList, fmt.Sprintf("56ca5a89f2cf4b398f8ee2e755bbf71e1559b6b2 %s", ref.RefName))
 	}
 	refsList = append(refsList, "@refs/heads/master HEAD")
 	return refsList, nil

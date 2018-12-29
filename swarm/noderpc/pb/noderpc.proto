@@ -11,9 +11,9 @@ service NodeRPC {
 
   rpc InitRepo(InitRepoRequest) returns (InitRepoResponse) {}
   rpc CheckpointRepo(CheckpointRepoRequest) returns (CheckpointRepoResponse) {}
-  rpc PullRepo(PullRepoRequest) returns (PullRepoResponse) {}
-  rpc CloneRepo(CloneRepoRequest) returns (CloneRepoResponse) {}
-  rpc GetObject(GetObjectRequest) returns (stream GetObjectResponsePacket) {}
+  rpc PullRepo(PullRepoRequest) returns (stream PullRepoResponsePacket) {}
+  rpc CloneRepo(CloneRepoRequest) returns (stream CloneRepoResponsePacket) {}
+  rpc FetchFromCommit(FetchFromCommitRequest) returns (stream FetchFromCommitResponse) {}
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
   rpc GetLocalRepos(GetLocalReposRequest) returns (stream GetLocalReposResponsePacket) {}
@@ -24,7 +24,7 @@ service NodeRPC {
   rpc IsBehindRemote(IsBehindRemoteRequest) returns (IsBehindRemoteResponse) {}
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
-  rpc RequestReplication(ReplicationRequest) returns (ReplicationResponse) {}
+  rpc RequestReplication(ReplicationRequest) returns (stream ReplicationResponsePacket) {}
 
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
@@ -73,8 +73,9 @@ message PullRepoRequest {
     string path = 1;
 }
 
-message PullRepoResponse {
-    bool ok = 1;
+message PullRepoResponsePacket {
+    int64 toFetch = 1;
+    int64 fetched = 2;
 }
 
 message CloneRepoRequest {
@@ -84,17 +85,49 @@ message CloneRepoRequest {
     string email = 4;
 }
 
-message CloneRepoResponse {
-    string path = 1;
+message CloneRepoResponsePacket {
+    message Progress {
+        int64 toFetch = 1;
+        int64 fetched = 2;
+    }
+
+    message Success {
+        string path = 1;
+    }
+
+    oneof payload {
+        Progress progress = 1;
+        Success success = 2;
+    }
 }
 
-message GetObjectRequest {
+message FetchFromCommitRequest {
     string repoID = 1;
-    bytes objectID = 2;
+    string path = 2;
+    bytes commit = 3;
 }
 
-message GetObjectResponsePacket {
-    bytes data = 1;
+message FetchFromCommitResponse {
+    message Header {
+        int64 uncompressedSize = 1;
+    }
+
+    message PackfileHeader {
+        bytes packfileID = 1;
+        int64 uncompressedSize = 2;
+    }
+
+    message PackfileData {
+        bytes packfileID = 1;
+        bytes data = 2;
+        bool end = 3;
+    }
+
+    oneof payload {
+        Header header = 1;
+        PackfileHeader packfileHeader = 2;
+        PackfileData packfileData = 3;
+    }
 }
 
 message RegisterRepoIDRequest {
@@ -105,6 +138,7 @@ message RegisterRepoIDResponse {}
 
 message TrackLocalRepoRequest {
     string repoPath = 1;
+    bool forceReload = 2;
 }
 
 message TrackLocalRepoResponse {}
@@ -189,7 +223,9 @@ message ReplicationRequest {
     string repoID = 1;
 }
 
-message ReplicationResponse {}
+message ReplicationResponsePacket {
+    int32 percent = 1;
+}
 
 message GetRepoHistoryRequest {
     string repoID = 1;

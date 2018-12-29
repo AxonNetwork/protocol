@@ -52,4 +52,10 @@ Host    = "unix:///tmp/conscience.sock"
 - Keep an eye out for line endings.  The git remote helper (git-remote-conscience) was failing on Windows due to the presence of `\r` characters in the stream.
 
 
+## Helpful profiling commands
+
+```sh
+pprof -http :1227 ~/projects/conscience/protocol/build/native/conscience-node http://localhost:6060/debug/pprof/profile?seconds=18
+```
+
 

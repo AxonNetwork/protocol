@@ -2,138 +2,158 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
+	"fmt"
 	"io"
-	"sync"
-	"time"
+	"math"
+	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+
+	"github.com/Conscience/protocol/config/env"
+	"github.com/Conscience/protocol/util"
 )
 
-var inflightLimiter = make(chan struct{}, 5)
-
-func init() {
-	for i := 0; i < 5; i++ {
-		inflightLimiter <- struct{}{}
-	}
-}
-
-func fetch(hash gitplumbing.Hash) error {
-	wg := &sync.WaitGroup{}
-	chErr := make(chan error)
-
-	wg.Add(1)
-	go recurseObject(hash, wg, chErr)
-
-	chDone := make(chan struct{})
-	go func() {
-		defer close(chDone)
-		wg.Wait()
-	}()
-
-	select {
-	case <-chDone:
+func fetchFromCommit_packfile(commitHashStr string) error {
+	commitHashSlice, err := hex.DecodeString(commitHashStr)
+	if err != nil {
+		return err
+	} else if Repo.HasObject(commitHashSlice) {
 		return nil
-	case err := <-chErr:
+	}
+
+	var commitHash gitplumbing.Hash
+	copy(commitHash[:], commitHashSlice)
+
+	// @@TODO: give context a timeout and make it configurable
+	ch, uncompressedSize, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
+	if err != nil {
 		return err
 	}
-}
 
-func recurseObject(hash gitplumbing.Hash, wg *sync.WaitGroup, chErr chan error) {
-	defer wg.Done()
+	progressWriter := newProgressWriter()
+	fmt.Fprintf(os.Stderr, "\n")
 
-	objType, err := fetchAndWriteObject(hash)
-	if err != nil {
-		chErr <- err
-		return
+	type PackfileDownload struct {
+		io.WriteCloser
+		uncompressedSize int64
+		written          int64
 	}
 
-	// If the object is a tree or commit, make sure we have its children
-	switch objType {
-	case gitplumbing.TreeObject:
-		tree, err := Repo.TreeObject(hash)
-		if err != nil {
-			chErr <- errors.WithStack(err)
-			return
-		}
+	packfiles := make(map[string]*PackfileDownload)
+	var written int64
 
-		for _, entry := range tree.Entries {
-			wg.Add(1)
-			go recurseObject(entry.Hash, wg, chErr)
-		}
+	for pkt := range ch {
+		var packfileID string
 
-	case gitplumbing.CommitObject:
-		commit, err := Repo.CommitObject(hash)
-		if err != nil {
-			chErr <- errors.WithStack(err)
-			return
-		}
+		switch {
+		case pkt.Error != nil:
+			return pkt.Error
 
-		if commit.NumParents() > 0 {
-			for _, phash := range commit.ParentHashes {
-				wg.Add(1)
-				go recurseObject(phash, wg, chErr)
+		case pkt.PackfileHeader != nil:
+			packfileID = hex.EncodeToString(pkt.PackfileHeader.PackfileID)
+
+			if _, exists := packfiles[packfileID]; !exists {
+				pw, err := Repo.PackfileWriter()
+				if err != nil {
+					return err
+				}
+
+				packfiles[packfileID] = &PackfileDownload{
+					WriteCloser:      pw,
+					uncompressedSize: pkt.PackfileHeader.UncompressedSize,
+					written:          0,
+				}
+
+				progressWriter.addDownload(packfileID)
+			}
+
+		case pkt.PackfileData != nil:
+			packfileID = hex.EncodeToString(pkt.PackfileData.PackfileID)
+
+			if pkt.PackfileData.End {
+				err = packfiles[packfileID].Close()
+				if err != nil {
+					return errors.WithStack(err)
+				}
+
+				written -= packfiles[packfileID].written          // subtract the compressed byte count from written
+				written += packfiles[packfileID].uncompressedSize // add the uncompressed byte count
+
+				packfiles[packfileID].written = packfiles[packfileID].uncompressedSize // we can assume we have the full packfile now, so update `written` to reflect its uncompressed size
+				packfiles[packfileID].WriteCloser = nil                                // don't need the io.WriteCloser any longer, let it dealloc
+
+			} else {
+				n, err := packfiles[packfileID].Write(pkt.PackfileData.Data)
+				if err != nil {
+					return errors.WithStack(err)
+				} else if n != len(pkt.PackfileData.Data) {
+					return errors.New("remote helper: did not fully write packet")
+				}
+
+				packfiles[packfileID].written += int64(n)
+				written += int64(n)
 			}
 		}
 
-		wg.Add(1)
-		go recurseObject(commit.TreeHash, wg, chErr)
+		packfile := packfiles[packfileID]
+		progressWriter.update(packfileID, packfile.written, packfile.uncompressedSize, written, uncompressedSize)
+	}
+	fmt.Fprint(os.Stderr, "\n")
+
+	return nil
+}
+
+type progressWriter struct {
+	singleLineWriter *util.SingleLineWriter
+	multiLineWriter  *util.MultiLineWriter
+	lines            map[string]int
+}
+
+func newProgressWriter() *progressWriter {
+	return &progressWriter{
+		singleLineWriter: util.NewSingleLineWriter(os.Stderr),
+		multiLineWriter:  util.NewMultiLineWriter(os.Stderr),
+		lines:            map[string]int{},
 	}
 }
 
-func fetchAndWriteObject(hash gitplumbing.Hash) (gitplumbing.ObjectType, error) {
-	<-inflightLimiter
-	defer func() { inflightLimiter <- struct{}{} }()
+func humanize(x int64) string {
+	return util.HumanizeBytes(float64(x))
+}
 
-	obj, err := Repo.Object(gitplumbing.AnyObject, hash)
-	// The object has already been downloaded
-	if err == nil {
-		return obj.Type(), nil
-	}
-
-	// Fetch an object stream from the node via RPC
-	// @@TODO: give context a timeout and make it configurable
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	objectStream, err := client.GetObject(ctx, repoID, hash[:])
-	if err != nil {
-		return 0, errors.WithStack(err)
-	}
-	defer objectStream.Close()
-
-	// Write the object to disk
-	{
-		newobj := Repo.Storer.NewEncodedObject() // returns a &plumbing.MemoryObject{}
-		newobj.SetType(objectStream.Type())
-
-		w, err := newobj.Writer()
-		if err != nil {
-			return 0, errors.WithStack(err)
-		}
-
-		copied, err := io.Copy(w, objectStream)
-		if err != nil {
-			return 0, errors.WithStack(err)
-		} else if uint64(copied) != objectStream.Len() {
-			return 0, errors.Errorf("object stream bad length (copied: %v, object length: %v)", copied, objectStream.Len())
-		}
-
-		err = w.Close()
-		if err != nil {
-			return 0, errors.WithStack(err)
-		}
-
-		// Check the checksum
-		if hash != newobj.Hash() {
-			return 0, errors.Errorf("bad checksum for piece %v", hash.String())
-		}
-
-		// Write the object to disk
-		_, err = Repo.Storer.SetEncodedObject(newobj)
-		if err != nil {
-			return 0, errors.WithStack(err)
+func (pw *progressWriter) update(packfileID string, packfileWritten, packfileTotal int64, written, total int64) {
+	if env.MachineOutputEnabled {
+		pw.singleLineWriter.Printf("Progress: %v/%v = %.02f%%", humanize(written), humanize(total), 100*(float64(written)/float64(total)))
+	} else {
+		pw.multiLineWriter.Printf(0, "Total:      %v %v/%v = %.02f%%", getProgressBar(written, total), humanize(written), humanize(total), 100*(float64(written)/float64(total)))
+		if packfileWritten == packfileTotal {
+			pw.multiLineWriter.Printf(pw.lines[packfileID], "pack %v (%v) Done.", packfileID[:6], humanize(packfileTotal))
+		} else {
+			pw.multiLineWriter.Printf(pw.lines[packfileID], "pack %v %v %v/%v = %.02f%%", packfileID[:6], getProgressBar(packfileWritten, packfileTotal), humanize(packfileWritten), humanize(packfileTotal), 100*(float64(packfileWritten)/float64(packfileTotal)))
 		}
 	}
-	return objectStream.Type(), nil
+}
+
+func (pw *progressWriter) addDownload(packfileID string) {
+	pw.lines[packfileID] = len(pw.lines) + 2
+}
+
+func getProgressBar(done, total int64) string {
+	const barWidth = 39
+
+	percent := float64(done) / float64(total)
+	numDashes := int(math.Round(barWidth * percent))
+	numSpaces := int(math.Round(barWidth * (1 - percent)))
+
+	if numDashes+numSpaces > barWidth {
+		numSpaces--
+	}
+
+	dashes := strings.Repeat("=", numDashes)
+	spaces := strings.Repeat(" ", numSpaces)
+
+	return "[" + dashes + ">" + spaces + "]"
 }

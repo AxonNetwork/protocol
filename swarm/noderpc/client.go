@@ -1,17 +1,17 @@
 package noderpc
 
 import (
-	"bytes"
 	"context"
 	"io"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
-	"github.com/Conscience/protocol/util"
 )
 
 type Client struct {
@@ -52,64 +52,62 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 	return errors.WithStack(err)
 }
 
-func (c *Client) GetObject(ctx context.Context, repoID string, objectID []byte) (*util.ObjectReader, error) {
-	getObjectClient, err := c.client.GetObject(ctx, &pb.GetObjectRequest{RepoID: repoID, ObjectID: objectID})
+type MaybeFetchFromCommitPacket struct {
+	PackfileHeader *pb.FetchFromCommitResponse_PackfileHeader
+	PackfileData   *pb.FetchFromCommitResponse_PackfileData
+	Error          error
+}
+
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit gitplumbing.Hash) (chan MaybeFetchFromCommitPacket, int64, error) {
+	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
+		RepoID: repoID,
+		Path:   path,
+		Commit: commit[:],
+	})
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, 0, errors.WithStack(err)
 	}
 
-	// First, read the special header packet containing a wire.ObjectMetadata{} struct
-	var meta wire.ObjectMetadata
-	{
-		packet, err := getObjectClient.Recv()
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		headerbuf := bytes.NewBuffer(packet.Data)
-		err = wire.ReadStructPacket(headerbuf, &meta)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+	pkt, err := fetchFromCommitClient.Recv()
+	if err != nil {
+		return nil, 0, errors.WithStack(err)
 	}
 
-	// Second, receive protobuf packets and pipe their blob payloads into an io.Reader so that
-	// consumers can interact with them as a regular byte stream.
-	r, w := io.Pipe()
+	header := pkt.GetHeader()
+	if header == nil {
+		return nil, 0, errors.New("[rpc client] FetchFromCommit: first response packet was not a Header")
+	}
+
+	ch := make(chan MaybeFetchFromCommitPacket)
 	go func() {
-		var err error
-		defer func() {
-			if err != nil && err != io.EOF {
-				w.CloseWithError(err)
-			} else {
-				w.Close()
-			}
-		}()
-
-		var packet *pb.GetObjectResponsePacket
+		defer close(ch)
 		for {
-			packet, err = getObjectClient.Recv()
+			x, err := fetchFromCommitClient.Recv()
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				err = errors.WithStack(err)
+				ch <- MaybeFetchFromCommitPacket{Error: errors.WithStack(err)}
 				return
 			}
 
-			_, err = w.Write(packet.Data)
-			if err != nil {
-				err = errors.WithStack(err)
-				return
+			dataPkt := x.GetPackfileData()
+			if dataPkt != nil {
+				ch <- MaybeFetchFromCommitPacket{PackfileData: dataPkt}
+				continue
 			}
+
+			headerPkt := x.GetPackfileHeader()
+			if headerPkt != nil {
+				ch <- MaybeFetchFromCommitPacket{PackfileHeader: headerPkt}
+				continue
+			}
+
+			ch <- MaybeFetchFromCommitPacket{Error: errors.New("[rpc client] expected PackfileData or PackfileHeader packet, got Header packet")}
+			return
 		}
 	}()
 
-	return &util.ObjectReader{
-		Reader:     r,
-		Closer:     r,
-		ObjectLen:  meta.Len,
-		ObjectType: meta.Type,
-	}, nil
+	return ch, header.UncompressedSize, nil
 }
 
 func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {
@@ -117,8 +115,8 @@ func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {
 	return errors.WithStack(err)
 }
 
-func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string) error {
-	_, err := c.client.TrackLocalRepo(ctx, &pb.TrackLocalRepoRequest{RepoPath: repoPath})
+func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string, forceReload bool) error {
+	_, err := c.client.TrackLocalRepo(ctx, &pb.TrackLocalRepoRequest{RepoPath: repoPath, ForceReload: forceReload})
 	return errors.WithStack(err)
 }
 
@@ -239,9 +237,35 @@ func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodee
 	return resp.Users, resp.Total, nil
 }
 
-func (c *Client) RequestReplication(ctx context.Context, repoID string) error {
-	_, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
-	return errors.WithStack(err)
+type MaybeReplProgress struct {
+	Percent int32
+	Error   error
+}
+
+func (c *Client) RequestReplication(ctx context.Context, repoID string) chan MaybeReplProgress {
+	ch := make(chan MaybeReplProgress)
+	requestReplicationClient, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
+	if err != nil {
+		go func() {
+			defer close(ch)
+			ch <- MaybeReplProgress{Error: err}
+		}()
+		return ch
+	}
+	go func() {
+		defer close(ch)
+		for {
+			progress, err := requestReplicationClient.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				ch <- MaybeReplProgress{Error: err}
+				return
+			}
+			ch <- MaybeReplProgress{Percent: progress.Percent}
+		}
+	}()
+	return ch
 }
 
 func (c *Client) RepoHasObject(ctx context.Context, repoID string, objectID []byte) (bool, error) {

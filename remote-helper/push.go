@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+
+	"github.com/Conscience/protocol/util"
 )
 
 func push(srcRefName string, destRefName string) error {
@@ -40,7 +44,20 @@ func push(srcRefName string, destRefName string) error {
 	}
 
 	// @@TODO: give context a timeout and make it configurable
-	ctx, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel3()
-	return client.RequestReplication(ctx, repoID)
+	// ctx, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
+	// defer cancel3()
+	log.Println("Contacting peers for replication...")
+
+	progressWriter := util.NewSingleLineWriter(os.Stderr)
+
+	ch := client.RequestReplication(context.Background(), repoID)
+	for progress := range ch {
+		if progress.Error != nil {
+			log.Printf("Could not find replicator for repo")
+			return nil
+		}
+		progressWriter.Printf("Progress: %d%%", progress.Percent)
+	}
+
+	return nil
 }

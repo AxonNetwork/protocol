@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
@@ -15,10 +14,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
-	"gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/config"
-	"github.com/Conscience/protocol/constants"
+	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
@@ -29,17 +28,23 @@ import (
 
 func main() {
 	log.SetField("App", "conscience-node")
-	log.SetField("ReleaseStage", constants.ReleaseStage)
-	log.SetField("AppVersion", constants.AppVersion)
+	log.SetField("ReleaseStage", env.ReleaseStage)
+	log.SetField("AppVersion", env.AppVersion)
 	log.SetLevel(log.DebugLevel)
 
 	app := cli.NewApp()
-	app.Version = constants.AppVersion
+	app.Version = env.AppVersion
+
+	configPath := filepath.Join(env.HOME, ".consciencerc")
+	// for setting custom config path. Mainly used for testing with multiple nodes
+	if len(os.Args) > 1 {
+		configPath = os.Args[1]
+	}
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "config",
-			Value: filepath.Join(config.HOME, ".consciencerc"),
+			Value: configPath,
 			Usage: "location of config file",
 		},
 	}
@@ -108,8 +113,8 @@ func run(configPath string) error {
 
 	go inputLoop(ctx, n)
 
-	ch := make(chan bool)
-	<-ch
+	// Hang forever
+	select {}
 
 	return nil
 }
@@ -133,19 +138,14 @@ var replCommands = map[string]struct {
 		func(ctx context.Context, args []string, n *swarm.Node) error {
 			log.Printf("Known repos:")
 
-			return n.RepoManager.ForEachRepo(func(r *repo.Repo) error {
+			return n.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 				repoID, err := r.RepoID()
 				if err != nil {
 					return err
 				}
 
 				log.Printf("  - %v", repoID)
-
-				err = r.ForEachObjectID(func(objectID []byte) error {
-					log.Printf("      - %v", hex.EncodeToString(objectID))
-					return nil
-				})
-				return err
+				return nil
 			})
 		},
 	},
@@ -218,7 +218,7 @@ var replCommands = map[string]struct {
 			if len(args) < 1 {
 				return fmt.Errorf("not enough args")
 			}
-			_, err := n.RepoManager.TrackRepo(args[0])
+			_, err := n.RepoManager().TrackRepo(args[0], true)
 			return err
 		},
 	},
@@ -286,12 +286,11 @@ var replCommands = map[string]struct {
 	"set-username": {
 		"set your username",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			var username string
-			if len(args) == 0 {
-				username = n.Config.User.Username
-			} else {
-				username = args[0]
+			if len(args) < 1 {
+				return fmt.Errorf("not enough args")
 			}
+
+			username := args[0]
 
 			tx, err := n.EnsureUsername(ctx, username)
 			if err != nil {

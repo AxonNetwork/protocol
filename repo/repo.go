@@ -16,6 +16,7 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	gitconfigformat "gopkg.in/src-d/go-git.v4/plumbing/format/config"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
+	"gopkg.in/src-d/go-git.v4/plumbing/storer"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/wire"
@@ -25,12 +26,7 @@ import (
 type Repo struct {
 	*git.Repository
 
-	// RepoID string
 	Path string
-	// The string key is not the hexadecimal representation of the object ID (which is always a
-	// []byte).  It's just a string typecast of the []byte because Go maps can't be keyed by byte
-	// slices.
-	//Objects map[string]struct{}
 }
 
 const (
@@ -169,7 +165,7 @@ func (r *Repo) HasObject(objectID []byte) bool {
 		return err == nil || !os.IsNotExist(err)
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
-		hash := gitplumbing.Hash{}
+		var hash gitplumbing.Hash
 		copy(hash[:], objectID)
 		err := r.Storer.HasEncodedObject(hash)
 		return err == nil
@@ -360,4 +356,13 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 		}
 	}
 	return nil
+}
+
+func (r *Repo) PackfileWriter() (io.WriteCloser, error) {
+	pfw, ok := r.Storer.(storer.PackfileWriter)
+	if !ok {
+		return nil, errors.Errorf("Repository storer is not a storer.PackfileWriter")
+	}
+
+	return pfw.PackfileWriter()
 }
