@@ -32,6 +32,8 @@ service NodeRPC {
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
   rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
   rpc SetUserPermissions(SetUserPermissionsRequest) returns (SetUserPermissionsResponse) {}
+
+  rpc GetObject(GetObjectRequest) returns (stream GetObjectResponse) {}
 }
 
 message SetUsernameRequest {
@@ -300,3 +302,27 @@ message SetUserPermissionsRequest {
 }
 
 message SetUserPermissionsResponse {}
+
+message GetObjectRequest {
+    string repoID = 1;
+    string repoRoot = 2;
+    bytes objectID = 3;
+    uint64 maxSize = 4;
+}
+
+message GetObjectResponse {
+    message Header {
+        uint64 uncompressedSize = 1;
+    }
+
+    message Data {
+        bytes data = 1;
+        bool end = 2;
+    }
+
+    oneof payload {
+        Header header = 1;
+        Data data = 2;
+    }
+}
+

@@ -3,6 +3,7 @@ package noderpc
 import (
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -748,4 +749,74 @@ func (s *Server) SetUserPermissions(ctx context.Context, req *pb.SetUserPermissi
 		return nil, errors.New("transaction failed")
 	}
 	return &pb.SetUserPermissionsResponse{}, nil
+}
+
+// @@TODO: make configurable
+const OBJ_CHUNK_SIZE = 512 * 1024 // 512kb
+
+func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
+	if err != nil {
+		return err
+	}
+
+	objectReader, err := r.OpenObject(req.ObjectID)
+	if err != nil {
+		return err
+	}
+
+	err = server.Send(&pb.GetObjectResponse{
+		Payload: &pb.GetObjectResponse_Header_{&pb.GetObjectResponse_Header{
+			UncompressedSize: objectReader.Len(),
+		}},
+	})
+	if err != nil {
+		return err
+	}
+
+	totalBytes := req.MaxSize
+	if totalBytes > objectReader.Len() {
+		totalBytes = objectReader.Len()
+	}
+
+	var sent uint64
+	for sent < totalBytes {
+		bufSize := uint64(OBJ_CHUNK_SIZE)
+		if sent+bufSize > totalBytes {
+			bufSize = totalBytes - sent
+		}
+
+		data := make([]byte, bufSize)
+		n, err := objectReader.Read(data)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		if uint64(n) < bufSize {
+			data = data[:n]
+		}
+
+		sent += uint64(n)
+
+		err = server.Send(&pb.GetObjectResponse{
+			Payload: &pb.GetObjectResponse_Data_{&pb.GetObjectResponse_Data{
+				Data: data,
+			}},
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	err = server.Send(&pb.GetObjectResponse{
+		Payload: &pb.GetObjectResponse_Data_{&pb.GetObjectResponse_Data{
+			End: true,
+		}},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
