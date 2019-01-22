@@ -760,9 +760,48 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 		return err
 	}
 
-	objectReader, err := r.OpenObject(req.ObjectID)
-	if err != nil {
-		return err
+	var objectReader *util.ObjectReader
+	if len(req.ObjectID) > 0 {
+		objectReader, err = r.OpenObject(req.ObjectID)
+		if err != nil {
+			return err
+		}
+	} else {
+		if len(req.CommitHash) != 20 && req.CommitRef == "" {
+			return errors.New("need commitHash or commitRef")
+		} else if len(req.Filename) == 0 {
+			return errors.New("need filename")
+		}
+
+		var commitHash gitplumbing.Hash
+		if req.CommitRef != "" {
+			hash, err := r.ResolveRevision(gitplumbing.Revision(req.CommitRef))
+			if err != nil {
+				return err
+			} else if hash == nil {
+				return errors.Errorf("could not resolve commitRef '%s' to a revision", req.CommitRef)
+			}
+			commitHash = *hash
+		} else {
+			copy(commitHash[:], req.CommitHash)
+		}
+
+		commit, err := r.CommitObject(commitHash)
+		if err != nil {
+			return err
+		}
+		tree, err := r.TreeObject(commit.TreeHash)
+		if err != nil {
+			return err
+		}
+		treeEntry, err := tree.FindEntry(req.Filename)
+		if err != nil {
+			return err
+		}
+		objectReader, err = r.OpenObject(treeEntry.Hash[:])
+		if err != nil {
+			return err
+		}
 	}
 
 	err = server.Send(&pb.GetObjectResponse{

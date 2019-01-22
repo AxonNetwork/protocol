@@ -304,10 +304,20 @@ message SetUserPermissionsRequest {
 message SetUserPermissionsResponse {}
 
 message GetObjectRequest {
+    // need one or the other
     string repoID = 1;
     string repoRoot = 2;
+
+    // need objectID -or-
+    //  (filename -and-
+    //     (commitHash -or- commitRef)
+    //  )
+    // @@TODO: unfuck this
     bytes objectID = 3;
-    uint64 maxSize = 4;
+    string filename = 4;
+    bytes commitHash = 5;
+    string commitRef = 6;
+    uint64 maxSize = 7;
 }
 
 message GetObjectResponse {

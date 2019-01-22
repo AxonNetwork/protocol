@@ -200,7 +200,7 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 		return or, nil
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
-		hash := gitplumbing.Hash{}
+		var hash gitplumbing.Hash
 		copy(hash[:], objectID)
 		obj, err := r.Storer.EncodedObject(gitplumbing.AnyObject, hash)
 		if err != nil {
