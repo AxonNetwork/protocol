@@ -236,6 +236,10 @@ func (r *Repo) GetLocalRefs(ctx context.Context) (map[string]wire.Ref, error) {
 		return nil
 	})
 	if err != nil {
+		// git show-ref exits with code 1 if there are no refs
+		if util.ExitCodeForError(err) == 1 {
+			return map[string]wire.Ref{}, nil
+		}
 		return nil, err
 	}
 	return refs, nil

@@ -126,7 +126,7 @@ func humanize(x int64) string {
 
 func (pw *progressWriter) update(packfileID string, packfileWritten, packfileTotal int64, written, total int64) {
 	if env.MachineOutputEnabled {
-		pw.singleLineWriter.Printf("Progress: %v/%v = %.02f%%", humanize(written), humanize(total), 100*(float64(written)/float64(total)))
+		pw.singleLineWriter.Printf("Progress: %d/%d ", written, total)
 	} else {
 		pw.multiLineWriter.Printf(0, "Total:      %v %v/%v = %.02f%%", getProgressBar(written, total), humanize(written), humanize(total), 100*(float64(written)/float64(total)))
 		if packfileWritten == packfileTotal {
