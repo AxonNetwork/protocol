@@ -34,6 +34,7 @@ service NodeRPC {
   rpc SetUserPermissions(SetUserPermissionsRequest) returns (SetUserPermissionsResponse) {}
 
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponse) {}
+  rpc GetDiff(GetDiffRequest) returns (stream GetDiffResponse) {}
 }
 
 message SetUsernameRequest {
@@ -336,3 +337,16 @@ message GetObjectResponse {
     }
 }
 
+message GetDiffRequest {
+    // need one or the other
+    string repoID = 1;
+    string repoRoot = 2;
+
+    bytes commitHash = 3;
+    string commitRef = 4;
+}
+
+message GetDiffResponse {
+    bytes data = 1;
+    bool end = 2;
+}

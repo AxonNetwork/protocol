@@ -803,6 +803,7 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 			return err
 		}
 	}
+	defer objectReader.Close()
 
 	err = server.Send(&pb.GetObjectResponse{
 		Payload: &pb.GetObjectResponse_Header_{&pb.GetObjectResponse_Header{
@@ -826,15 +827,13 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 		}
 
 		data := make([]byte, bufSize)
-		n, err := objectReader.Read(data)
+		n, err := io.ReadFull(objectReader, data)
 		if err == io.EOF {
 			break
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
 		} else if err != nil {
 			return err
-		}
-
-		if uint64(n) < bufSize {
-			data = data[:n]
 		}
 
 		sent += uint64(n)
@@ -847,6 +846,10 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 		if err != nil {
 			return err
 		}
+
+		if sent == totalBytes {
+			break
+		}
 	}
 
 	err = server.Send(&pb.GetObjectResponse{
@@ -854,6 +857,59 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 			End: true,
 		}},
 	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer) error {
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
+	if err != nil {
+		return err
+	}
+
+	if len(req.CommitHash) != 20 && req.CommitRef == "" {
+		return errors.New("need commitHash or commitRef")
+	}
+
+	var commitHash gitplumbing.Hash
+	if req.CommitRef != "" {
+		hash, err := r.ResolveRevision(gitplumbing.Revision(req.CommitRef))
+		if err != nil {
+			return err
+		} else if hash == nil {
+			return errors.Errorf("could not resolve commitRef '%s' to a revision", req.CommitRef)
+		}
+		commitHash = *hash
+	} else {
+		copy(commitHash[:], req.CommitHash)
+	}
+
+	diffReader, err := nodegit.GetDiff(context.TODO(), r.Path, commitHash)
+	if err != nil {
+		return err
+	}
+	defer diffReader.Close()
+
+	for {
+		data := make([]byte, OBJ_CHUNK_SIZE)
+		n, err := io.ReadFull(diffReader, data)
+		if err == io.EOF {
+			break
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
+		} else if err != nil {
+			return err
+		}
+
+		err = server.Send(&pb.GetDiffResponse{Data: data})
+		if err != nil {
+			return err
+		}
+	}
+
+	err = server.Send(&pb.GetDiffResponse{End: true})
 	if err != nil {
 		return err
 	}
