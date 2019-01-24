@@ -117,7 +117,7 @@ func logStdoutStderr(logfilePrefix string, stdout, stderr io.Reader) (io.Reader,
 	return io.TeeReader(stdout, logfile_stdout), io.TeeReader(stderr, logfile_stderr), closeFn
 }
 
-func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (stdout io.Reader, stderr io.Reader, closeProc func() error, err error) {
+func ExecCmdWithEnv(ctx context.Context, cmdAndArgs []string, cwd string, withEnv []string) (stdout io.Reader, stderr io.Reader, closeProc func() error, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "error running '%v'", strings.Join(cmdAndArgs, " "))
 	}()
@@ -131,7 +131,7 @@ func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (stdout io.Re
 
 	cmd := exec.CommandContext(ctx, cmdAndArgs[0], args...)
 	cmd.Dir = cwd
-	cmd.Env = CopyEnv()
+	cmd.Env = append(CopyEnv(), withEnv...)
 
 	stdout, err = cmd.StdoutPipe()
 	if err != nil {
@@ -169,6 +169,10 @@ func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (stdout io.Re
 	}
 
 	return stdout, stderr, closeProc, nil
+}
+
+func ExecCmd(ctx context.Context, cmdAndArgs []string, cwd string) (stdout io.Reader, stderr io.Reader, closeProc func() error, err error) {
+	return ExecCmdWithEnv(ctx, cmdAndArgs, cwd, []string{})
 }
 
 func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn func(string) error) (err error) {
