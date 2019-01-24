@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -119,7 +120,9 @@ func logStdoutStderr(logfilePrefix string, stdout, stderr io.Reader) (io.Reader,
 
 func ExecCmdWithEnv(ctx context.Context, cmdAndArgs []string, cwd string, withEnv []string) (stdout io.Reader, stderr io.Reader, closeProc func() error, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "error running '%v'", strings.Join(cmdAndArgs, " "))
+		if err != nil {
+			err = errors.Wrapf(err, "error running '%v'", strings.Join(cmdAndArgs, " "))
+		}
 	}()
 
 	var args []string
@@ -202,4 +205,23 @@ func ExecAndScanStdout(ctx context.Context, cmdAndArgs []string, cwd string, fn 
 	}
 
 	return
+}
+
+func ExitCodeForError(err error) int {
+	if msg, ok := err.(*exec.ExitError); ok { // there is error code
+		return msg.Sys().(syscall.WaitStatus).ExitStatus()
+	} else {
+		return 0
+	}
+	// windows code
+	// https://groups.google.com/forum/#!msg/golang-nuts/8XIlxWgpdJw/Z8s2N-SoWHsJ
+	// if err != nil {
+	//         if e2, ok := err.(*exec.ExitError); ok {
+	//                 if s, ok := e2.Sys().(syscall.WaitStatus); ok {
+	//                         return int(s.ExitCode), nil
+	//                 }
+	//         }
+	//         return 0, err
+	// }
+	// return 0, nil
 }

@@ -452,6 +452,12 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return nil, errors.Errorf("must provide either repoID or path")
 	}
 
+	// if HEAD does not exist, return empty commit list
+	_, err := r.Head()
+	if err != nil {
+		return &pb.GetRepoHistoryResponse{Commits: []*pb.Commit{}}, nil
+	}
+
 	cIter, err := r.Log(&git.LogOptions{From: gitplumbing.ZeroHash, Order: git.LogOrderDFS})
 	if err != nil {
 		return nil, err

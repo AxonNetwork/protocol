@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -22,8 +21,6 @@ func ParseProgress(reader io.Reader, ch chan MaybeProgress) error {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
-		log.Println("LINE: ", line)
 
 		startIdx := strings.Index(line, "Progress: ")
 		if startIdx == -1 {
