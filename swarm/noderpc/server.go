@@ -553,7 +553,7 @@ func parseGitStatusLine(line string) (*pb.File, error) {
 		// @@TODO: these are renames
 
 	case "?":
-		file.Name = parts[1]
+		file.Name = strings.Join(parts[1:], " ")
 		file.UnstagedStatus = "?"
 		file.StagedStatus = "?"
 	}
