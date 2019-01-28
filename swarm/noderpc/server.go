@@ -766,12 +766,17 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 		return err
 	}
 
-	var objectReader *util.ObjectReader
+	var objectReader io.ReadCloser
+	var uncompressedSize uint64
+
 	if len(req.ObjectID) > 0 {
-		objectReader, err = r.OpenObject(req.ObjectID)
+		reader, err := r.OpenObject(req.ObjectID)
 		if err != nil {
 			return err
 		}
+		objectReader = reader
+		uncompressedSize = reader.Len()
+
 	} else {
 		if len(req.CommitHash) != 20 && req.CommitRef == "" {
 			return errors.New("need commitHash or commitRef")
@@ -779,41 +784,61 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 			return errors.New("need filename")
 		}
 
-		var commitHash gitplumbing.Hash
-		if req.CommitRef != "" {
-			hash, err := r.ResolveRevision(gitplumbing.Revision(req.CommitRef))
+		if req.CommitRef == "working" {
+			fullpath := filepath.Join(r.Path, req.Filename)
+
+			objectReader, err = os.Open(fullpath)
 			if err != nil {
 				return err
-			} else if hash == nil {
-				return errors.Errorf("could not resolve commitRef '%s' to a revision", req.CommitRef)
 			}
-			commitHash = *hash
-		} else {
-			copy(commitHash[:], req.CommitHash)
-		}
 
-		commit, err := r.CommitObject(commitHash)
-		if err != nil {
-			return err
-		}
-		tree, err := r.TreeObject(commit.TreeHash)
-		if err != nil {
-			return err
-		}
-		treeEntry, err := tree.FindEntry(req.Filename)
-		if err != nil {
-			return err
-		}
-		objectReader, err = r.OpenObject(treeEntry.Hash[:])
-		if err != nil {
-			return err
+			stat, err := os.Stat(fullpath)
+			if err != nil {
+				return err
+			}
+
+			uncompressedSize = uint64(stat.Size())
+
+		} else {
+			var commitHash gitplumbing.Hash
+			if req.CommitRef != "" {
+				hash, err := r.ResolveRevision(gitplumbing.Revision(req.CommitRef))
+				if err != nil {
+					return err
+				} else if hash == nil {
+					return errors.Errorf("could not resolve commitRef '%s' to a revision", req.CommitRef)
+				}
+				commitHash = *hash
+			} else {
+				copy(commitHash[:], req.CommitHash)
+			}
+
+			commit, err := r.CommitObject(commitHash)
+			if err != nil {
+				return err
+			}
+			tree, err := r.TreeObject(commit.TreeHash)
+			if err != nil {
+				return err
+			}
+			treeEntry, err := tree.FindEntry(req.Filename)
+			if err != nil {
+				return err
+			}
+			reader, err := r.OpenObject(treeEntry.Hash[:])
+			if err != nil {
+				return err
+			}
+
+			objectReader = reader
+			uncompressedSize = reader.Len()
 		}
 	}
 	defer objectReader.Close()
 
 	err = server.Send(&pb.GetObjectResponse{
 		Payload: &pb.GetObjectResponse_Header_{&pb.GetObjectResponse_Header{
-			UncompressedSize: objectReader.Len(),
+			UncompressedSize: uncompressedSize,
 		}},
 	})
 	if err != nil {
@@ -821,8 +846,8 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 	}
 
 	totalBytes := req.MaxSize
-	if totalBytes > objectReader.Len() {
-		totalBytes = objectReader.Len()
+	if totalBytes > uncompressedSize {
+		totalBytes = uncompressedSize
 	}
 
 	var sent uint64
