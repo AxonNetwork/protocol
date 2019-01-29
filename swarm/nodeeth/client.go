@@ -282,6 +282,10 @@ func (n *Client) GetRefLogs(ctx context.Context, repoID string) (map[string]uint
 	return logs, nil
 }
 
+func (n *Client) IsRepoPublic(ctx context.Context, repoID string) (bool, error) {
+	return n.protocolContract.IsRepoPublic(n.callOpts(ctx), repoID)
+}
+
 type UserType uint8
 
 const (

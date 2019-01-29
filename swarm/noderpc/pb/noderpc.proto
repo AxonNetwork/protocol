@@ -22,6 +22,7 @@ service NodeRPC {
   rpc GetLocalRefs(GetLocalRefsRequest) returns (GetLocalRefsResponse) {}
   rpc GetRemoteRefs(GetRemoteRefsRequest) returns (GetRemoteRefsResponse) {}
   rpc IsBehindRemote(IsBehindRemoteRequest) returns (IsBehindRemoteResponse) {}
+  rpc IsRepoPublic(IsRepoPublicRequest) returns (IsRepoPublicResponse) {}
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
   rpc RequestReplication(ReplicationRequest) returns (stream ReplicationResponsePacket) {}
@@ -209,6 +210,15 @@ message UpdateRefRequest {
 }
 
 message UpdateRefResponse {}
+
+message IsRepoPublicRequest {
+    string repoID = 1;
+}
+
+message IsRepoPublicResponse {
+    string repoID = 1;
+    bool isPublic = 2;
+}
 
 message GetRepoUsersRequest {
     string repoID = 1;

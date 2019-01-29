@@ -1,4 +1,4 @@
-pragma solidity ^0.4.24;
+pragma solidity ^0.5.0;
 // pragma experimental ABIEncoderV2;
 
 import "./StringSetLib.sol";
@@ -19,7 +19,7 @@ contract Protocol
         StringSetLib.StringSet admins;
         StringSetLib.StringSet pushers;
         StringSetLib.StringSet pullers;
-        bool isPrivate;
+        bool isPublic;
     }
 
     mapping(bytes32 => Repo) repositories;
@@ -27,19 +27,19 @@ contract Protocol
     event LogSetUsername(address indexed addr, string indexed username);
     event LogCreateRepo(address indexed user, string indexed repoID);
     event LogDeleteRepo(address indexed user, string indexed repoID);
-    event LogSetPrivate(address indexed user, string repoID, bool isPrivate);
+    event LogSetPublic(address indexed user, string repoID, bool isPublic);
     event LogUpdateRef(address indexed user, string indexed repoID, string indexed refName, string commitHash);
     event LogDeleteRef(address indexed user, string indexed repoID, string indexed refName);
 
     constructor() public {
     }
 
-    function setUsername(string username) public {
+    function setUsername(string memory username) public {
         require(bytes(username).length > 0, "argument 'username' cannot be empty");
         require(bytes(usernamesByAddress[msg.sender]).length == 0, "your address already belongs to a username");
 
         bytes32 usernameHash = hashString(username);
-        require(addressesByUsername[usernameHash] == 0x0, "this username is already claimed");
+        require(addressesByUsername[usernameHash] == address(0x0), "this username is already claimed");
 
         usernamesByAddress[msg.sender] = username;
         addressesByUsername[usernameHash] = msg.sender;
@@ -47,11 +47,11 @@ contract Protocol
         emit LogSetUsername(msg.sender, username);
     }
 
-    function getAddressForUsername(string username) public view returns (address) {
+    function getAddressForUsername(string memory username) public view returns (address) {
         return addressesByUsername[hashString(username)];
     }
 
-    function createRepo(string repoID) public {
+    function createRepo(string memory repoID) public {
         // Ensure that repoID is nonempty
         require(bytes(repoID).length > 0, "argument 'repoID' cannot be empty");
 
@@ -72,7 +72,7 @@ contract Protocol
         emit LogCreateRepo(msg.sender, repoID);
     }
 
-    function deleteRepo(string repoID) public {
+    function deleteRepo(string memory repoID) public {
         require(addressIsAdmin(msg.sender, repoID), "you are not an admin of this repo");
 
         Repo storage repo = repositories[hashString(repoID)];
@@ -83,18 +83,18 @@ contract Protocol
         emit LogDeleteRepo(msg.sender, repoID);
     }
 
-    function setPrivate(string repoID, bool isPrivate) public {
+    function setPublic(string memory repoID, bool isPublic) public {
         require(addressIsAdmin(msg.sender, repoID), "you are not an admin of this repo");
 
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "this repo does not exist");
 
-        repo.isPrivate = isPrivate;
+        repo.isPublic = isPublic;
 
-        emit LogSetPrivate(msg.sender, repoID, isPrivate);
+        emit LogSetPublic(msg.sender, repoID, isPublic);
     }
 
-    function updateRef(string repoID, string refName, string commitHash) public {
+    function updateRef(string memory repoID, string memory refName, string memory commitHash) public {
         require(userHasPushAccess(usernamesByAddress[msg.sender], repoID), "you don't have push access");
         require(bytes(commitHash).length == 40, "bad commit hash");
 
@@ -107,7 +107,7 @@ contract Protocol
         emit LogUpdateRef(msg.sender, repoID, refName, commitHash);
     }
 
-    function deleteRef(string repoID, string refName) public {
+    function deleteRef(string memory repoID, string memory refName) public {
         require(userHasPushAccess(usernamesByAddress[msg.sender], repoID), "you don't have push access");
 
         Repo storage repo = repositories[hashString(repoID)];
@@ -119,39 +119,43 @@ contract Protocol
         emit LogDeleteRef(msg.sender, repoID, refName);
     }
 
-    function repoExists(string repoID) public view returns (bool) {
+    function repoExists(string memory repoID) public view returns (bool) {
         return repositories[hashString(repoID)].exists;
     }
 
-    function userIsAdmin(string username, string repoID) public view returns (bool) {
+    function userIsAdmin(string memory username, string memory repoID) public view returns (bool) {
         return repositories[hashString(repoID)].admins.contains(username);
     }
 
-    function userHasPullAccess(string username, string repoID) public view returns (bool) {
+    function userHasPullAccess(string memory username, string memory repoID) public view returns (bool) {
         bytes32 repoIDHash = hashString(repoID);
-        if (repositories[repoIDHash].isPrivate == false) {
+        if (repositories[repoIDHash].isPublic == true) {
             return true;
         }
         return repositories[repoIDHash].pullers.contains(username);
     }
 
-    function userHasPushAccess(string username, string repoID) public view returns (bool) {
+    function userHasPushAccess(string memory username, string memory repoID) public view returns (bool) {
         return repositories[hashString(repoID)].pushers.contains(username);
     }
 
-    function addressIsAdmin(address addr, string repoID) public view returns (bool) {
+    function addressIsAdmin(address addr, string memory repoID) public view returns (bool) {
         return userIsAdmin(usernamesByAddress[addr], repoID);
     }
 
-    function addressHasPullAccess(address addr, string repoID) public view returns (bool) {
+    function addressHasPullAccess(address addr, string memory repoID) public view returns (bool) {
         return userHasPullAccess(usernamesByAddress[addr], repoID);
     }
 
-    function addressHasPushAccess(address addr, string repoID) public view returns (bool) {
+    function addressHasPushAccess(address addr, string memory repoID) public view returns (bool) {
         return userHasPushAccess(usernamesByAddress[addr], repoID);
     }
 
-    function getUserPermissions(string repoID, string username) public view returns (bool puller, bool pusher, bool admin) {
+    function isRepoPublic(string memory repoID) public view returns(bool) {
+        return repositories[hashString(repoID)].isPublic;
+    }
+
+    function getUserPermissions(string memory repoID, string memory username) public view returns (bool puller, bool pusher, bool admin) {
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
 
@@ -162,7 +166,7 @@ contract Protocol
         );
     }
 
-    function setUserPermissions(string repoID, string username, bool puller, bool pusher, bool admin) public {
+    function setUserPermissions(string memory repoID, string memory username, bool puller, bool pusher, bool admin) public {
         require(addressIsAdmin(msg.sender, repoID), "you are not an admin");
 
         Repo storage repo = repositories[hashString(repoID)];
@@ -187,18 +191,18 @@ contract Protocol
         }
     }
 
-    function numRefs(string repoID) public view returns (uint) {
+    function numRefs(string memory repoID) public view returns (uint) {
         return repositories[hashString(repoID)].refs.size();
     }
 
-    function getRef(string repoID, string refName) public view returns (string) {
+    function getRef(string memory repoID, string memory refName) public view returns (string memory) {
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
 
         return repo.refsToCommits[hashString(refName)];
     }
 
-    function getRefs(string repoID, uint pageSize, uint page) public view returns (uint total, bytes data) {
+    function getRefs(string memory repoID, uint pageSize, uint page) public view returns (uint total, bytes memory data) {
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
 
@@ -214,7 +218,7 @@ contract Protocol
 
         data = new bytes(len);
         uint written = 0;
-        for (i = 0; i < pageSize && i + start < repo.refs.size(); i++) {
+        for (uint i = 0; i < pageSize && i + start < repo.refs.size(); i++) {
             refName = repo.refs.get(i + start);
             commit = repo.refsToCommits[hashString(refName)];
 
@@ -236,11 +240,11 @@ contract Protocol
         ADMIN, PULLER, PUSHER
     }
 
-    function getRepoUsers(string repoID, UserType whichUsers, uint pageSize, uint page) public view returns (uint total, bytes data) {
+    function getRepoUsers(string memory repoID, UserType whichUsers, uint pageSize, uint page) public view returns (uint total, bytes memory data) {
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
 
-        StringSetLib.StringSet storage users;
+        StringSetLib.StringSet storage users = repo.admins;
         if (whichUsers == UserType.ADMIN) {
             users = repo.admins;
         } else if (whichUsers == UserType.PULLER) {
@@ -259,7 +263,7 @@ contract Protocol
 
         data = new bytes(len);
         uint written = 0;
-        for (i = 0; i < pageSize && i + start < users.size(); i++) {
+        for (uint i = 0; i < pageSize && i + start < users.size(); i++) {
             user = users.get(i + start);
 
             writeUint(bytes(user).length, data, written);
@@ -278,13 +282,13 @@ contract Protocol
         }
     }
 
-    function writeBytes(bytes src, bytes dest, uint offset) private pure {
+    function writeBytes(bytes memory src, bytes memory dest, uint offset) private pure {
         for (uint i = 0; i < src.length; i++) {
             dest[i + offset] = src[i];
         }
     }
 
-    function hashString(string s) private pure returns (bytes32) {
+    function hashString(string memory s) private pure returns (bytes32) {
         return keccak256(abi.encodePacked(s));
     }
 }

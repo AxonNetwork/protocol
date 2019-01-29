@@ -1,4 +1,4 @@
-pragma solidity ^0.4.24;
+pragma solidity ^0.5.0;
 
 /// @title Library implementing an array type which allows O(1) lookups on values.
 /// @author Piper Merriam <pipermerriam@gmail.com>, Eric Olszewski <eolszewski@gmail.com>
@@ -21,7 +21,7 @@ library StringSetLib
         _;
     }
 
-    function hash(string s)
+    function hash(string memory s)
         private
         pure
         returns (bytes32)
@@ -33,12 +33,12 @@ library StringSetLib
         public
         view
         inBounds(self, index)
-        returns (string)
+        returns (string memory)
     {
         return self.values[index];
     }
 
-    function set(StringSet storage self, uint index, string value)
+    function set(StringSet storage self, uint index, string memory value)
         public
         inBounds(self, index)
         returns (bool)
@@ -54,7 +54,7 @@ library StringSetLib
         return true;
     }
 
-    function add(StringSet storage self, string value)
+    function add(StringSet storage self, string memory value)
         public
         returns (bool)
     {
@@ -68,7 +68,7 @@ library StringSetLib
         return true;
     }
 
-    function remove(StringSet storage self, string value)
+    function remove(StringSet storage self, string memory value)
         public
         returns (bool)
     {
@@ -83,7 +83,7 @@ library StringSetLib
     function pop(StringSet storage self, uint index)
         public
         inBounds(self, index)
-        returns (string)
+        returns (string memory)
     {
         string memory value = get(self, index);
 
@@ -103,7 +103,7 @@ library StringSetLib
         return value;
     }
 
-    function replace(StringSet storage self, string old, string nu)
+    function replace(StringSet storage self, string memory old, string memory nu)
         public
         returns (bool)
     {
@@ -114,7 +114,7 @@ library StringSetLib
         public
         view
         notEmpty(self)
-        returns (string)
+        returns (string memory)
     {
         return get(self, 0);
     }
@@ -123,12 +123,12 @@ library StringSetLib
         public
         view
         notEmpty(self)
-        returns (string)
+        returns (string memory)
     {
         return get(self, self.values.length - 1);
     }
 
-    function indexOf(StringSet storage self, string value)
+    function indexOf(StringSet storage self, string memory value)
         public
         view
         returns (uint)
@@ -140,7 +140,7 @@ library StringSetLib
         return self.indices[hvalue];
     }
 
-    function contains(StringSet storage self, string value)
+    function contains(StringSet storage self, string memory value)
         public
         view
         returns (bool)

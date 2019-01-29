@@ -411,6 +411,14 @@ func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.U
 	return &pb.UpdateRefResponse{}, nil
 }
 
+func (s *Server) IsRepoPublic(ctx context.Context, req *pb.IsRepoPublicRequest) (*pb.IsRepoPublicResponse, error) {
+	isPublic, err := s.node.IsRepoPublic(ctx, req.RepoID)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.IsRepoPublicResponse{RepoID: req.RepoID, IsPublic: isPublic}, nil
+}
+
 func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) (*pb.GetRepoUsersResponse, error) {
 	users, total, err := s.node.GetRepoUsers(ctx, req.RepoID, nodeeth.UserType(req.Type), req.PageSize, req.Page)
 	if err != nil {

@@ -490,6 +490,10 @@ func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, com
 	return n.eth.UpdateRef(ctx, repoID, refName, commitHash)
 }
 
+func (n *Node) IsRepoPublic(ctx context.Contetxt, repoID) (bool, error){
+	return n.eth.IsRepoPublic(ctx, repoID)
+}
+
 func (n *Node) GetRepoUsers(ctx context.Context, repoID string, userType nodeeth.UserType, pageSize uint64, page uint64) ([]string, uint64, error) {
 	return n.eth.GetRepoUsers(ctx, repoID, userType, pageSize, page)
 }
