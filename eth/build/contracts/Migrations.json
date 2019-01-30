@@ -1370,16 +1370,10 @@
     "23332": {
       "events": {},
       "links": {},
-      "address": "0x00b608614008f4d55aca09ef46fa726fb830cfb3",
-      "transactionHash": "0x62fe5771fa2494c4832c5502bb381cceafc4b7cf0cbfa85ad4864168f5cf80e6"
+      "address": "0x2317031c208dd43d8f1de0dc49c9360b179a8620",
+      "transactionHash": "0x6f667b0dd0a6bc87a1b1411519b2ff9929536c1d8502c2688c3d104fc85280f5"
     }
   },
-  "schemaVersion": "3.0.1",
-  "updatedAt": "2019-01-29T09:03:39.742Z",
-  "devdoc": {
-    "methods": {}
-  },
-  "userdoc": {
-    "methods": {}
-  }
+  "schemaVersion": "2.0.1",
+  "updatedAt": "2019-01-29T22:15:49.735Z"
 }

@@ -22,17 +22,19 @@ service NodeRPC {
   rpc GetLocalRefs(GetLocalRefsRequest) returns (GetLocalRefsResponse) {}
   rpc GetRemoteRefs(GetRemoteRefsRequest) returns (GetRemoteRefsResponse) {}
   rpc IsBehindRemote(IsBehindRemoteRequest) returns (IsBehindRemoteResponse) {}
-  rpc IsRepoPublic(IsRepoPublicRequest) returns (IsRepoPublicResponse) {}
-  rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
   rpc RequestReplication(ReplicationRequest) returns (stream ReplicationResponsePacket) {}
+
+  rpc SetRepoPublic(SetRepoPublicRequest) returns (SetRepoPublicResponse) {}
+  rpc IsRepoPublic(IsRepoPublicRequest) returns (IsRepoPublicResponse) {}
+  rpc SetUserPermissions(SetUserPermissionsRequest) returns (SetUserPermissionsResponse) {}
+  rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
 
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
   rpc RepoHasObject(RepoHasObjectRequest) returns (RepoHasObjectResponse) {}
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
   rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
-  rpc SetUserPermissions(SetUserPermissionsRequest) returns (SetUserPermissionsResponse) {}
 
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponse) {}
   rpc GetDiff(GetDiffRequest) returns (stream GetDiffResponse) {}
@@ -211,6 +213,24 @@ message UpdateRefRequest {
 
 message UpdateRefResponse {}
 
+message ReplicationRequest {
+    string repoID = 1;
+}
+
+message ReplicationResponsePacket {
+    int32 percent = 1;
+}
+
+message SetRepoPublicRequest {
+    string repoID = 1;
+    bool isPublic = 2;
+}
+
+message SetRepoPublicResponse {
+    string repoID = 1;
+    bool isPublic = 2;
+}
+
 message IsRepoPublicRequest {
     string repoID = 1;
 }
@@ -232,13 +252,15 @@ message GetRepoUsersResponse {
     repeated string users = 2;
 }
 
-message ReplicationRequest {
+message SetUserPermissionsRequest {
     string repoID = 1;
+    string username = 2;
+    bool puller = 3;
+    bool pusher = 4;
+    bool admin = 5;
 }
 
-message ReplicationResponsePacket {
-    int32 percent = 1;
-}
+message SetUserPermissionsResponse {}
 
 message GetRepoHistoryRequest {
     string repoID = 1;
@@ -303,16 +325,6 @@ message EthAddressRequest {}
 message EthAddressResponse {
     string address = 1;
 }
-
-message SetUserPermissionsRequest {
-    string repoID = 1;
-    string username = 2;
-    bool puller = 3;
-    bool pusher = 4;
-    bool admin = 5;
-}
-
-message SetUserPermissionsResponse {}
 
 message GetObjectRequest {
     // need one or the other

@@ -37,7 +37,7 @@ module.exports = {
       provider: function() {
           return new HDWalletProvider(mnemonic, host)
       },
-      gas: 6000000,
+      gas: 8000000,
       gasPrice: 50000000000,
     },
     mainnet: {

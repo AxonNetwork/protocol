@@ -144,6 +144,21 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+
+	// if local HEAD exists, push to contract
+	_, err = r.Head()
+	if err == nil {
+		log.Debugln("[checkpoint] git push origin master")
+		err = util.ExecAndScanStdout(ctx, []string{"git", "push", "origin", "master"}, req.Path, func(line string) error {
+			log.Debugln("[checkpoint]  -", line)
+			return nil
+		})
+		if err != nil {
+			log.Errorln("[checkpoint]  - error:", err)
+			return nil, errors.WithStack(err)
+		}
+	}
+
 	return &pb.InitRepoResponse{Path: path}, nil
 }
 
@@ -409,6 +424,21 @@ func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.U
 	}
 
 	return &pb.UpdateRefResponse{}, nil
+}
+
+func (s *Server) SetRepoPublic(ctx context.Context, req *pb.SetRepoPublicRequest) (*pb.SetRepoPublicResponse, error) {
+	tx, err := s.node.SetRepoPublic(ctx, req.RepoID, req.IsPublic)
+	if err != nil {
+		return nil, err
+	}
+	txResult := <-tx.Await(ctx)
+	if txResult.Err != nil {
+		return nil, txResult.Err
+	} else if txResult.Receipt.Status == 0 {
+		return nil, errors.New("transaction failed")
+	}
+
+	return &pb.SetRepoPublicResponse{RepoID: req.RepoID, IsPublic: req.IsPublic}, nil
 }
 
 func (s *Server) IsRepoPublic(ctx context.Context, req *pb.IsRepoPublicRequest) (*pb.IsRepoPublicResponse, error) {

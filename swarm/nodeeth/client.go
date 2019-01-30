@@ -282,6 +282,14 @@ func (n *Client) GetRefLogs(ctx context.Context, repoID string) (map[string]uint
 	return logs, nil
 }
 
+func (n *Client) SetRepoPublic(ctx context.Context, repoID string, isPublic bool) (*Transaction, error) {
+	tx, err := n.protocolContract.SetPublic(n.transactOpts(ctx), repoID, isPublic)
+	if err != nil {
+		return nil, err
+	}
+	return &Transaction{tx, n.ethClient}, nil
+}
+
 func (n *Client) IsRepoPublic(ctx context.Context, repoID string) (bool, error) {
 	return n.protocolContract.IsRepoPublic(n.callOpts(ctx), repoID)
 }

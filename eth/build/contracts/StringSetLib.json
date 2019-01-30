@@ -11169,18 +11169,10 @@
     "23332": {
       "events": {},
       "links": {},
-      "address": "0x12b49ff3c1dff678eb566f2502c6cbfcc78914ca",
-      "transactionHash": "0x71d546da8ec6762fd143f3e7e3d24b4aacd9ab0422749cd8c0021047476752bb"
+      "address": "0xa1f4fcdf67e72a3380ff38a2fd23c9c92e5c8f25",
+      "transactionHash": "0xffa370055449232ff80b52de26c54e39ae78a37a1735424749675c4a588c4192"
     }
   },
-  "schemaVersion": "3.0.1",
-  "updatedAt": "2019-01-29T09:03:39.748Z",
-  "devdoc": {
-    "author": "Piper Merriam <pipermerriam@gmail.com>, Eric Olszewski <eolszewski@gmail.com> Adapted from https://github.com/ethpm/ethereum-indexed-enumerable-set-lib/blob/master/contracts/IndexedEnumerableSetLib.sol",
-    "methods": {},
-    "title": "Library implementing an array type which allows O(1) lookups on values."
-  },
-  "userdoc": {
-    "methods": {}
-  }
+  "schemaVersion": "2.0.1",
+  "updatedAt": "2019-01-29T22:15:49.748Z"
 }

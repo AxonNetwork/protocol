@@ -490,7 +490,11 @@ func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, com
 	return n.eth.UpdateRef(ctx, repoID, refName, commitHash)
 }
 
-func (n *Node) IsRepoPublic(ctx context.Contetxt, repoID) (bool, error){
+func (n *Node) SetRepoPublic(ctx context.Context, repoID string, isPublic bool) (*nodeeth.Transaction, error) {
+	return n.eth.SetRepoPublic(ctx, repoID, isPublic)
+}
+
+func (n *Node) IsRepoPublic(ctx context.Context, repoID string) (bool, error) {
 	return n.eth.IsRepoPublic(ctx, repoID)
 }
 
