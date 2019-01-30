@@ -48,10 +48,14 @@ func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byt
 	resp := GetPackfileResponse{}
 	err = ReadStructPacket(stream, &resp)
 	if err != nil {
+		stream.Close()
 		return nil, nil, err
 	} else if resp.ErrUnauthorized {
+		stream.Close()
 		return nil, nil, errors.Wrapf(ErrUnauthorized, "%v", pc.repoID)
+	} else if len(resp.ObjectIDs) == 0 {
+		stream.Close()
+		return nil, nil, errors.Wrapf(ErrObjectNotFound, "%v", pc.repoID)
 	}
-
 	return UnflattenObjectIDs(resp.ObjectIDs), stream, nil
 }

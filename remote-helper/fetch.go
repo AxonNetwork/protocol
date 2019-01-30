@@ -13,6 +13,7 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config/env"
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -96,6 +97,9 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 				packfiles[packfileID].written += int64(n)
 				written += int64(n)
 			}
+
+		default:
+			log.Errorln("bad packet")
 		}
 
 		packfile := packfiles[packfileID]
