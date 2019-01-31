@@ -1,6 +1,9 @@
 package nodep2p
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,7 +21,9 @@ import (
 
 func getManifest(r *repo.Repo, commitHash gitplumbing.Hash) ([]ManifestObject, error) {
 	objectHashes := make(map[gitplumbing.Hash]bool)
-	err := objectHashesForCommit(r, commitHash, objectHashes)
+	chunkHashes := make(map[string]bool)
+
+	err := objectHashesForCommit(r, commitHash, objectHashes, chunkHashes)
 	if err != nil {
 		return nil, err
 	}
@@ -33,6 +38,22 @@ func getManifest(r *repo.Repo, commitHash gitplumbing.Hash) ([]ManifestObject, e
 		// If we don't copy the hash here, they all end up being the same
 		var h gitplumbing.Hash
 		copy(h[:], hash[:])
+
+		manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: size})
+	}
+
+	for hash := range chunkHashes {
+		p := filepath.Join(r.Path, ".git", repo.CONSCIENCE_DATA_SUBDIR, hash)
+		stat, err := os.Stat(p)
+		size := stat.Size()
+
+		hex, err := hex.DecodeString(hash)
+		if err != nil {
+			return nil, err
+		}
+
+		var h [repo.CONSCIENCE_HASH_LENGTH]byte
+		copy(h[:], hex[:])
 
 		manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: size})
 	}
@@ -98,11 +119,11 @@ func createCachedManifest(repoID string, manifest []ManifestObject) (err error) 
 	return
 }
 
-func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[gitplumbing.Hash]bool) error {
+func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seenObj map[gitplumbing.Hash]bool, seenChunks map[string]bool) error {
 	stack := []gitplumbing.Hash{commitHash}
 
 	for len(stack) > 0 {
-		if seen[stack[0]] {
+		if seenObj[stack[0]] {
 			stack = stack[1:]
 			continue
 		}
@@ -114,7 +135,7 @@ func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[g
 
 		parentHashes := []gitplumbing.Hash{}
 		for _, h := range commit.ParentHashes {
-			if _, wasSeen := seen[h]; !wasSeen {
+			if _, wasSeen := seenObj[h]; !wasSeen {
 				parentHashes = append(parentHashes, h)
 			}
 		}
@@ -127,7 +148,7 @@ func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[g
 			return err
 		}
 
-		walker := gitobject.NewTreeWalker(tree, true, seen)
+		walker := gitobject.NewTreeWalker(tree, true, seenObj)
 
 		for {
 			_, entry, err := walker.Next()
@@ -144,15 +165,59 @@ func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[g
 				continue
 			}
 			switch obj.Type() {
-			case gitplumbing.TreeObject, gitplumbing.BlobObject:
-				seen[entry.Hash] = true
+			case gitplumbing.TreeObject:
+				seenObj[entry.Hash] = true
+			case gitplumbing.BlobObject:
+				seenObj[entry.Hash] = true
+				err := chunkHashesForObj(r, entry.Hash, seenChunks)
+				if err != nil {
+					log.Printf("[err] error on chunkHashesForObj: %v\n", err)
+				}
 			default:
 				log.Printf("found weird object: %v (%v)\n", entry.Hash.String(), obj.Type())
 			}
 		}
 
-		seen[commit.Hash] = true
-		seen[commit.TreeHash] = true
+		seenObj[commit.Hash] = true
+		seenObj[commit.TreeHash] = true
+	}
+
+	return nil
+}
+
+func chunkHashesForObj(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[string]bool) error {
+	obj, err := r.Storer.EncodedObject(gitplumbing.BlobObject, hash)
+	if err != nil {
+		return err
+	}
+
+	reader, err := obj.Reader()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	br := bufio.NewReader(reader)
+	header, err := br.Peek(18)
+	if err == io.EOF {
+		// file is shorter than header
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if bytes.Compare(header, []byte("CONSCIENCE_ENCODED")) != 0 {
+		// not a chunked file
+		return nil
+	}
+
+	for {
+		line, _, err := br.ReadLine()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+		seenChunks[string(line)] = true
 	}
 
 	return nil
