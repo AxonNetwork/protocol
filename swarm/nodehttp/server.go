@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/brynbellomy/debugcharts"
@@ -110,21 +111,29 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		Addrs      []string
 	}
 
+	type RefMapping struct {
+		RefName      string
+		LocalCommit  string
+		RemoteCommit string
+	}
+
 	type RepoInfo struct {
 		RepoID string
 		Path   string
+		Refs   []RefMapping
 	}
 
 	type State struct {
-		Username        string
-		EthAddress      string
-		RPCListenAddr   string
-		Addrs           []string
-		Peers           []Peer
-		LocalRepos      []RepoInfo
-		ReplicateRepos  []string
-		Logs            []logger.Entry
-		GlobalConnStats struct {
+		Username             string
+		EthAddress           string
+		ProtocolContractAddr string
+		RPCListenAddr        string
+		Addrs                []string
+		Peers                []Peer
+		LocalRepos           []RepoInfo
+		ReplicateRepos       []string
+		Logs                 []logger.Entry
+		GlobalConnStats      struct {
 			TotalIn  string
 			TotalOut string
 			RateIn   string
@@ -152,6 +161,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 		state.Username = username
 		state.EthAddress = s.node.EthAddress().Hex()
+		state.ProtocolContractAddr = s.node.Config.Node.ProtocolContract
 		state.RPCListenAddr = s.node.Config.Node.RPCListenNetwork + ":" + s.node.Config.Node.RPCListenHost
 		state.Addrs = addrs
 
@@ -169,7 +179,42 @@ func (s *Server) handleIndex() http.HandlerFunc {
 				return err
 			}
 
-			state.LocalRepos = append(state.LocalRepos, RepoInfo{RepoID: repoID, Path: r.Path})
+			localRefs, err := r.GetLocalRefs(context.TODO())
+			if err != nil {
+				return err
+			}
+
+			remoteRefs, _, err := s.node.GetRemoteRefs(context.TODO(), repoID, 50, 0)
+			if err != nil {
+				return err
+			}
+
+			refmap := map[string]RefMapping{}
+			for refname := range localRefs {
+				refmap[refname] = RefMapping{
+					RefName:      refname,
+					LocalCommit:  localRefs[refname].CommitHash,
+					RemoteCommit: remoteRefs[refname].CommitHash,
+				}
+			}
+			for refname := range remoteRefs {
+				refmap[refname] = RefMapping{
+					RefName:      refname,
+					LocalCommit:  localRefs[refname].CommitHash,
+					RemoteCommit: remoteRefs[refname].CommitHash,
+				}
+			}
+			refs := []RefMapping{}
+			for _, x := range refmap {
+				refs = append(refs, x)
+			}
+			sort.Slice(refs, func(i, j int) bool { return refs[i].RefName < refs[j].RefName })
+
+			state.LocalRepos = append(state.LocalRepos, RepoInfo{
+				RepoID: repoID,
+				Path:   r.Path,
+				Refs:   refs,
+			})
 			return nil
 		})
 		if err != nil {
@@ -255,6 +300,28 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             .log.debug {
                 color: grey;
             }
+
+            .local-repos table {
+                padding: 10px;
+            }
+
+            .local-repos table thead {
+                font-weight: bold;
+                text-decoration: underline;
+            }
+
+            .local-repos table td {
+                padding: 0 8px;
+            }
+
+            .local-repos .toggle-refs {
+                cursor: pointer;
+                color: blue;
+            }
+
+            .hidden {
+                display: none;
+            }
         </style>
     </head>
     <body>
@@ -266,6 +333,7 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
         <section>
             <div><label>Username:</label> {{ .Username }}</div>
             <div><label>ETH account:</label> {{ .EthAddress }}</div>
+            <div><label>Protocol contract:</label> {{ .ProtocolContractAddr }}</div>
             <div><label>RPC listen addr:</label> {{ .RPCListenAddr }}</div>
             <div>
                 <label>Listen addrs:</label>
@@ -327,9 +395,27 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             <br />
 
             <label>Local repos:</label>
-            <ul>
+            <ul class="local-repos">
                 {{ range .LocalRepos }}
-                    <li>{{ .RepoID }} ({{ .Path }})</li>
+                    <li>
+                        <div>{{ .RepoID }} ({{ .Path }}) <span class="toggle-refs">[toggle refs]</span></div>
+                        <table class="hidden">
+                            <thead>
+                                <td>Ref</td>
+                                <td>Local</td>
+                                <td>Remote</td>
+                            </thead>
+                            <tbody>
+                            {{ range .Refs }}
+                                <tr>
+                                    <td>{{ .RefName }}</td>
+                                    <td>{{ .LocalCommit }}</td>
+                                    <td>{{ .RemoteCommit }}</td>
+                                </tr>
+                            {{ end }}
+                            </tbody>
+                        </table>
+                    </li>
                 {{ end }}
             </ul>
         </section>
@@ -355,6 +441,17 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 for (var i = 0; i < checkboxes.length; i++) {
                     checkboxes[i].addEventListener('click', updateLogs)
                 }
+
+                var refToggles = document.querySelectorAll('.local-repos .toggle-refs')
+                for (var i = 0; i < refToggles.length; i++) {
+                    refToggles[i].addEventListener('click', toggleRefVisibility)
+                }
+            }
+
+            function toggleRefVisibility(event) {
+                console.log('event', event)
+                var table = event.target.parentElement.parentElement.querySelector('table')
+                table.classList.toggle('hidden')
             }
 
             function getFilters() {

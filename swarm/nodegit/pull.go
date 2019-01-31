@@ -33,7 +33,7 @@ func PullRepo(ctx context.Context, path string) chan MaybeProgress {
 			return nil
 		})
 		if err != nil {
-			log.Errorf("[pull repo]", errors.WithStack(err))
+			log.Errorln("[pull repo]", path, errors.WithStack(err))
 		}
 
 		// then pull changes from network and send progress updates

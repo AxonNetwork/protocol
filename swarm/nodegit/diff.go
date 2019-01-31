@@ -10,9 +10,6 @@ import (
 )
 
 func GetDiff(ctx context.Context, path string, commitHash gitplumbing.Hash) (io.ReadCloser, error) {
-	var err error
-
-	// then pull changes from network and send progress updates
 	stdout, _, closeCmd, err := util.ExecCmd(ctx, []string{"git", "show", commitHash.String()}, path)
 	if err != nil {
 		return nil, err
