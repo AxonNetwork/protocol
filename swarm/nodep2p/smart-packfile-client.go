@@ -94,20 +94,19 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit gitpl
 
 	// Load the job queue up with everything in the manifest
 	jobQueue := make(chan job, len(manifest))
-	go func() {
-		defer close(chOut)
-		defer close(jobQueue)
-
-		for _, obj := range manifest {
-			wg.Add(1)
-			jobQueue <- job{
-				size:        obj.UncompressedSize,
-				objectID:    obj.Hash,
-				failedPeers: make(map[peer.ID]bool),
-			}
+	for _, obj := range manifest {
+		wg.Add(1)
+		jobQueue <- job{
+			size:        obj.UncompressedSize,
+			objectID:    obj.Hash,
+			failedPeers: make(map[peer.ID]bool),
 		}
+	}
 
+	go func() {
 		wg.Wait()
+		close(jobQueue)
+		close(chOut)
 	}()
 
 	maxPeers := sc.config.Node.MaxConcurrentPeers
@@ -122,7 +121,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit gitpl
 		defer pool.Close()
 
 		batchSize := uint(len(manifest)) / maxPeers
-		batchTimeout := 5 * time.Second
+		batchTimeout := 3 * time.Second
 
 		for batch := range aggregateWork(ctx, jobQueue, batchSize, batchTimeout) {
 			conn := pool.GetConn()
@@ -139,7 +138,7 @@ func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit gitpl
 						// @@TODO: mark failed peer on job{}
 						// @@TODO: maybe call ReturnConn with true if the peer should be discarded
 					}
-					pool.ReturnConn(conn, false)
+					pool.ReturnConn(conn, true)
 
 				} else {
 					pool.ReturnConn(conn, false)
@@ -300,6 +299,8 @@ func (sc *SmartPackfileClient) returnJobsToQueue(ctx context.Context, jobs []job
 	}
 }
 
+var retriedOnce sync.Once
+
 func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
@@ -323,10 +324,14 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 	missingObjectIDs := determineMissingIDs(desiredObjectIDs, availableObjectIDs)
 	if len(missingObjectIDs) > 0 {
 		jobsToReturn := make([]job, len(missingObjectIDs))
-		for _, oid := range missingObjectIDs {
-			jobsToReturn = append(jobsToReturn, jobMap[string(oid)])
+		for i, oid := range missingObjectIDs {
+			jobsToReturn[i] = jobMap[string(oid)]
 		}
 		go sc.returnJobsToQueue(ctx, jobsToReturn, jobQueue)
+	}
+
+	if len(availableObjectIDs) == 0 {
+		return nil
 	}
 
 	// Calculate the total uncompressed size of the objects in the packfile.
@@ -356,8 +361,8 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 
 		} else if err != nil {
 			failedJobs := make([]job, len(availableObjectIDs))
-			for _, oid := range availableObjectIDs {
-				failedJobs = append(failedJobs, jobMap[string(oid)])
+			for i, oid := range availableObjectIDs {
+				failedJobs[i] = jobMap[string(oid)]
 			}
 			go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
 			return err
@@ -377,7 +382,7 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		},
 	}
 
-	for range availableObjectIDs {
+	for i := 0; i < len(availableObjectIDs); i++ {
 		wg.Done()
 	}
 
