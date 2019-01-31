@@ -19,6 +19,11 @@ type GetPackfileResponse struct {
 	ObjectIDs       []byte
 }
 
+type GetPackfileResponsePacket struct {
+	End    bool
+	Length int
+}
+
 type PackfileStreamChunk struct {
 	End     bool
 	DataLen int `struc:"sizeof=Data"`

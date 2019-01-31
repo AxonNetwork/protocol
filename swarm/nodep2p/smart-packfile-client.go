@@ -311,14 +311,14 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 		jobMap[string(batch[i].objectID)] = batch[i]
 	}
 
-	availableObjectIDs, packfileReader, err := conn.RequestPackfile(ctx, desiredObjectIDs)
+	availableObjectIDs, packfileStream, err := conn.RequestPackfile(ctx, desiredObjectIDs)
 	if err != nil {
 		err = errors.Wrapf(ErrFetchingFromPeer, "tried requesting packfile from peer %v: %v", conn.peerID, err)
 		log.Errorf("[packfile client]", err)
 		go sc.returnJobsToQueue(ctx, batch, jobQueue)
 		return err
 	}
-	defer packfileReader.Close()
+	defer packfileStream.Close()
 
 	// Determine which objects the peer can't send us and re-add those to the job queue.
 	missingObjectIDs := determineMissingIDs(desiredObjectIDs, availableObjectIDs)
@@ -350,29 +350,39 @@ func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConn
 	}
 
 	for {
-		data := make([]byte, OBJ_CHUNK_SIZE)
-		n, err := io.ReadFull(packfileReader, data)
-		if err == io.EOF {
-			// read no bytes
+		packet := &GetPackfileResponsePacket{}
+		err = ReadStructPacket(packfileStream, &packet)
+		if err != nil {
 			break
-
-		} else if err == io.ErrUnexpectedEOF {
-			data = data[:n]
-
-		} else if err != nil {
-			failedJobs := make([]job, len(availableObjectIDs))
-			for i, oid := range availableObjectIDs {
-				failedJobs[i] = jobMap[string(oid)]
-			}
-			go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
-			return err
 		}
+
+		data := make([]byte, packet.Length)
+		n, err := io.ReadFull(packfileStream, data)
+		if err != nil {
+			break
+		} else if n != packet.Length {
+			break
+		}
+
 		chOut <- MaybeFetchFromCommitPacket{
 			PackfileData: &PackfileData{
 				PackfileID: packfileTempID,
 				Data:       data,
 			},
 		}
+
+		if packet.End {
+			break
+		}
+	}
+
+	if err != nil {
+		failedJobs := make([]job, len(availableObjectIDs))
+		for i, oid := range availableObjectIDs {
+			failedJobs[i] = jobMap[string(oid)]
+		}
+		go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
+		return err
 	}
 
 	chOut <- MaybeFetchFromCommitPacket{

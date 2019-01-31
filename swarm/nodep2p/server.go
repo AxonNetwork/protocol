@@ -96,33 +96,71 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 			return
 		}
 
-		cached := getCachedPackfile(availableObjectIDs)
-		if cached != nil {
-			defer cached.Close()
+		rPipe, wPipe := io.Pipe()
 
-			log.Infoln("[p2p server] using cached packfile")
+		go func() {
+			defer wPipe.Close()
+			cached := getCachedPackfile(availableObjectIDs)
 
-			_, err = io.Copy(stream, cached)
-			if err != nil {
-				log.Errorln("[p2p server] error reading cached packfile:", err)
+			if cached != nil {
+				defer cached.Close()
+
+				_, err = io.Copy(wPipe, cached)
+				if err != nil {
+					wPipe.CloseWithError(err)
+				}
+
+			} else {
+				cached = createCachedPackfile(availableObjectIDs)
+				defer cached.Close()
+
+				availableHashes := make([]gitplumbing.Hash, len(availableObjectIDs))
+				for i := range availableObjectIDs {
+					copy(availableHashes[i][:], availableObjectIDs[i])
+				}
+
+				mw := io.MultiWriter(wPipe, cached)
+				enc := packfile.NewEncoder(mw, r.Storer, false)
+				_, err = enc.Encode(availableHashes, 10) // @@TODO: do we need to negotiate the packfile window with the client?
+				if err != nil {
+					wPipe.CloseWithError(err)
+				}
 			}
-			return
+		}()
+
+		end := false
+		for {
+			data := make([]byte, OBJ_CHUNK_SIZE)
+			n, err := io.ReadFull(rPipe, data)
+			if err == io.EOF {
+				end = true
+			} else if err == io.ErrUnexpectedEOF {
+				data = data[:n]
+				end = true
+			} else if err != nil {
+				log.Errorln("[p2p server] error reading packfile")
+			}
+
+			err = WriteStructPacket(stream, &GetPackfileResponsePacket{
+				End:    end,
+				Length: n,
+			})
+			if err != nil {
+				log.Errorf("[p2p server] %v", err)
+				return
+			}
+
+			n, err = stream.Write(data)
+			if err != nil {
+				log.Errorf("[p2p server] %v", err)
+				return
+			}
+
 		}
 
-		log.Infoln("[p2p server] caching new packfile")
-		cached = createCachedPackfile(availableObjectIDs)
-		defer cached.Close()
-
-		availableHashes := make([]gitplumbing.Hash, len(availableObjectIDs))
-		for i := range availableObjectIDs {
-			copy(availableHashes[i][:], availableObjectIDs[i])
-		}
-
-		mw := io.MultiWriter(stream, cached)
-		enc := packfile.NewEncoder(mw, r.Storer, false)
-		_, err = enc.Encode(availableHashes, 10) // @@TODO: do we need to negotiate the packfile window with the client?
+		_, err := io.Copy(stream, rPipe)
 		if err != nil {
-			log.Errorln("[p2p server] error encoding packfile:", err)
+			log.Errorln("[p2p server] error sending packfile:", err)
 		}
 	}
 }

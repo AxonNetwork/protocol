@@ -3,7 +3,6 @@ package nodep2p
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -42,21 +41,21 @@ func getManifest(r *repo.Repo, commitHash gitplumbing.Hash) ([]ManifestObject, e
 		manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: size})
 	}
 
-	for hash := range chunkHashes {
-		p := filepath.Join(r.Path, ".git", repo.CONSCIENCE_DATA_SUBDIR, hash)
-		stat, err := os.Stat(p)
-		size := stat.Size()
+	// for hash := range chunkHashes {
+	// 	p := filepath.Join(r.Path, ".git", repo.CONSCIENCE_DATA_SUBDIR, hash)
+	// 	stat, err := os.Stat(p)
+	// 	size := stat.Size()
 
-		hex, err := hex.DecodeString(hash)
-		if err != nil {
-			return nil, err
-		}
+	// 	hex, err := hex.DecodeString(hash)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
 
-		var h [repo.CONSCIENCE_HASH_LENGTH]byte
-		copy(h[:], hex[:])
+	// 	var h [repo.CONSCIENCE_HASH_LENGTH]byte
+	// 	copy(h[:], hex[:])
 
-		manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: size})
-	}
+	// 	manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: size})
+	// }
 
 	return manifest, nil
 }
