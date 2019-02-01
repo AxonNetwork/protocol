@@ -34,6 +34,7 @@ func New(node *swarm.Node) *Server {
 	router.HandleFunc("/", s.handleIndex())
 	router.HandleFunc("/set-replication-policy", s.handleAddReplicatedRepo())
 	router.HandleFunc("/remove-peer", s.handleRemovePeer())
+	router.HandleFunc("/untrack-repo", s.handleUntrackRepo())
 	router.Handle("/debug/vars", expvar.Handler())
 	debugcharts.RegisterHandlers(router)
 
@@ -80,6 +81,48 @@ func (s *Server) handleRemovePeer() http.HandlerFunc {
 		}
 
 		http.Redirect(w, r, "/", http.StatusFound)
+	}
+}
+
+func (s *Server) handleUntrackRepo() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		err := req.ParseForm()
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		repoPath := req.Form.Get("repoPath")
+		if repoPath == "" {
+			die500(w, err)
+			return
+		}
+
+		r, err := s.node.RepoManager().RepoAtPathOrID(repoPath, "")
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		err = s.node.RepoManager().UntrackRepo(repoPath)
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		repoID, err := r.RepoID()
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		err = s.node.SetReplicationPolicy(repoID, false)
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		http.Redirect(w, req, "/", http.StatusFound)
 	}
 }
 
@@ -390,6 +433,12 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 <div>Repo ID: <input type="text" name="repo" /></div>
                 <div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
                 <div><input type="submit" value="Set" /></div>
+            </form>
+
+            <div><label>Untrack repo</label></div>
+            <form action="/untrack-repo" method="post">
+                <div>Repo path: <input type="text" name="repoPath" /></div>
+                <div><input type="submit" value="Untrack" /></div>
             </form>
 
             <br />

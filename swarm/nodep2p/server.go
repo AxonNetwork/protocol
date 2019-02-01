@@ -196,7 +196,7 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	}
 
 	if hasAccess == false {
-		log.Warnf("[p2p server] address 0x%0x does not have pull access", addr.Bytes())
+		log.Warnf("[p2p server] address 0x%0x does not have pull access to repo %v", addr.Bytes(), req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{ErrUnauthorized: true})
 		if err != nil {
 			log.Errorf("[p2p server] %v", err)
@@ -218,7 +218,7 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 
 	manifest, err := getManifest(r, req.Commit)
 	if err != nil {
-		log.Warnf("[p2p server] cannot get manifest for repo %v", req.RepoID)
+		log.Warnf("[p2p server] cannot get manifest for repo %v", req.RepoID, err)
 		err := WriteStructPacket(stream, &GetManifestResponse{ErrMissingCommit: true})
 		if err != nil {
 			log.Errorf("[p2p server] %v", err)
