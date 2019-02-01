@@ -36,15 +36,17 @@ type GetManifestRequest struct {
 	Commit       gitplumbing.Hash
 	SignatureLen int `struc:"sizeof=Signature"`
 	Signature    []byte
+	CheckoutType int
 }
 
 type GetManifestResponse struct {
 	ErrUnauthorized  bool
 	ErrMissingCommit bool
-	ManifestLen      int
+	SendingManifest  bool
 }
 
 type ManifestObject struct {
+	End              bool
 	HashLen          int `struc:"sizeof=Hash"`
 	Hash             []byte
 	UncompressedSize int64

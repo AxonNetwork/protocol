@@ -357,8 +357,9 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 }
 
 func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit gitplumbing.Hash) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
-	c := nodep2p.NewSmartPackfileClient(n, repoID, repoPath, &n.Config)
-	return c.FetchFromCommit(ctx, commit)
+	checkoutType := nodep2p.Sparse
+	c := nodep2p.NewSmartClient(n, repoID, repoPath, &n.Config)
+	return c.FetchFromCommit(ctx, commit, checkoutType)
 }
 
 func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {
