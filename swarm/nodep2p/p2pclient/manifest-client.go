@@ -1,4 +1,4 @@
-package nodep2p
+package p2pclient
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
@@ -78,7 +79,7 @@ func (sc *SmartClient) requestManifestFromPeer(ctx context.Context, peerID peer.
 	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", sc.repoID, commit, peerID.Pretty())
 
 	// Open the stream
-	stream, err := sc.node.NewStream(ctx, peerID, MANIFEST_PROTO)
+	stream, err := sc.node.NewStream(ctx, peerID, nodep2p.MANIFEST_PROTO)
 	if err != nil {
 		return nil, err
 	}

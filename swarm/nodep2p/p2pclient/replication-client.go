@@ -1,4 +1,4 @@
-package nodep2p
+package p2pclient
 
 import (
 	"context"
@@ -9,11 +9,12 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
-func RequestBecomeReplicator(ctx context.Context, n INode, repoID string) error {
+func RequestBecomeReplicator(ctx context.Context, n nodep2p.INode, repoID string) error {
 	cfg := n.GetConfig()
 	for _, pubkeyStr := range cfg.Node.KnownReplicators {
 		peerID, err := peer.IDB58Decode(pubkeyStr)
@@ -22,7 +23,7 @@ func RequestBecomeReplicator(ctx context.Context, n INode, repoID string) error 
 			continue
 		}
 
-		stream, err := n.NewStream(ctx, peerID, BECOME_REPLICATOR_PROTO)
+		stream, err := n.NewStream(ctx, peerID, nodep2p.BECOME_REPLICATOR_PROTO)
 		if err != nil {
 			log.Errorf("RequestBecomeReplicator: error connecting to peer %v: %v", peerID, err)
 			continue
@@ -64,7 +65,7 @@ type MaybePeerProgress struct {
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
-func RequestReplication(ctx context.Context, n INode, repoID string) <-chan MaybeReplProgress {
+func RequestReplication(ctx context.Context, n nodep2p.INode, repoID string) <-chan MaybeReplProgress {
 	progressCh := make(chan MaybeReplProgress)
 	c, err := util.CidForString("replicate:" + repoID)
 	if err != nil {
@@ -97,7 +98,7 @@ func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Mayb
 	return progressCh
 }
 
-func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID peer.ID, peerCh chan MaybePeerProgress) {
+func requestPeerReplication(ctx context.Context, n nodep2p.INode, repoID string, peerID peer.ID, peerCh chan MaybePeerProgress) {
 	var err error
 
 	defer func() {
@@ -108,7 +109,7 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 		}
 	}()
 
-	stream, err := n.NewStream(ctx, peerID, REPLICATION_PROTO)
+	stream, err := n.NewStream(ctx, peerID, nodep2p.REPLICATION_PROTO)
 	if err != nil {
 		return
 	}

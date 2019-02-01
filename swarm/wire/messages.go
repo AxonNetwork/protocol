@@ -30,6 +30,14 @@ type PackfileStreamChunk struct {
 	Data    []byte
 }
 
+type CheckoutType int
+
+const (
+	Sparse  CheckoutType = 0
+	Working CheckoutType = 1
+	Full    CheckoutType = 2
+)
+
 type GetManifestRequest struct {
 	RepoIDLen    int `struc:"sizeof=RepoID"`
 	RepoID       string

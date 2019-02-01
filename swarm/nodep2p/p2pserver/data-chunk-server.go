@@ -1,4 +1,4 @@
-package nodep2p
+package p2pserver
 
 import netp2p "github.com/libp2p/go-libp2p-net"
 

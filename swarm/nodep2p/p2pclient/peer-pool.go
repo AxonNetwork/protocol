@@ -1,4 +1,4 @@
-package nodep2p
+package p2pclient
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -17,7 +18,7 @@ type peerPool struct {
 	cancel      func()
 }
 
-func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns uint) (*peerPool, error) {
+func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err

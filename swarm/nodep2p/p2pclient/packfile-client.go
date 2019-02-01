@@ -1,4 +1,4 @@
-package nodep2p
+package p2pclient
 
 import (
 	"context"

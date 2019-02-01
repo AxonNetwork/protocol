@@ -1,4 +1,4 @@
-package nodep2p
+package p2pclient
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/libp2p/go-libp2p-peer"
 
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/pkg/errors"
 )
@@ -13,10 +14,10 @@ import (
 type PeerConnection struct {
 	peerID peer.ID
 	repoID string
-	node   INode
+	node   nodep2p.INode
 }
 
-func NewPeerConnection(node INode, peerID peer.ID, repoID string) *PeerConnection {
+func NewPeerConnection(node nodep2p.INode, peerID peer.ID, repoID string) *PeerConnection {
 	return &PeerConnection{
 		peerID: peerID,
 		repoID: repoID,
@@ -25,7 +26,7 @@ func NewPeerConnection(node INode, peerID peer.ID, repoID string) *PeerConnectio
 }
 
 func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byte) ([][]byte, io.ReadCloser, error) {
-	stream, err := pc.node.NewStream(ctx, pc.peerID, PACKFILE_PROTO)
+	stream, err := pc.node.NewStream(ctx, pc.peerID, nodep2p.PACKFILE_PROTO)
 	if err != nil {
 		return nil, nil, err
 	}

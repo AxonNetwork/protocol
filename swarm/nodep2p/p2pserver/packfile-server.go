@@ -1,4 +1,4 @@
-package nodep2p
+package p2pserver
 
 import (
 	"context"
@@ -14,14 +14,15 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/format/packfile"
 
 	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
 type Server struct {
-	node INode
+	node nodep2p.INode
 }
 
-func NewServer(node INode) *Server {
+func NewServer(node nodep2p.INode) *Server {
 	return &Server{node}
 }
 
@@ -130,7 +131,7 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 
 		end := false
 		for {
-			data := make([]byte, OBJ_CHUNK_SIZE)
+			data := make([]byte, nodep2p.OBJ_CHUNK_SIZE)
 			n, err := io.ReadFull(rPipe, data)
 			if err == io.EOF {
 				end = true

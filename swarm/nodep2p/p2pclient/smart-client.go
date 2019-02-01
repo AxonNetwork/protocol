@@ -1,4 +1,4 @@
-package nodep2p
+package p2pclient
 
 import (
 	"context"
@@ -11,22 +11,16 @@ import (
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm/nodep2p"
+	. "github.com/Conscience/protocol/swarm/wire"
 )
 
 type SmartClient struct {
-	node   INode
+	node   nodep2p.INode
 	config *config.Config
 	repo   *repo.Repo
 	repoID string
 }
-
-type CheckoutType int
-
-const (
-	Sparse  CheckoutType = 0
-	Working CheckoutType = 1
-	Full    CheckoutType = 2
-)
 
 type job struct {
 	objectID    []byte
@@ -53,7 +47,7 @@ type PackfileData struct {
 
 var ErrFetchingFromPeer = errors.New("fetching from peer")
 
-func NewSmartClient(node INode, repoID string, repoPath string, config *config.Config) *SmartClient {
+func NewSmartClient(node nodep2p.INode, repoID string, repoPath string, config *config.Config) *SmartClient {
 	r, _ := node.RepoAtPathOrID(repoPath, repoID)
 
 	sc := &SmartClient{
@@ -68,7 +62,7 @@ func NewSmartClient(node INode, repoID string, repoPath string, config *config.C
 func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.Hash, checkoutType CheckoutType) (<-chan MaybeFetchFromCommitPacket, int64) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 
-	gitObjects, _, uncompressedSize, err := sc.GetManifest(ctx, commit, checkoutType)
+	gitObjects, chunkObjects, uncompressedSize, err := sc.GetManifest(ctx, commit, checkoutType)
 	if err != nil {
 		go func() {
 			defer close(chOut)
@@ -76,7 +70,7 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.H
 		}()
 		return chOut, 0
 	}
-	log.Println("GOT GIT OBJECTS: ", len(gitObjects))
+	log.Println("GOT Chunks OBJECTS: ", len(chunkObjects))
 
 	wg := &sync.WaitGroup{}
 
