@@ -16,9 +16,10 @@ type peerPool struct {
 	needNewPeer chan struct{}
 	ctx         context.Context
 	cancel      func()
+	openStreams bool
 }
 
-func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint) (*peerPool, error) {
+func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint, openStreams bool) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -32,11 +33,13 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 		needNewPeer: make(chan struct{}),
 		ctx:         ctxInner,
 		cancel:      cancel,
+		openStreams: openStreams,
 	}
 
 	// When a message is sent on the `needNewPeer` channel, this goroutine attempts to take a peer
 	// from the `chProviders` channel, open a PeerConnection to it, and add it to the pool.
 	go func() {
+		defer close(p.peers)
 		for {
 			select {
 			case <-p.needNewPeer:
@@ -67,7 +70,16 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 				// }
 
 				peerConn = NewPeerConnection(node, peerID, repoID)
-				break
+				if openStreams {
+					err = peerConn.OpenStream(p.ctx)
+					if err == nil {
+						// if err then move onto the next peer
+						break
+					}
+				} else {
+					break
+				}
+
 			}
 
 			// p.peerList[peerConn.peerID] = peerConn
@@ -99,7 +111,12 @@ func (p *peerPool) Close() error {
 
 	p.needNewPeer = nil
 	p.chProviders = nil
-	p.peers = nil
+	go func() {
+		for x := range p.peers {
+			x.Close()
+		}
+		p.peers = nil
+	}()
 
 	return nil
 }
@@ -118,6 +135,8 @@ func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 		// if _, exists := p.peerList[conn.peerID]; exists {
 		// 	delete(p.peerList, conn.peerID)
 		// }
+
+		conn.Close()
 
 		select {
 		case p.needNewPeer <- struct{}{}:

@@ -9,7 +9,6 @@ import (
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config"
-	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
@@ -31,6 +30,7 @@ type job struct {
 type MaybeFetchFromCommitPacket struct {
 	*PackfileHeader
 	*PackfileData
+	*Chunk
 	Error error
 }
 
@@ -43,6 +43,11 @@ type PackfileData struct {
 	PackfileID []byte
 	Data       []byte
 	End        bool
+}
+
+type Chunk struct {
+	ObjectID []byte
+	Data     []byte
 }
 
 var ErrFetchingFromPeer = errors.New("fetching from peer")
@@ -70,7 +75,6 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.H
 		}()
 		return chOut, 0
 	}
-	log.Println("GOT Chunks OBJECTS: ", len(chunkObjects))
 
 	wg := &sync.WaitGroup{}
 
@@ -79,6 +83,15 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.H
 		defer wg.Done()
 		gitCh := sc.FetchGitPackfiles(ctx, gitObjects)
 		for packet := range gitCh {
+			chOut <- packet
+		}
+	}()
+
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		chunkCh := sc.FetchChunks(ctx, chunkObjects)
+		for packet := range chunkCh {
 			chOut <- packet
 		}
 	}()

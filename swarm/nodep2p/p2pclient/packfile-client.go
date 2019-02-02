@@ -39,7 +39,7 @@ func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []Manif
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, false)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return

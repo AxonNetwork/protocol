@@ -1,13 +1,11 @@
 package p2pserver
 
 import (
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
@@ -17,14 +15,6 @@ import (
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
-
-type Server struct {
-	node nodep2p.INode
-}
-
-func NewServer(node nodep2p.INode) *Server {
-	return &Server{node}
-}
 
 func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 	defer stream.Close()
@@ -39,23 +29,13 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 
 	// Ensure the client has access
 	{
-		addr, err := s.node.AddrFromSignedHash([]byte(req.RepoID), req.Signature)
+		isAuth, err := s.isAuthorised(req.RepoID, req.Signature)
 		if err != nil {
 			log.Errorf("[p2p server] %v", err)
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		hasAccess, err := s.node.AddressHasPullAccess(ctx, addr, req.RepoID)
-		if err != nil {
-			log.Errorf("[p2p server] %v", err)
-			return
-		}
-
-		if hasAccess == false {
-			log.Warnf("[p2p server] address 0x%0x does not have pull access", addr.Bytes())
+		if isAuth == false {
 			err := WriteStructPacket(stream, &GetPackfileResponse{ErrUnauthorized: true})
 			if err != nil {
 				log.Errorf("[p2p server] %v", err)

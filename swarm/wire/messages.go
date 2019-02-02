@@ -30,6 +30,27 @@ type PackfileStreamChunk struct {
 	Data    []byte
 }
 
+type HandshakeRequest struct {
+	RepoIDLen    int `struc:"sizeof=RepoID"`
+	RepoID       string
+	SignatureLen int `struc:"sizeof=Signature"`
+	Signature    []byte
+}
+
+type HandshakeResponse struct {
+	ErrUnauthorized bool
+}
+
+type DataChunkRequest struct {
+	ChunkIDLen int `struc:"sizeof=ChunkID"`
+	ChunkID    []byte
+}
+
+type DataChunkResponse struct {
+	ErrObjectNotFound bool
+	Length            int
+}
+
 type CheckoutType int
 
 const (
