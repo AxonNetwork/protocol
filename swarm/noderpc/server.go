@@ -673,93 +673,23 @@ func contains(arr []string, str string) bool {
 
 // @@TODO: move this into the Node
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
-	var r *repo.Repo
-
-	if len(req.Path) > 0 {
-		r = s.node.RepoManager().RepoAtPath(req.Path)
-		if r == nil {
-			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
-		}
-
-	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager().Repo(req.RepoID)
-		if r == nil {
-			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
-		}
-
-	} else {
-		return nil, errors.Errorf("must provide either 'path' or 'repoID'")
-	}
-
-	files := map[string]*pb.File{}
-
-	// Start by taking the output of `git ls-files --stage`
-	err := util.ExecAndScanStdout(ctx, []string{"git", "ls-files", "--stage"}, r.Path, func(line string) error {
-		file, err := parseGitLSFilesLine(line)
-		if err != nil {
-			log.Errorln("GetRepoFiles (git ls-files):", err)
-			return nil // continue
-		}
-		files[file.Name] = file
-		return nil
-	})
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Then, overlay the output of `git status --porcelain`
-	err = util.ExecAndScanStdout(ctx, []string{"git", "status", "--porcelain=2"}, r.Path, func(line string) error {
-		file, err := parseGitStatusLine(line)
-		if err != nil {
-			log.Errorln("GetRepoFiles (git status --porcelain=2):", err)
-			return nil // continue
-		}
-		files[file.Name] = file
-		return nil
-	})
+	fileList, err := nodegit.ListFiles(ctx, r.Path, req.Commit)
 	if err != nil {
 		return nil, err
-	}
-
-	unresolved, mergeConflicts, err := getMergeConflicts(ctx, r.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	fileList := []*pb.File{}
-	for _, file := range files {
-		stat, err := getStats(filepath.Join(r.Path, file.Name))
-		if err != nil {
-			log.Errorln("GetRepoFiles (getStats):", err)
-			continue
-		}
-		file.Modified = uint32(stat.ModTime().Unix())
-		file.Size = uint64(stat.Size())
-		file.MergeConflict = contains(mergeConflicts, file.Name)
-		file.MergeUnresolved = contains(unresolved, file.Name)
-		fileList = append(fileList, file)
 	}
 
 	return &pb.GetRepoFilesResponse{Files: fileList}, nil
 }
 
 func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest) (*pb.RepoHasObjectResponse, error) {
-	var r *repo.Repo
-
-	if len(req.Path) > 0 {
-		r = s.node.RepoManager().RepoAtPath(req.Path)
-		if r == nil {
-			return nil, errors.Errorf("repo at path '%v' not found", req.Path)
-		}
-
-	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager().Repo(req.RepoID)
-		if r == nil {
-			return nil, errors.Errorf("repo '%v' not found", req.RepoID)
-		}
-
-	} else {
-		return nil, errors.Errorf("must provide either 'path' or 'repoID'")
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
+	if err != nil {
+		return err
 	}
 
 	return &pb.RepoHasObjectResponse{
