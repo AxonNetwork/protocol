@@ -29,6 +29,11 @@
     "mountPoints": [
       {
         "sourceVolume": "efs",
+        "containerPath": "/mnt-efs",
+        "readOnly": false
+      },
+      {
+        "sourceVolume": "ebs",
         "containerPath": "/mnt",
         "readOnly": false
       }

@@ -66,7 +66,7 @@ resource "aws_security_group" "ec2_sg" {
     to_port   = 22
 
     cidr_blocks = [
-      "${var.admin_cidr_ingress}",
+      "0.0.0.0/0",
     ]
   }
 
@@ -100,9 +100,9 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-variable "admin_cidr_ingress" {
-  description = "Open SSH on instances to only this IP range"
-}
+# variable "admin_cidr_ingress" {
+#   description = "Open SSH on instances to only this IP range"
+# }
 
 variable "key_name" {
   description = "Key in AWS you would like to use to access you instances"

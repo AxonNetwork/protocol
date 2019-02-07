@@ -30,6 +30,29 @@ resource "aws_ecs_task_definition" "td" {
     host_path = "/mnt/efs/${element(split(",", var.container_name), count.index)}"
   }
 
+  volume {
+    name = "ebs"
+    # host_path = "/mnt/ebs/${element(split(",", var.container_name), count.index)}-{{.Service.Name}}-{{.Task.Slot}}-vol"
+
+    docker_volume_configuration {
+      scope = "shared"
+      autoprovision = true
+      driver = "cloudstor:aws"
+
+      driver_opts {
+        size = "10"
+        backing = "relocatable"
+        ebstype = "gp2"
+      }
+      # "driverOpts": {
+      # "key": "value"
+      # },
+      # "labels": {
+      # "key": "value"
+      # }
+    }
+  }
+
   task_role_arn = "${aws_iam_role.application.arn}"
   count         = "${length(split(",", var.container_name))}"
 }
