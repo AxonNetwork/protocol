@@ -55,27 +55,28 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 type MaybeFetchFromCommitPacket struct {
 	PackfileHeader *pb.FetchFromCommitResponse_PackfileHeader
 	PackfileData   *pb.FetchFromCommitResponse_PackfileData
+	Chunk          *pb.FetchFromCommitResponse_Chunk
 	Error          error
 }
 
-func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit gitplumbing.Hash) (chan MaybeFetchFromCommitPacket, int64, error) {
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit gitplumbing.Hash) (chan MaybeFetchFromCommitPacket, int64, int64, error) {
 	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
 		RepoID: repoID,
 		Path:   path,
 		Commit: commit[:],
 	})
 	if err != nil {
-		return nil, 0, errors.WithStack(err)
+		return nil, 0, 0, errors.WithStack(err)
 	}
 
 	pkt, err := fetchFromCommitClient.Recv()
 	if err != nil {
-		return nil, 0, errors.WithStack(err)
+		return nil, 0, 0, errors.WithStack(err)
 	}
 
 	header := pkt.GetHeader()
 	if header == nil {
-		return nil, 0, errors.New("[rpc client] FetchFromCommit: first response packet was not a Header")
+		return nil, 0, 0, errors.New("[rpc client] FetchFromCommit: first response packet was not a Header")
 	}
 
 	ch := make(chan MaybeFetchFromCommitPacket)
@@ -102,12 +103,18 @@ func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string
 				continue
 			}
 
+			chunkPkt := x.GetChunk()
+			if chunkPkt != nil {
+				ch <- MaybeFetchFromCommitPacket{Chunk: chunkPkt}
+				continue
+			}
+
 			ch <- MaybeFetchFromCommitPacket{Error: errors.New("[rpc client] expected PackfileData or PackfileHeader packet, got Header packet")}
 			return
 		}
 	}()
 
-	return ch, header.UncompressedSize, nil
+	return ch, header.UncompressedSize, header.TotalChunks, nil
 }
 
 func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {

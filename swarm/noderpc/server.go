@@ -273,11 +273,12 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 	var commitHash gitplumbing.Hash
 	copy(commitHash[:], req.Commit)
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash)
+	ch, uncompressedSize, totalChunks := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash)
 
 	err := server.Send(&pb.FetchFromCommitResponse{
 		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
 			UncompressedSize: uncompressedSize,
+			TotalChunks:      totalChunks,
 		}},
 	})
 	if err != nil {
@@ -305,6 +306,15 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 					End:        pkt.PackfileData.End,
 				}},
 			})
+
+		case pkt.Chunk != nil:
+			err = server.Send(&pb.FetchFromCommitResponse{
+				Payload: &pb.FetchFromCommitResponse_Chunk_{&pb.FetchFromCommitResponse_Chunk{
+					ObjectID: pkt.Chunk.ObjectID,
+					Data:     pkt.Chunk.Data,
+				}},
+			})
+
 		}
 
 		if err != nil {

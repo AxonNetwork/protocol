@@ -64,7 +64,7 @@ func NewSmartClient(node nodep2p.INode, repoID string, repoPath string, config *
 	return sc
 }
 
-func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.Hash, checkoutType CheckoutType) (<-chan MaybeFetchFromCommitPacket, int64) {
+func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.Hash, checkoutType CheckoutType) (<-chan MaybeFetchFromCommitPacket, int64, int64) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 
 	gitObjects, chunkObjects, uncompressedSize, err := sc.GetManifest(ctx, commit, checkoutType)
@@ -73,7 +73,7 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.H
 			defer close(chOut)
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 		}()
-		return chOut, 0
+		return chOut, 0, 0
 	}
 
 	wg := &sync.WaitGroup{}
@@ -101,6 +101,6 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.H
 		close(chOut)
 	}()
 
-	return chOut, uncompressedSize
+	return chOut, uncompressedSize, int64(len(chunkObjects))
 
 }

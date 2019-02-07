@@ -116,6 +116,7 @@ message FetchFromCommitRequest {
 message FetchFromCommitResponse {
     message Header {
         int64 uncompressedSize = 1;
+        int64 totalChunks = 2;
     }
 
     message PackfileHeader {
@@ -129,10 +130,16 @@ message FetchFromCommitResponse {
         bool end = 3;
     }
 
+    message Chunk {
+        bytes objectID = 1;
+        bytes data = 2;
+    }
+
     oneof payload {
         Header header = 1;
         PackfileHeader packfileHeader = 2;
         PackfileData packfileData = 3;
+        Chunk chunk = 4;
     }
 }
 

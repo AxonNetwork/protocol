@@ -6,6 +6,7 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 
+	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/util"
 )
@@ -69,10 +70,13 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 				// 	continue
 				// }
 
+				log.Infof("[peer pool] opening new peer connection")
 				peerConn = NewPeerConnection(node, peerID, repoID)
 				if openStreams {
 					err = peerConn.OpenStream(p.ctx)
-					if err == nil {
+					if err != nil {
+						log.Debugf("[peer pool] error opening stream: ", err)
+					} else {
 						// if err then move onto the next peer
 						break
 					}

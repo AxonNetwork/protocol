@@ -112,6 +112,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	ns := p2pserver.NewServer(n)
 	n.host.SetStreamHandler(nodep2p.MANIFEST_PROTO, ns.HandleManifestRequest)
 	n.host.SetStreamHandler(nodep2p.PACKFILE_PROTO, ns.HandlePackfileStreamRequest)
+	n.host.SetStreamHandler(nodep2p.HANDSHAKE_PROTO, ns.HandleHandshakeRequest)
 	n.host.SetStreamHandler(nodep2p.REPLICATION_PROTO, ns.HandleReplicationRequest)
 	n.host.SetStreamHandler(nodep2p.BECOME_REPLICATOR_PROTO, ns.HandleBecomeReplicatorRequest)
 
@@ -358,7 +359,7 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit gitplumbing.Hash) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64) {
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit gitplumbing.Hash) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64, int64) {
 	checkoutType := Full
 	c := p2pclient.NewSmartClient(n, repoID, repoPath, &n.Config)
 	return c.FetchFromCommit(ctx, commit, checkoutType)

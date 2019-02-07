@@ -35,6 +35,8 @@ func (pc *PeerConnection) OpenStream(ctx context.Context) error {
 	defer func() {
 		if err != nil && stream != nil {
 			stream.Close()
+		} else {
+			pc.stream = stream
 		}
 	}()
 	stream, err = pc.node.NewStream(ctx, pc.peerID, nodep2p.HANDSHAKE_PROTO)
@@ -76,6 +78,10 @@ func (pc *PeerConnection) Close() {
 	}
 }
 
+func (pc *PeerConnection) getSignature() ([]byte, error) {
+	return pc.node.SignHash([]byte(pc.repoID))
+}
+
 func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byte) ([][]byte, io.ReadCloser, error) {
 	stream, err := pc.node.NewStream(ctx, pc.peerID, nodep2p.PACKFILE_PROTO)
 	if err != nil {
@@ -112,6 +118,31 @@ func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byt
 	return UnflattenObjectIDs(resp.ObjectIDs), stream, nil
 }
 
-func (pc *PeerConnection) getSignature() ([]byte, error) {
-	return pc.node.SignHash([]byte(pc.repoID))
+func (pc *PeerConnection) RequestChunk(ctx context.Context, chunkID []byte) ([]byte, error) {
+	if pc.stream == nil {
+		return nil, errors.Errorf("No stream open with peer %v", pc.peerID)
+	}
+
+	err := WriteStructPacket(pc.stream, &GetChunkRequest{ChunkID: chunkID})
+	if err != nil {
+		return nil, err
+	}
+
+	resp := GetChunkResponse{}
+	err = ReadStructPacket(pc.stream, &resp)
+	if err != nil {
+		return nil, err
+	} else if resp.ErrObjectNotFound {
+		return nil, errors.Wrapf(ErrObjectNotFound, "%v", pc.repoID)
+	}
+
+	data := make([]byte, resp.Length)
+	n, err := io.ReadFull(pc.stream, data)
+	if err != nil {
+		return nil, err
+	} else if n < resp.Length {
+		return nil, errors.Errorf("Did not copy over whole chunk stream from peer %v", pc.peerID)
+	}
+
+	return data, nil
 }

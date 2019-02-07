@@ -1,44 +1,71 @@
 package p2pserver
 
-// import (
-// 	netp2p "github.com/libp2p/go-libp2p-net"
+import (
+	"encoding/hex"
+	"io"
+	"os"
+	"path/filepath"
 
-// 	"github.com/Conscience/protocol/log"
-// 	. "github.com/Conscience/protocol/swarm/wire"
-// )
+	netp2p "github.com/libp2p/go-libp2p-net"
 
-// func (s *Server) HandleDataChunkHandshake(stream netp2p.Stream) {
-// 	req := DataChunkHandshakeRequest{}
-// 	err := ReadStructPacket{stream, &req}
-// 	if err != nil {
-// 		log.Errorf("[p2p server] %v", err)
-// 		return
-// 	}
-// 	log.Debugf("[p2p server] incoming handshake")
-// 	// Ensure the client has access
-// 	{
-// 		isAuth, err := s.isAuthorised(req.RepoID, req.Signature)
-// 		if err != nil {
-// 			log.Errorf("[p2p server] %v", err)
-// 			return
-// 		}
+	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/repo"
+	. "github.com/Conscience/protocol/swarm/wire"
+)
 
-// 		if isAuth == false {
-// 			log.Warnf("[p2p server] address 0x%0x does not have pull access", addr.Bytes())
-// 			err := WriteStructPacket(stream, &DataChunkHandshakeResponse{ErrUnauthorized: true})
-// 			if err != nil {
-// 				log.Errorf("[p2p server] %v", err)
-// 				return
-// 			}
-// 			return
-// 		}
-// 	}
-// 	err = WriteStructPacket(stream, &DataChunkHandshakeResponse{})
-// 	if err != nil {
-// 		log.Errorf("[p2p server] %v", err)
-// 		return
-// 	}
-// 	go func() {
+func (s *Server) HandleDataChunkStream(stream netp2p.Stream, repoID string) {
+	defer stream.Close()
 
-// 	}()
-// }
+	log.Infof("[chunk server] data chunk stream open")
+
+	for {
+		req := GetChunkRequest{}
+		err := ReadStructPacket(stream, &req)
+		if err == io.EOF {
+			log.Errorf("[chunk server] peer closed stream")
+			break
+		} else if err != nil {
+			log.Errorf("[chunk server] %v", err)
+			break
+		}
+
+		r := s.node.Repo(repoID)
+		chunkStr := hex.EncodeToString(req.ChunkID)
+		p := filepath.Join(r.Path, ".git", repo.CONSCIENCE_DATA_SUBDIR, chunkStr)
+
+		stat, err := os.Stat(p)
+		if err != nil {
+			err = WriteStructPacket(stream, &GetChunkResponse{ErrObjectNotFound: true})
+			if err != nil {
+				log.Errorf("[chunk server] %v", err)
+				break
+			} else {
+				continue
+			}
+		}
+
+		log.Infof("[chunk server] writing chunk %v", chunkStr)
+
+		length := stat.Size()
+		err = WriteStructPacket(stream, &GetChunkResponse{Length: int(length)})
+		if err != nil {
+			log.Errorf("[chunk server] %v", err)
+			break
+		}
+
+		f, err := os.Open(p)
+		if err != nil {
+			log.Errorf("[chunk server] %v", err)
+			break
+		}
+
+		n, err := io.Copy(stream, f)
+		if err != nil {
+			log.Errorf("[chunk server] %v", err)
+			break
+		} else if n < length {
+			log.Errorf("[chunk server] did not send full file")
+			break
+		}
+	}
+}

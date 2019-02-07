@@ -48,6 +48,7 @@ func (s *Server) HandleHandshakeRequest(stream netp2p.Stream) {
 		return
 	}
 	log.Debugf("[p2p server] incoming handshake")
+
 	// Ensure the client has access
 	{
 		isAuth, err := s.isAuthorised(req.RepoID, req.Signature)
@@ -65,12 +66,13 @@ func (s *Server) HandleHandshakeRequest(stream netp2p.Stream) {
 			return
 		}
 	}
+
 	err = WriteStructPacket(stream, &HandshakeResponse{})
 	if err != nil {
 		log.Errorf("[p2p server] %v", err)
 		return
 	}
-	go func() {
 
-	}()
+	// invoked function's responsibility to close stream
+	go s.HandleDataChunkStream(stream, req.RepoID)
 }

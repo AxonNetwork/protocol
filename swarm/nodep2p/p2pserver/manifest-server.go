@@ -206,7 +206,6 @@ func writeGitHashToStream(r *repo.Repo, hash gitplumbing.Hash, seenObj map[gitpl
 }
 
 func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[string]bool, stream io.Writer) error {
-	log.Println("HERE")
 	obj, err := r.Storer.EncodedObject(gitplumbing.BlobObject, hash)
 	if err != nil {
 		return err
@@ -226,8 +225,6 @@ func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[stri
 	} else if err != nil {
 		return err
 	}
-
-	log.Println("LINE: ", line)
 
 	if bytes.Compare(line, []byte("CONSCIENCE_ENCODED")) != 0 {
 		// not a chunked file
@@ -260,7 +257,6 @@ func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[stri
 			Hash:             hex,
 			UncompressedSize: stat.Size(),
 		}
-		log.Println("SENDING CHUNK")
 
 		err = WriteStructPacket(stream, &object)
 		if err != nil {
