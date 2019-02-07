@@ -581,11 +581,11 @@ func parseGitStatusLine(line string) (*pb.File, error) {
 			return nil, err
 		}
 
-		file.Name = parts[8]
+		file.Name = strings.Join(parts[8:], " ")
 		file.Hash = hash
 		file.Mode = uint32(mode)
-		file.UnstagedStatus = parts[1][:1]
-		file.StagedStatus = parts[1][1:]
+		file.StagedStatus = parts[1][:1]
+		file.UnstagedStatus = parts[1][1:]
 
 	case "2":
 		// @@TODO: these are renames
