@@ -359,10 +359,14 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit gitplumbing.Hash) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64, int64) {
-	checkoutType := Full
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit gitplumbing.Hash, checkoutType CheckoutType) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64, int64) {
 	c := p2pclient.NewSmartClient(n, repoID, repoPath, &n.Config)
 	return c.FetchFromCommit(ctx, commit, checkoutType)
+}
+
+func (n *Node) FetchChunks(ctx context.Context, repoID string, repoPath string, chunkObjects [][]byte) <-chan p2pclient.MaybeChunk {
+	c := p2pclient.NewSmartClient(n, repoID, repoPath, &n.Config)
+	return c.FetchChunks(ctx, chunkObjects)
 }
 
 func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {

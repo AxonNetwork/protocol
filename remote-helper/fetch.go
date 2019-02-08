@@ -16,6 +16,7 @@ import (
 	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -31,7 +32,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 	copy(commitHash[:], commitHashSlice)
 
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, totalChunks, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
+	ch, uncompressedSize, totalChunks, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash, wire.Sparse)
 	if err != nil {
 		return err
 	}
@@ -120,6 +121,11 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 				return errors.WithStack(err)
 			} else if n != len(pkt.Chunk.Data) {
 				return errors.New("remote helper: did not fully write chunk")
+			}
+
+			err = f.Close()
+			if err != nil {
+				return errors.WithStack(err)
 			}
 
 			written += int64(n)

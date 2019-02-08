@@ -14,7 +14,8 @@ import (
 
 const KB = 1024
 const MB = KB * KB
-const THRESHOLD = 4 * MB // 100kB
+const THRESHOLD = 8 * MB // 100kB
+// rpc has a max message size of 4MB
 const WINDOW_SIZE, MIN, AVG, MAX = KB, MB, 2 * MB, 3.5 * MB
 
 func main() {

@@ -23,6 +23,7 @@ import (
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/nodegit"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
+	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -273,7 +274,7 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 	var commitHash gitplumbing.Hash
 	copy(commitHash[:], req.Commit)
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, totalChunks := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash)
+	ch, uncompressedSize, totalChunks := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash, wire.CheckoutType(req.CheckoutType))
 
 	err := server.Send(&pb.FetchFromCommitResponse{
 		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
@@ -317,6 +318,25 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 
 		}
 
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
+
+func (s *Server) FetchChunks(req *pb.FetchChunksRequest, server pb.NodeRPC_FetchChunksServer) error {
+	ch := s.node.FetchChunks(context.Background(), req.RepoID, req.Path, req.Chunks)
+
+	for pkt := range ch {
+		if pkt.Error != nil {
+			return errors.WithStack(pkt.Error)
+		}
+
+		err := server.Send(&pb.FetchChunksResponse{
+			ObjectID: pkt.Chunk.ObjectID,
+			Data:     pkt.Chunk.Data,
+		})
 		if err != nil {
 			return errors.WithStack(err)
 		}

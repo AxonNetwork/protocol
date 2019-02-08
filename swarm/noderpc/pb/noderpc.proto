@@ -14,6 +14,8 @@ service NodeRPC {
   rpc PullRepo(PullRepoRequest) returns (stream PullRepoResponsePacket) {}
   rpc CloneRepo(CloneRepoRequest) returns (stream CloneRepoResponsePacket) {}
   rpc FetchFromCommit(FetchFromCommitRequest) returns (stream FetchFromCommitResponse) {}
+  rpc FetchChunks(FetchChunksRequest) returns (stream FetchChunksResponse) {}
+
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
   rpc GetLocalRepos(GetLocalReposRequest) returns (stream GetLocalReposResponsePacket) {}
@@ -111,6 +113,7 @@ message FetchFromCommitRequest {
     string repoID = 1;
     string path = 2;
     bytes commit = 3;
+    uint64 checkoutType = 4;
 }
 
 message FetchFromCommitResponse {
@@ -145,6 +148,17 @@ message FetchFromCommitResponse {
 
 message RegisterRepoIDRequest {
     string repoID = 1;
+}
+
+message FetchChunksRequest {
+    string repoID = 1;
+    string path = 2;
+    repeated bytes chunks = 3;
+}
+
+message FetchChunksResponse {
+    bytes objectID = 1;
+    bytes data = 2;
 }
 
 message RegisterRepoIDResponse {}

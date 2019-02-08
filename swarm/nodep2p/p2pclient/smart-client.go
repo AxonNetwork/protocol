@@ -45,11 +45,6 @@ type PackfileData struct {
 	End        bool
 }
 
-type Chunk struct {
-	ObjectID []byte
-	Data     []byte
-}
-
 var ErrFetchingFromPeer = errors.New("fetching from peer")
 
 func NewSmartClient(node nodep2p.INode, repoID string, repoPath string, config *config.Config) *SmartClient {
@@ -90,9 +85,16 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.H
 	go func() {
 		wg.Add(1)
 		defer wg.Done()
-		chunkCh := sc.FetchChunks(ctx, chunkObjects)
+		chunks := ManifestObjectsToHashes(chunkObjects)
+		chunkCh := sc.FetchChunks(ctx, chunks)
 		for packet := range chunkCh {
-			chOut <- packet
+			if packet.Error != nil {
+				chOut <- MaybeFetchFromCommitPacket{Error: err}
+			} else {
+				chOut <- MaybeFetchFromCommitPacket{
+					Chunk: packet.Chunk,
+				}
+			}
 		}
 	}()
 
@@ -103,4 +105,36 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commit gitplumbing.H
 
 	return chOut, uncompressedSize, int64(len(chunkObjects))
 
+}
+
+func ManifestObjectsToHashes(objects []ManifestObject) [][]byte {
+	hashes := make([][]byte, 0)
+	for _, obj := range objects {
+		hashes = append(hashes, obj.Hash)
+	}
+	return hashes
+}
+
+func (sc *SmartClient) FetchChunksFromCommit(ctx context.Context, commit gitplumbing.Hash, checkoutType CheckoutType) (<-chan MaybeChunk, int64) {
+	chOut := make(chan MaybeChunk)
+
+	_, chunkObjects, _, err := sc.GetManifest(ctx, commit, checkoutType)
+	if err != nil {
+		go func() {
+			defer close(chOut)
+			chOut <- MaybeChunk{Error: err}
+		}()
+		return chOut, 0
+	}
+
+	chunks := ManifestObjectsToHashes(chunkObjects)
+	go func() {
+		chunkCh := sc.FetchChunks(ctx, chunks)
+		for packet := range chunkCh {
+			chOut <- packet
+		}
+		close(chOut)
+	}()
+
+	return chOut, int64(len(chunkObjects))
 }

@@ -10,11 +10,20 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/nodep2p"
-	. "github.com/Conscience/protocol/swarm/wire"
 )
 
-func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects []ManifestObject) <-chan MaybeFetchFromCommitPacket {
-	chOut := make(chan MaybeFetchFromCommitPacket)
+type Chunk struct {
+	ObjectID []byte
+	Data     []byte
+}
+
+type MaybeChunk struct {
+	Chunk *Chunk
+	Error error
+}
+
+func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects [][]byte) <-chan MaybeChunk {
+	chOut := make(chan MaybeChunk)
 	wg := &sync.WaitGroup{}
 
 	// Load the job queue up with everything in the manifest
@@ -22,8 +31,8 @@ func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects []ManifestO
 	for _, obj := range chunkObjects {
 		wg.Add(1)
 		jobQueue <- job{
-			size:        obj.UncompressedSize,
-			objectID:    obj.Hash,
+			size:        0,
+			objectID:    obj,
 			failedPeers: make(map[peer.ID]bool),
 		}
 	}
@@ -39,7 +48,7 @@ func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects []ManifestO
 	go func() {
 		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, nodep2p.CHUNK_PROTO)
 		if err != nil {
-			chOut <- MaybeFetchFromCommitPacket{Error: err}
+			chOut <- MaybeChunk{Error: err}
 			return
 		}
 		defer pool.Close()
@@ -67,7 +76,7 @@ func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects []ManifestO
 	return chOut
 }
 
-func (sc *SmartClient) fetchDataChunk(ctx context.Context, conn *PeerConnection, j job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
+func (sc *SmartClient) fetchDataChunk(ctx context.Context, conn *PeerConnection, j job, chOut chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
 	defer wg.Done()
 
 	chunkStr := hex.EncodeToString(j.objectID)
@@ -81,7 +90,7 @@ func (sc *SmartClient) fetchDataChunk(ctx context.Context, conn *PeerConnection,
 		return err
 	}
 
-	chOut <- MaybeFetchFromCommitPacket{
+	chOut <- MaybeChunk{
 		Chunk: &Chunk{
 			ObjectID: j.objectID,
 			Data:     data,
