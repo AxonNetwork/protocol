@@ -5,6 +5,7 @@ import (
 
 	peer "github.com/libp2p/go-libp2p-peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
+	protocol "github.com/libp2p/go-libp2p-protocol"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/nodep2p"
@@ -17,10 +18,10 @@ type peerPool struct {
 	needNewPeer chan struct{}
 	ctx         context.Context
 	cancel      func()
-	openStreams bool
+	protocol    protocol.ID
 }
 
-func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint, openStreams bool) (*peerPool, error) {
+func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint, protocol protocol.ID) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -34,7 +35,7 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 		needNewPeer: make(chan struct{}),
 		ctx:         ctxInner,
 		cancel:      cancel,
-		openStreams: openStreams,
+		protocol:    protocol,
 	}
 
 	// When a message is sent on the `needNewPeer` channel, this goroutine attempts to take a peer
@@ -72,8 +73,8 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 
 				log.Infof("[peer pool] opening new peer connection")
 				peerConn = NewPeerConnection(node, peerID, repoID)
-				if openStreams {
-					err = peerConn.OpenStream(p.ctx)
+				if protocol != nodep2p.NULL_PROTO {
+					err = peerConn.OpenStream(p.ctx, p.protocol)
 					if err != nil {
 						log.Debugf("[peer pool] error opening stream: ", err)
 					} else {

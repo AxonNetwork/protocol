@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -39,7 +40,7 @@ func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []Manif
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, false)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, nodep2p.NULL_PROTO)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
@@ -212,6 +213,9 @@ func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *PeerConnection, 
 		if err != nil {
 			break
 		}
+		if packet.End {
+			break
+		}
 
 		data := make([]byte, packet.Length)
 		n, err := io.ReadFull(packfileStream, data)
@@ -226,10 +230,6 @@ func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *PeerConnection, 
 				PackfileID: packfileTempID,
 				Data:       data,
 			},
-		}
-
-		if packet.End {
-			break
 		}
 	}
 

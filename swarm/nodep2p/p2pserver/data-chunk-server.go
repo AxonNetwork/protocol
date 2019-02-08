@@ -13,7 +13,44 @@ import (
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
-func (s *Server) HandleDataChunkStream(stream netp2p.Stream, repoID string) {
+func (s *Server) HandleChunkHandshakeRequest(stream netp2p.Stream) {
+	req := HandshakeRequest{}
+	err := ReadStructPacket(stream, &req)
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return
+	}
+	log.Debugf("[p2p server] incoming handshake")
+
+	// Ensure the client has access
+	{
+		isAuth, err := s.isAuthorised(req.RepoID, req.Signature)
+		if err != nil {
+			log.Errorf("[p2p server] %v", err)
+			return
+		}
+
+		if isAuth == false {
+			err := WriteStructPacket(stream, &HandshakeResponse{ErrUnauthorized: true})
+			if err != nil {
+				log.Errorf("[p2p server] %v", err)
+				return
+			}
+			return
+		}
+	}
+
+	err = WriteStructPacket(stream, &HandshakeResponse{})
+	if err != nil {
+		log.Errorf("[p2p server] %v", err)
+		return
+	}
+
+	// invoked function's responsibility to close stream
+	go s.HandleChunkStream(stream, req.RepoID)
+}
+
+func (s *Server) HandleChunkStream(stream netp2p.Stream, repoID string) {
 	defer stream.Close()
 
 	log.Infof("[chunk server] data chunk stream open")

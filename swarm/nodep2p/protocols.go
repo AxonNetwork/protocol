@@ -1,13 +1,17 @@
 package nodep2p
 
+import (
+	protocol "github.com/libp2p/go-libp2p-protocol"
+)
+
 const (
-	// OBJECT_PROTO    = "/conscience/object/1.0.0"
-	MANIFEST_PROTO          = "/conscience/manifest/1.0.0"
-	OBJECT_PROTO            = "/conscience/object/1.1.0"
-	PACKFILE_PROTO          = "/conscience/packfile/1.0.0"
-	HANDSHAKE_PROTO         = "/conscience/handshake/1.0.0"
-	REPLICATION_PROTO       = "/conscience/replication/1.1.0"
-	BECOME_REPLICATOR_PROTO = "/conscience/become-replicator/1.1.0"
+	NULL_PROTO              protocol.ID = ""
+	MANIFEST_PROTO          protocol.ID = "/conscience/manifest/1.0.0"
+	OBJECT_PROTO            protocol.ID = "/conscience/object/1.1.0"
+	PACKFILE_PROTO          protocol.ID = "/conscience/packfile/1.0.0"
+	CHUNK_PROTO             protocol.ID = "/conscience/chunk/1.1.0"
+	REPLICATION_PROTO       protocol.ID = "/conscience/replication/1.1.0"
+	BECOME_REPLICATOR_PROTO protocol.ID = "/conscience/become-replicator/1.1.0"
 )
 
 // @@TODO: make configurable

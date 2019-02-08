@@ -117,15 +117,19 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 				end = true
 			} else if err == io.ErrUnexpectedEOF {
 				data = data[:n]
-				end = true
 			} else if err != nil {
 				log.Errorln("[p2p server] error reading packfile")
 			}
 
-			err = WriteStructPacket(stream, &GetPackfileResponsePacket{
-				End:    end,
-				Length: n,
-			})
+			if end == true {
+				err = WriteStructPacket(stream, &GetPackfileResponsePacket{End: true})
+			} else {
+				err = WriteStructPacket(stream, &GetPackfileResponsePacket{
+					End:    false,
+					Length: n,
+				})
+			}
+
 			if err != nil {
 				log.Errorf("[p2p server] %v", err)
 				return

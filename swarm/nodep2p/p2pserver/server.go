@@ -4,11 +4,8 @@ import (
 	"context"
 	"time"
 
-	netp2p "github.com/libp2p/go-libp2p-net"
-
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/nodep2p"
-	. "github.com/Conscience/protocol/swarm/wire"
 )
 
 type Server struct {
@@ -38,41 +35,4 @@ func (s *Server) isAuthorised(repoID string, sig []byte) (bool, error) {
 	}
 
 	return isAuth, nil
-}
-
-func (s *Server) HandleHandshakeRequest(stream netp2p.Stream) {
-	req := HandshakeRequest{}
-	err := ReadStructPacket(stream, &req)
-	if err != nil {
-		log.Errorf("[p2p server] %v", err)
-		return
-	}
-	log.Debugf("[p2p server] incoming handshake")
-
-	// Ensure the client has access
-	{
-		isAuth, err := s.isAuthorised(req.RepoID, req.Signature)
-		if err != nil {
-			log.Errorf("[p2p server] %v", err)
-			return
-		}
-
-		if isAuth == false {
-			err := WriteStructPacket(stream, &HandshakeResponse{ErrUnauthorized: true})
-			if err != nil {
-				log.Errorf("[p2p server] %v", err)
-				return
-			}
-			return
-		}
-	}
-
-	err = WriteStructPacket(stream, &HandshakeResponse{})
-	if err != nil {
-		log.Errorf("[p2p server] %v", err)
-		return
-	}
-
-	// invoked function's responsibility to close stream
-	go s.HandleDataChunkStream(stream, req.RepoID)
 }

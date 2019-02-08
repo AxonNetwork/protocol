@@ -12,12 +12,14 @@ import (
 	"github.com/aclements/go-rabin/rabin"
 )
 
-const THRESHOLD = 1024 * 100 // 100kB
-const WINDOW_SIZE, MIN, AVG, MAX = 64, 512, 2048, 4096
+const KB = 1024
+const MB = KB * KB
+const THRESHOLD = 4 * MB // 100kB
+const WINDOW_SIZE, MIN, AVG, MAX = KB, MB, 2 * MB, 3.5 * MB
 
 func main() {
 
-	if len(os.Args) < 2 || (getFileSize(os.Args[1]) < THRESHOLD) {
+	if len(os.Args) < 2 || !shouldEncode(os.Args[1]) {
 		_, err := io.Copy(os.Stdout, os.Stdin)
 		check(err)
 		return
@@ -61,6 +63,19 @@ func main() {
 	}
 }
 
+func shouldEncode(filename string) bool {
+	return getFileSize(filename) >= THRESHOLD
+}
+
+// func shouldEncode(filename string) bool {
+// 	TO_ENCODE := map[string]bool{
+// 		".png": true,
+// 	}
+// 	ext := filepath.Ext(filename)
+// 	should, ok := TO_ENCODE[ext]
+// 	return should && ok
+// }
+
 func getFileSize(filename string) int64 {
 	cwd, err := os.Getwd()
 	check(err)
@@ -74,15 +89,6 @@ func getFileSize(filename string) int64 {
 	check(err)
 	return s.Size()
 }
-
-// func shouldEncode(filename string) bool {
-// 	TO_ENCODE := map[string]bool{
-// 		".png": true,
-// 	}
-// 	ext := filepath.Ext(filename)
-// 	should, ok := TO_ENCODE[ext]
-// 	return should && ok
-// }
 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)

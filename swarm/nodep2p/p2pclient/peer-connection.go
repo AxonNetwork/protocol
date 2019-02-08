@@ -6,6 +6,7 @@ import (
 
 	netp2p "github.com/libp2p/go-libp2p-net"
 	"github.com/libp2p/go-libp2p-peer"
+	protocol "github.com/libp2p/go-libp2p-protocol"
 
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
@@ -29,7 +30,7 @@ func NewPeerConnection(node nodep2p.INode, peerID peer.ID, repoID string) *PeerC
 }
 
 // Caller has the duty to close the stream
-func (pc *PeerConnection) OpenStream(ctx context.Context) error {
+func (pc *PeerConnection) OpenStream(ctx context.Context, protocol protocol.ID) error {
 	var err error
 	var stream netp2p.Stream
 	defer func() {
@@ -39,7 +40,7 @@ func (pc *PeerConnection) OpenStream(ctx context.Context) error {
 			pc.stream = stream
 		}
 	}()
-	stream, err = pc.node.NewStream(ctx, pc.peerID, nodep2p.HANDSHAKE_PROTO)
+	stream, err = pc.node.NewStream(ctx, pc.peerID, protocol)
 	if err != nil {
 		return err
 	}

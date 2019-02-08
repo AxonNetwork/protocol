@@ -246,7 +246,7 @@ func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[stri
 			return err
 		}
 
-		p := filepath.Join(r.Path, ".git", repo.CONSCIENCE_DATA_SUBDIR)
+		p := filepath.Join(r.Path, ".git", repo.CONSCIENCE_DATA_SUBDIR, string(line))
 		stat, err := os.Stat(p)
 		if err != nil {
 			return err

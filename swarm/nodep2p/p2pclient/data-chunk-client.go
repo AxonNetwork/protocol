@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -36,7 +37,7 @@ func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects []ManifestO
 	maxPeers := sc.config.Node.MaxConcurrentPeers
 
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, true)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, nodep2p.CHUNK_PROTO)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
