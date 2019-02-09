@@ -280,11 +280,11 @@ func (r *Repo) SetupConfig(repoID string) error {
 
 	filter := raw.Section("filter").Subsection("conscience")
 	if filter.Option("clean") != "conscience_encode" {
-		raw.SetOption("filter", "conscience", "clean", "conscience_encode")
+		raw.SetOption("filter", "conscience", "clean", "conscience_encode %f")
 		changed = true
 	}
 	if filter.Option("smudge") != "conscience_decode" {
-		raw.SetOption("filter", "conscience", "smudge", "conscience_decode")
+		raw.SetOption("filter", "conscience", "smudge", "conscience_decode %f")
 		changed = true
 	}
 
