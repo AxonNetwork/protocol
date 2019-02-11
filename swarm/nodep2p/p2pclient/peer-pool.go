@@ -18,7 +18,6 @@ type peerPool struct {
 	needNewPeer chan struct{}
 	ctx         context.Context
 	cancel      func()
-	protocol    protocol.ID
 }
 
 func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint, protocol protocol.ID) (*peerPool, error) {
@@ -35,7 +34,6 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 		needNewPeer: make(chan struct{}),
 		ctx:         ctxInner,
 		cancel:      cancel,
-		protocol:    protocol,
 	}
 
 	// When a message is sent on the `needNewPeer` channel, this goroutine attempts to take a peer
@@ -74,7 +72,7 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 				log.Infof("[peer pool] opening new peer connection")
 				peerConn = NewPeerConnection(node, peerID, repoID)
 				if protocol != nodep2p.NULL_PROTO {
-					err = peerConn.OpenStream(p.ctx, p.protocol)
+					err = peerConn.OpenStream(p.ctx, protocol)
 					if err != nil {
 						log.Debugf("[peer pool] error opening stream: ", err)
 					} else {

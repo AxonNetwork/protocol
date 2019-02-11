@@ -58,7 +58,7 @@ func main() {
 		p := filepath.Join(cwd, ".git", repo.CONSCIENCE_DATA_SUBDIR, string(line))
 		chunks = append(chunks, p)
 		_, err = os.Stat(p)
-		if err != nil {
+		if os.IsNotExist(err) {
 			hash, err := hex.DecodeString(string(line))
 			if err != nil {
 				die(err)
@@ -121,31 +121,53 @@ func fetchChunks(chunks [][]byte) error {
 		return err
 	}
 
+	chunkWriters := make(map[string]*os.File)
+
 	for pkt := range ch {
 		if pkt.Error != nil {
 			return pkt.Error
 		}
 
 		objectID := hex.EncodeToString(pkt.Chunk.ObjectID)
-		objectPath := filepath.Join(dataDir, objectID)
-		f, err := os.Create(objectPath)
-		if err != nil {
-			return err
-		}
 
-		n, err := f.Write(pkt.Chunk.Data)
-		if err != nil {
-			return errors.WithStack(err)
-		} else if n != len(pkt.Chunk.Data) {
-			return errors.New("remote helper: did not fully write chunk")
-		}
+		if pkt.Chunk.End {
+			err = chunkWriters[objectID].Close()
+			if err != nil {
+				return errors.WithStack(err)
+			}
 
-		err = f.Close()
-		if err != nil {
-			return errors.WithStack(err)
-		}
+			os.Stderr.Write([]byte(fmt.Sprintln("Wrote chunk: ", objectID)))
+			chunkWriters[objectID] = nil
 
-		os.Stderr.Write([]byte(fmt.Sprintln("Writing chunk: ", objectID)))
+		} else {
+			f := chunkWriters[objectID]
+
+			if f == nil {
+				dataDir := filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR)
+				err := os.MkdirAll(dataDir, 0777)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+
+				objectPath := filepath.Join(dataDir, objectID)
+				f, err = os.Create(objectPath)
+				if err != nil {
+					f.Close()
+					return errors.WithStack(err)
+				}
+				chunkWriters[objectID] = f
+			}
+
+			n, err := f.Write(pkt.Chunk.Data)
+			if err != nil {
+				f.Close()
+				return errors.WithStack(err)
+			} else if n != len(pkt.Chunk.Data) {
+				f.Close()
+				return errors.New("remote helper: did not fully write chunk")
+			}
+
+		}
 	}
 
 	return nil

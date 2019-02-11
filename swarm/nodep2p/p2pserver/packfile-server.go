@@ -123,6 +123,7 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 
 			if end == true {
 				err = WriteStructPacket(stream, &GetPackfileResponsePacket{End: true})
+				return
 			} else {
 				err = WriteStructPacket(stream, &GetPackfileResponsePacket{
 					End:    false,

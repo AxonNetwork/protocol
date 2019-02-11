@@ -119,7 +119,7 @@ func (pc *PeerConnection) RequestPackfile(ctx context.Context, objectIDs [][]byt
 	return UnflattenObjectIDs(resp.ObjectIDs), stream, nil
 }
 
-func (pc *PeerConnection) RequestChunk(ctx context.Context, chunkID []byte) ([]byte, error) {
+func (pc *PeerConnection) RequestChunk(ctx context.Context, chunkID []byte) (io.Reader, error) {
 	if pc.stream == nil {
 		return nil, errors.Errorf("No stream open with peer %v", pc.peerID)
 	}
@@ -137,13 +137,19 @@ func (pc *PeerConnection) RequestChunk(ctx context.Context, chunkID []byte) ([]b
 		return nil, errors.Wrapf(ErrObjectNotFound, "%v", pc.repoID)
 	}
 
-	data := make([]byte, resp.Length)
-	n, err := io.ReadFull(pc.stream, data)
-	if err != nil {
-		return nil, err
-	} else if n < resp.Length {
-		return nil, errors.Errorf("Did not copy over whole chunk stream from peer %v", pc.peerID)
-	}
+	r, w := io.Pipe()
+	go func() {
+		defer w.Close()
+		n, err := io.CopyN(w, pc.stream, resp.Length)
+		if err != nil {
+			w.CloseWithError(err)
+			return
+		} else if n != resp.Length {
+			err = errors.Errorf("Did not copy over whole chunk stream from peer %v", pc.peerID)
+			w.CloseWithError(err)
+			return
+		}
+	}()
 
-	return data, nil
+	return r, nil
 }

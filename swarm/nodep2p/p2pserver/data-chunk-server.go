@@ -47,7 +47,7 @@ func (s *Server) HandleChunkHandshakeRequest(stream netp2p.Stream) {
 	}
 
 	// invoked function's responsibility to close stream
-	go s.HandleChunkStream(stream, req.RepoID)
+	s.HandleChunkStream(stream, req.RepoID)
 }
 
 func (s *Server) HandleChunkStream(stream netp2p.Stream, repoID string) {
@@ -84,7 +84,7 @@ func (s *Server) HandleChunkStream(stream netp2p.Stream, repoID string) {
 		log.Infof("[chunk server] writing chunk %v", chunkStr)
 
 		length := stat.Size()
-		err = WriteStructPacket(stream, &GetChunkResponse{Length: int(length)})
+		err = WriteStructPacket(stream, &GetChunkResponse{Length: length})
 		if err != nil {
 			log.Errorf("[chunk server] %v", err)
 			break

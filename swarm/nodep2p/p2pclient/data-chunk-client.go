@@ -3,6 +3,7 @@ package p2pclient
 import (
 	"context"
 	"encoding/hex"
+	"io"
 	"sync"
 
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -15,6 +16,7 @@ import (
 type Chunk struct {
 	ObjectID []byte
 	Data     []byte
+	End      bool
 }
 
 type MaybeChunk struct {
@@ -82,7 +84,7 @@ func (sc *SmartClient) fetchDataChunk(ctx context.Context, conn *PeerConnection,
 	chunkStr := hex.EncodeToString(j.objectID)
 	log.Infof("[chunk client] requesting data chunk %v", chunkStr)
 
-	data, err := conn.RequestChunk(ctx, j.objectID)
+	stream, err := conn.RequestChunk(ctx, j.objectID)
 	if err != nil {
 		err = errors.Wrapf(ErrFetchingFromPeer, "tried requesting chunk %v from peer %v: %v", chunkStr, conn.peerID, err)
 		log.Errorf("[chunk client]", err)
@@ -90,11 +92,34 @@ func (sc *SmartClient) fetchDataChunk(ctx context.Context, conn *PeerConnection,
 		return err
 	}
 
-	chOut <- MaybeChunk{
-		Chunk: &Chunk{
-			ObjectID: j.objectID,
-			Data:     data,
-		},
+	for {
+		data := make([]byte, nodep2p.OBJ_CHUNK_SIZE)
+		end := false
+		n, err := io.ReadFull(stream, data)
+		if err == io.EOF {
+			end = true
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
+		} else if err != nil {
+			chOut <- MaybeChunk{Error: err}
+		}
+
+		if end == true {
+			chOut <- MaybeChunk{
+				Chunk: &Chunk{
+					ObjectID: j.objectID,
+					End:      true,
+				},
+			}
+			return nil
+		}
+
+		chOut <- MaybeChunk{
+			Chunk: &Chunk{
+				ObjectID: j.objectID,
+				Data:     data,
+			},
+		}
 	}
 
 	return nil

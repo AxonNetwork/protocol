@@ -313,6 +313,7 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 				Payload: &pb.FetchFromCommitResponse_Chunk_{&pb.FetchFromCommitResponse_Chunk{
 					ObjectID: pkt.Chunk.ObjectID,
 					Data:     pkt.Chunk.Data,
+					End:      pkt.Chunk.End,
 				}},
 			})
 
@@ -336,6 +337,7 @@ func (s *Server) FetchChunks(req *pb.FetchChunksRequest, server pb.NodeRPC_Fetch
 		err := server.Send(&pb.FetchChunksResponse{
 			ObjectID: pkt.Chunk.ObjectID,
 			Data:     pkt.Chunk.Data,
+			End:      pkt.Chunk.End,
 		})
 		if err != nil {
 			return errors.WithStack(err)

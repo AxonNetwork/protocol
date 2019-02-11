@@ -136,6 +136,7 @@ message FetchFromCommitResponse {
     message Chunk {
         bytes objectID = 1;
         bytes data = 2;
+        bool end = 3;
     }
 
     oneof payload {
@@ -159,6 +160,7 @@ message FetchChunksRequest {
 message FetchChunksResponse {
     bytes objectID = 1;
     bytes data = 2;
+    bool end = 3;
 }
 
 message RegisterRepoIDResponse {}

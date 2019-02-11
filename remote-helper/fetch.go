@@ -47,6 +47,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 	}
 
 	packfiles := make(map[string]*PackfileDownload)
+	chunks := make(map[string]*os.File)
 	var written int64
 	var chunksWritten int64
 
@@ -93,8 +94,10 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 			} else {
 				n, err := packfiles[packfileID].Write(pkt.PackfileData.Data)
 				if err != nil {
+					packfiles[packfileID].Close()
 					return errors.WithStack(err)
 				} else if n != len(pkt.PackfileData.Data) {
+					packfiles[packfileID].Close()
 					return errors.New("remote helper: did not fully write packet")
 				}
 
@@ -103,33 +106,45 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 			}
 
 		case pkt.Chunk != nil:
-			dataDir := filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR)
-			err := os.MkdirAll(dataDir, 0777)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-
 			objectID := hex.EncodeToString(pkt.Chunk.ObjectID)
-			objectPath := filepath.Join(dataDir, objectID)
-			f, err := os.Create(objectPath)
-			if err != nil {
-				return errors.WithStack(err)
-			}
+			if pkt.Chunk.End {
+				err = chunks[objectID].Close()
+				if err != nil {
+					return errors.WithStack(err)
+				}
 
-			n, err := f.Write(pkt.Chunk.Data)
-			if err != nil {
-				return errors.WithStack(err)
-			} else if n != len(pkt.Chunk.Data) {
-				return errors.New("remote helper: did not fully write chunk")
-			}
+				chunksWritten += 1
+				chunks[objectID] = nil
 
-			err = f.Close()
-			if err != nil {
-				return errors.WithStack(err)
-			}
+			} else {
+				f := chunks[objectID]
+				if f == nil {
+					dataDir := filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR)
+					err := os.MkdirAll(dataDir, 0777)
+					if err != nil {
+						return errors.WithStack(err)
+					}
 
-			written += int64(n)
-			chunksWritten += 1
+					objectPath := filepath.Join(dataDir, objectID)
+					f, err = os.Create(objectPath)
+					if err != nil {
+						f.Close()
+						return errors.WithStack(err)
+					}
+					chunks[objectID] = f
+				}
+
+				n, err := f.Write(pkt.Chunk.Data)
+				if err != nil {
+					f.Close()
+					return errors.WithStack(err)
+				} else if n != len(pkt.Chunk.Data) {
+					f.Close()
+					return errors.New("remote helper: did not fully write chunk")
+				}
+
+				written += int64(n)
+			}
 
 		default:
 			log.Errorln("bad packet")

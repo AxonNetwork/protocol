@@ -56,7 +56,7 @@ type GetChunkRequest struct {
 
 type GetChunkResponse struct {
 	ErrObjectNotFound bool
-	Length            int
+	Length            int64
 }
 
 type CheckoutType int
