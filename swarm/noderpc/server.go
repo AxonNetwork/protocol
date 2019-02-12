@@ -1,13 +1,11 @@
 package noderpc
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -546,129 +544,6 @@ func getFilesForCommit(ctx context.Context, path string, commitHash string) ([]s
 		return nil
 	})
 	return files, err
-}
-
-func parseGitStatusLine(line string) (*pb.File, error) {
-	parts := strings.Split(line, " ")
-	file := &pb.File{}
-
-	switch parts[0] {
-	case "u":
-		mode, err := strconv.ParseUint(parts[3], 8, 32)
-		if err != nil {
-			return nil, err
-		}
-
-		hash, err := hex.DecodeString(parts[7])
-		if err != nil {
-			return nil, err
-		}
-
-		file.Name = parts[10]
-		file.Hash = hash
-		file.Mode = uint32(mode)
-		file.UnstagedStatus = parts[1][:1]
-		file.StagedStatus = parts[1][1:]
-
-	case "1":
-		mode, err := strconv.ParseUint(parts[3], 8, 32)
-		if err != nil {
-			return nil, err
-		}
-
-		hash, err := hex.DecodeString(parts[6])
-		if err != nil {
-			return nil, err
-		}
-
-		file.Name = strings.Join(parts[8:], " ")
-		file.Hash = hash
-		file.Mode = uint32(mode)
-		file.StagedStatus = parts[1][:1]
-		file.UnstagedStatus = parts[1][1:]
-
-	case "2":
-		// @@TODO: these are renames
-
-	case "?":
-		file.Name = strings.Join(parts[1:], " ")
-		file.UnstagedStatus = "?"
-		file.StagedStatus = "?"
-	}
-
-	return file, nil
-}
-
-func parseGitLSFilesLine(line string) (*pb.File, error) {
-	moarParts := strings.Split(line, "\t")
-	parts := strings.Split(moarParts[0], " ")
-
-	mode, err := strconv.ParseUint(parts[0], 8, 32)
-	if err != nil {
-		return nil, err
-	}
-
-	hash, err := hex.DecodeString(parts[1])
-	if err != nil {
-		return nil, err
-	}
-
-	name := moarParts[1]
-	if name[0:1] == "\"" {
-		name = fmt.Sprintf(name[1 : len(name)-2])
-	}
-
-	return &pb.File{
-		Name:           name,
-		Hash:           hash,
-		Mode:           uint32(mode),
-		Size:           0,
-		UnstagedStatus: ".",
-		StagedStatus:   ".",
-	}, nil
-}
-
-func getStats(path string) (os.FileInfo, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	stat, err := f.Stat()
-	return stat, err
-}
-
-func getMergeConflicts(ctx context.Context, path string) ([]string, []string, error) {
-	unresolved := make([]string, 0)
-	err := util.ExecAndScanStdout(ctx, []string{"git", "diff", "--name-only", "--diff-filter=U"}, path, func(line string) error {
-		unresolved = append(unresolved, line)
-		return nil
-	})
-	if err != nil {
-		return []string{}, []string{}, err
-	}
-
-	mergeConflicts := make([]string, 0)
-	for i := range unresolved {
-		exists, err := util.GrepExists(filepath.Join(path, unresolved[i]), "<<<<<")
-		if err != nil {
-			return []string{}, []string{}, err
-		}
-		if exists {
-			mergeConflicts = append(mergeConflicts, unresolved[i])
-		}
-
-	}
-	return unresolved, mergeConflicts, err
-}
-
-func contains(arr []string, str string) bool {
-	for i := range arr {
-		if arr[i] == str {
-			return true
-		}
-	}
-	return false
 }
 
 // @@TODO: move this into the Node
