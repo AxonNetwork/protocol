@@ -306,7 +306,7 @@ message GetRepoFilesResponse {
 
 message RepoHasObjectRequest {
     string repoID = 1;
-    string path = 2;
+    string repoRoot = 2;
     bytes objectID = 3;
 }
 
