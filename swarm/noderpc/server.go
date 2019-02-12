@@ -553,7 +553,7 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 		return nil, err
 	}
 
-	fileList, err := nodegit.ListFiles(ctx, r.Path, req.Commit)
+	fileList, err := nodegit.ListFiles(ctx, r.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -564,7 +564,7 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest) (*pb.RepoHasObjectResponse, error) {
 	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	return &pb.RepoHasObjectResponse{

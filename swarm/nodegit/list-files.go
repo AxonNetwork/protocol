@@ -14,7 +14,7 @@ import (
 	"github.com/Conscience/protocol/util"
 )
 
-func ListFiles(ctx context.Context, path string, commit string) ([]*pb.File, error) {
+func ListFiles(ctx context.Context, path string) ([]*pb.File, error) {
 	files := map[string]*pb.File{}
 
 	// Start by taking the output of `git ls-files --stage`
