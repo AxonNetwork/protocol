@@ -1,13 +1,11 @@
 package noderpc
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -373,18 +371,33 @@ func (s *Server) AnnounceRepoContent(ctx context.Context, req *pb.AnnounceRepoCo
 }
 
 func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) (*pb.GetLocalRefsResponse, error) {
-	refs, repoPath, err := s.node.GetLocalRefs(ctx, req.RepoID, req.Path)
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
 
-	refsList := make([]*pb.Ref, len(refs))
-	i := 0
-	for _, ref := range refs {
-		refsList[i] = &pb.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
-		i++
+	rIter, err := r.References()
+	if err != nil {
+		return nil, err
 	}
-	return &pb.GetLocalRefsResponse{Path: repoPath, Refs: refsList}, nil
+	defer rIter.Close()
+
+	refs := []*pb.Ref{}
+	for {
+		ref, err := rIter.Next()
+		if err != nil {
+			return nil, err
+		} else if ref == nil {
+			break
+		}
+
+		refs = append(refs, &pb.Ref{
+			RefName:    ref.Name().String(),
+			CommitHash: ref.Hash().String(),
+		})
+	}
+
+	return &pb.GetLocalRefsResponse{Refs: refs}, nil
 }
 
 func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest) (*pb.GetRemoteRefsResponse, error) {
@@ -458,8 +471,7 @@ func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) 
 }
 
 func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRPC_RequestReplicationServer) error {
-	ctx := context.Background()
-	ch := s.node.RequestReplication(ctx, req.RepoID)
+	ch := s.node.RequestReplication(context.TODO(), req.RepoID)
 	for progress := range ch {
 		if progress.Error != nil {
 			return errors.WithStack(progress.Error)
@@ -473,25 +485,13 @@ func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRP
 }
 
 func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryRequest) (*pb.GetRepoHistoryResponse, error) {
-	var r *repo.Repo
-
-	if len(req.Path) > 0 {
-		r = s.node.RepoManager().RepoAtPath(req.Path)
-		if r == nil {
-			return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
-		}
-
-	} else if len(req.RepoID) > 0 {
-		r = s.node.RepoManager().Repo(req.RepoID)
-		if r == nil {
-			return nil, errors.Errorf("repo '%v'  not found", req.RepoID)
-		}
-	} else {
-		return nil, errors.Errorf("must provide either repoID or path")
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
+	if err != nil {
+		return nil, err
 	}
 
 	// if HEAD does not exist, return empty commit list
-	_, err := r.Head()
+	_, err = r.Head()
 	if err != nil {
 		return &pb.GetRepoHistoryResponse{Commits: []*pb.Commit{}}, nil
 	}
@@ -513,7 +513,7 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 			return nil
 		}
 		commitHash := commit.Hash.String()
-		files, err := getFilesForCommit(ctx, r.Path, commitHash)
+		files, err := nodegit.GetFilesForCommit(ctx, r.Path, commitHash)
 		if err != nil {
 			return err
 		}
@@ -536,165 +536,40 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
 }
 
-func getFilesForCommit(ctx context.Context, path string, commitHash string) ([]string, error) {
-	// Start by taking the output of `git ls-files --stage`
-	files := make([]string, 0)
-	err := util.ExecAndScanStdout(ctx, []string{"git", "show", "--name-only", "--pretty=format:\"\"", commitHash}, path, func(line string) error {
-		if len(line) > 0 {
-			files = append(files, line)
-		}
-		return nil
-	})
-	return files, err
-}
-
-func parseGitStatusLine(line string) (*pb.File, error) {
-	parts := strings.Split(line, " ")
-	file := &pb.File{}
-
-	switch parts[0] {
-	case "u":
-		mode, err := strconv.ParseUint(parts[3], 8, 32)
-		if err != nil {
-			return nil, err
-		}
-
-		hash, err := hex.DecodeString(parts[7])
-		if err != nil {
-			return nil, err
-		}
-
-		file.Name = parts[10]
-		file.Hash = hash
-		file.Mode = uint32(mode)
-		file.UnstagedStatus = parts[1][:1]
-		file.StagedStatus = parts[1][1:]
-
-	case "1":
-		mode, err := strconv.ParseUint(parts[3], 8, 32)
-		if err != nil {
-			return nil, err
-		}
-
-		hash, err := hex.DecodeString(parts[6])
-		if err != nil {
-			return nil, err
-		}
-
-		file.Name = strings.Join(parts[8:], " ")
-		file.Hash = hash
-		file.Mode = uint32(mode)
-		file.StagedStatus = parts[1][:1]
-		file.UnstagedStatus = parts[1][1:]
-
-	case "2":
-		// @@TODO: these are renames
-
-	case "?":
-		file.Name = strings.Join(parts[1:], " ")
-		file.UnstagedStatus = "?"
-		file.StagedStatus = "?"
-	}
-
-	return file, nil
-}
-
-func parseGitLSFilesLine(line string) (*pb.File, error) {
-	moarParts := strings.Split(line, "\t")
-	parts := strings.Split(moarParts[0], " ")
-
-	mode, err := strconv.ParseUint(parts[0], 8, 32)
-	if err != nil {
-		return nil, err
-	}
-
-	hash, err := hex.DecodeString(parts[1])
-	if err != nil {
-		return nil, err
-	}
-
-	name := moarParts[1]
-	if name[0:1] == "\"" {
-		name = fmt.Sprintf(name[1 : len(name)-2])
-	}
-
-	return &pb.File{
-		Name:           name,
-		Hash:           hash,
-		Mode:           uint32(mode),
-		Size:           0,
-		UnstagedStatus: ".",
-		StagedStatus:   ".",
-	}, nil
-}
-
-func getStats(path string) (os.FileInfo, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	stat, err := f.Stat()
-	return stat, err
-}
-
-func getMergeConflicts(ctx context.Context, path string) ([]string, []string, error) {
-	unresolved := make([]string, 0)
-	err := util.ExecAndScanStdout(ctx, []string{"git", "diff", "--name-only", "--diff-filter=U"}, path, func(line string) error {
-		unresolved = append(unresolved, line)
-		return nil
-	})
-	if err != nil {
-		return []string{}, []string{}, err
-	}
-
-	mergeConflicts := make([]string, 0)
-	for i := range unresolved {
-		exists, err := util.GrepExists(filepath.Join(path, unresolved[i]), "<<<<<")
-		if err != nil {
-			return []string{}, []string{}, err
-		}
-		if exists {
-			mergeConflicts = append(mergeConflicts, unresolved[i])
-		}
-
-	}
-	return unresolved, mergeConflicts, err
-}
-
-func contains(arr []string, str string) bool {
-	for i := range arr {
-		if arr[i] == str {
-			return true
-		}
-	}
-	return false
-}
-
-// @@TODO: move this into the Node
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
-	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
 
-	fileList, err := nodegit.ListFiles(ctx, r.Path, req.Commit)
+	fileList, err := r.ListFiles(ctx, repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
 	if err != nil {
 		return nil, err
 	}
 
-	return &pb.GetRepoFilesResponse{Files: fileList}, nil
+	files := make([]*pb.File, len(fileList))
+	for i := range fileList {
+		files[i] = &pb.File{
+			Name:           fileList[i].Filename,
+			Hash:           fileList[i].Hash[:],
+			Mode:           uint32(fileList[i].Mode),
+			Size:           fileList[i].Size,
+			Modified:       fileList[i].Modified,
+			UnstagedStatus: string(fileList[i].Status.Worktree),
+			StagedStatus:   string(fileList[i].Status.Staging),
+		}
+	}
+
+	return &pb.GetRepoFilesResponse{Files: files}, nil
 }
 
 func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest) (*pb.RepoHasObjectResponse, error) {
-	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return &pb.RepoHasObjectResponse{
-		HasObject: r.HasObject(req.ObjectID),
-	}, nil
+	return &pb.RepoHasObjectResponse{HasObject: r.HasObject(req.ObjectID)}, nil
 }
 
 func (s *Server) SignMessage(ctx context.Context, req *pb.SignMessageRequest) (*pb.SignMessageResponse, error) {
@@ -768,24 +643,16 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 			uncompressedSize = uint64(stat.Size())
 
 		} else {
-			var commitHash gitplumbing.Hash
-			if req.CommitRef != "" {
-				hash, err := r.ResolveRevision(gitplumbing.Revision(req.CommitRef))
-				if err != nil {
-					return err
-				} else if hash == nil {
-					return errors.Errorf("could not resolve commitRef '%s' to a revision", req.CommitRef)
-				}
-				commitHash = *hash
-			} else {
-				copy(commitHash[:], req.CommitHash)
+			commitHash, err := r.ResolveCommitHash(repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
+			if err != nil {
+				return err
 			}
 
 			commit, err := r.CommitObject(commitHash)
 			if err != nil {
 				return err
 			}
-			tree, err := r.TreeObject(commit.TreeHash)
+			tree, err := commit.Tree()
 			if err != nil {
 				return err
 			}
@@ -872,28 +739,32 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 		return errors.New("need commitHash or commitRef")
 	}
 
-	var commitHash gitplumbing.Hash
-	if req.CommitRef != "" {
-		hash, err := r.ResolveRevision(gitplumbing.Revision(req.CommitRef))
-		if err != nil {
-			return err
-		} else if hash == nil {
-			return errors.Errorf("could not resolve commitRef '%s' to a revision", req.CommitRef)
-		}
-		commitHash = *hash
-	} else {
-		copy(commitHash[:], req.CommitHash)
-	}
-
-	diffReader, err := nodegit.GetDiff(context.TODO(), r.Path, commitHash)
+	changes, err := r.GetDiff(context.TODO(), repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
 	if err != nil {
 		return err
 	}
-	defer diffReader.Close()
+
+	patch, err := changes.PatchContext(context.TODO())
+	if err != nil {
+		return err
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		var err error
+		defer func() { pw.CloseWithError(err) }()
+		err = patch.Encode(pw)
+	}()
+
+	// diffReader, err := nodegit.GetDiff(context.TODO(), r.Path, commitHash)
+	// if err != nil {
+	//  return err
+	// }
+	// defer diffReader.Close()
 
 	for {
 		data := make([]byte, OBJ_CHUNK_SIZE)
-		n, err := io.ReadFull(diffReader, data)
+		n, err := io.ReadFull(pr, data)
 		if err == io.EOF {
 			break
 		} else if err == io.ErrUnexpectedEOF {

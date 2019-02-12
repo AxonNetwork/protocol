@@ -158,19 +158,6 @@ func (c *Client) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	return errors.WithStack(err)
 }
 
-func (c *Client) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]wire.Ref, string, error) {
-	resp, err := c.client.GetLocalRefs(ctx, &pb.GetLocalRefsRequest{RepoID: repoID, Path: path})
-	if err != nil {
-		return nil, "", err
-	}
-
-	refs := make(map[string]wire.Ref, len(resp.Refs))
-	for _, ref := range resp.Refs {
-		refs[ref.RefName] = wire.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
-	}
-	return refs, resp.Path, nil
-}
-
 func (c *Client) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]wire.Ref, uint64, error) {
 	resp, err := c.client.GetRemoteRefs(ctx, &pb.GetRemoteRefsRequest{RepoID: repoID, PageSize: pageSize, Page: page})
 	if err != nil {

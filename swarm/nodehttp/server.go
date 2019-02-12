@@ -222,10 +222,11 @@ func (s *Server) handleIndex() http.HandlerFunc {
 				return err
 			}
 
-			localRefs, err := r.GetLocalRefs(context.TODO())
+			rIter, err := r.References()
 			if err != nil {
 				return err
 			}
+			defer rIter.Close()
 
 			remoteRefs, _, err := s.node.GetRemoteRefs(context.TODO(), repoID, 50, 0)
 			if err != nil {
@@ -233,18 +234,29 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			}
 
 			refmap := map[string]RefMapping{}
-			for refname := range localRefs {
+			for {
+				ref, err := rIter.Next()
+				if err != nil {
+					return err
+				} else if ref == nil {
+					break
+				}
+				refname := ref.Name().String()
+
 				refmap[refname] = RefMapping{
 					RefName:      refname,
-					LocalCommit:  localRefs[refname].CommitHash,
+					LocalCommit:  ref.Hash().String(),
 					RemoteCommit: remoteRefs[refname].CommitHash,
 				}
 			}
+
+			// Overlay any remote refs that don't exist locally
 			for refname := range remoteRefs {
-				refmap[refname] = RefMapping{
-					RefName:      refname,
-					LocalCommit:  localRefs[refname].CommitHash,
-					RemoteCommit: remoteRefs[refname].CommitHash,
+				if _, exists := refmap[refname]; !exists {
+					refmap[refname] = RefMapping{
+						RefName:      refname,
+						RemoteCommit: remoteRefs[refname].CommitHash,
+					}
 				}
 			}
 			refs := []RefMapping{}

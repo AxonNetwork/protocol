@@ -443,19 +443,6 @@ func (n *Node) AddressHasPullAccess(ctx context.Context, user nodeeth.Address, r
 	return n.eth.AddressHasPullAccess(ctx, user, repoID)
 }
 
-func (n *Node) GetLocalRefs(ctx context.Context, repoID string, path string) (map[string]Ref, string, error) {
-	r, err := n.repoManager.RepoAtPathOrID(path, repoID)
-	if err != nil {
-		return nil, "", err
-	}
-
-	refs, err := r.GetLocalRefs(ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	return refs, r.Path, nil
-}
-
 func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (bool, error) {
 	r, err := n.repoManager.RepoAtPathOrID(path, repoID)
 	if err != nil {

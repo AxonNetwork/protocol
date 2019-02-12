@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 
@@ -19,7 +18,6 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/storer"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -97,14 +95,6 @@ func (r *Repo) RepoID() (string, error) {
 	}
 
 	return repoID, nil
-}
-
-func (r *Repo) HeadHash() (string, error) {
-	head, err := r.Head()
-	if err != nil {
-		return "", errors.Wrapf(err, "could not fetch HEAD for repo (path: %v)", r.Path)
-	}
-	return head.Hash().String(), nil
 }
 
 func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
@@ -227,22 +217,30 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 	}
 }
 
-func (r *Repo) GetLocalRefs(ctx context.Context) (map[string]wire.Ref, error) {
-	refs := map[string]wire.Ref{}
-
-	err := util.ExecAndScanStdout(ctx, []string{"git", "show-ref"}, r.Path, func(line string) error {
-		parts := strings.Split(line, " ")
-		refs[parts[1]] = wire.Ref{RefName: parts[1], CommitHash: parts[0]}
-		return nil
-	})
-	if err != nil {
-		// git show-ref exits with code 1 if there are no refs
-		if util.ExitCodeForError(err) == 1 {
-			return map[string]wire.Ref{}, nil
+func (r *Repo) ResolveCommitHash(commitID CommitID) (gitplumbing.Hash, error) {
+	if commitID.Ref != "" {
+		hash, err := r.ResolveRevision(gitplumbing.Revision(commitID.Ref))
+		if err != nil {
+			return gitplumbing.ZeroHash, err
+		} else if hash == nil {
+			return gitplumbing.ZeroHash, errors.Errorf("could not resolve commit ref '%s' to a revision", commitID.Ref)
 		}
+		return *hash, nil
+
+	} else if commitID.Hash != gitplumbing.ZeroHash {
+		return commitID.Hash, nil
+
+	} else {
+		return gitplumbing.ZeroHash, errors.Errorf("must specify commit hash or commit ref")
+	}
+}
+
+func (r *Repo) ResolveCommit(commitID CommitID) (*gitobject.Commit, error) {
+	hash, err := r.ResolveCommitHash(commitID)
+	if err != nil {
 		return nil, err
 	}
-	return refs, nil
+	return r.CommitObject(hash)
 }
 
 func writeConfig(path string, rawCfg *gitconfigformat.Config) error {
@@ -370,3 +368,176 @@ func (r *Repo) PackfileWriter() (io.WriteCloser, error) {
 
 	return pfw.PackfileWriter()
 }
+
+func (r *Repo) ListFiles(ctx context.Context, commitID CommitID) ([]File, error) {
+	if commitID.Ref == "working" {
+		return r.listFilesWorktree(ctx)
+	} else {
+		return r.listFilesCommit(ctx, commitID)
+	}
+}
+
+// Returns the file list for the current worktree.
+func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
+	wt, err := r.Worktree()
+	if err != nil {
+		return nil, err
+	}
+
+	statuses, err := wt.Status()
+	if err != nil {
+		return nil, err
+	}
+
+	ref, err := r.Reference("refs/heads/master", true)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not resolve refs/heads/master")
+	} else if ref == nil {
+		return nil, errors.Errorf("could not resolve refs/heads/master")
+	}
+
+	headCommit, err := r.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]File, len(statuses))
+	i := 0
+Loop:
+	for filename, status := range statuses {
+		f, err := headCommit.File(filename)
+		if err != nil {
+			return nil, err
+		}
+
+		var fileHash gitplumbing.Hash
+		if f != nil {
+			fileHash = f.Hash
+		}
+
+		stat, err := os.Stat(filepath.Join(r.Path, filename))
+		if err != nil {
+			log.Errorf("[repo] error opening")
+			return nil, errors.Wrapf(err, "[repo] error opening %v", filename)
+		}
+
+		files[i] = File{
+			Filename: filename,
+			Hash:     fileHash,
+			Status:   *status,
+			Size:     uint64(stat.Size()),
+			Mode:     stat.Mode(),
+			Modified: uint32(stat.ModTime().Unix()),
+		}
+		i++
+
+		select {
+		case <-ctx.Done():
+			break Loop
+		default:
+		}
+	}
+	return files, nil
+}
+
+// Returns the file list for a commit specified by its hash or a commit ref.
+func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, error) {
+	commit, err := r.ResolveCommit(commitID)
+	if err != nil {
+		return nil, err
+	}
+
+	commitFiles, err := commit.Files()
+	if err != nil {
+		return nil, err
+	}
+	defer commitFiles.Close()
+
+	files := []File{}
+Loop2:
+	for {
+		file, err := commitFiles.Next()
+		if err != nil {
+			return nil, err
+		} else if file == nil {
+			break
+		}
+
+		osMode, err := file.Mode.ToOSFileMode()
+		if err != nil {
+			return nil, err
+		}
+
+		files = append(files, File{
+			Filename: file.Name,
+			Hash:     file.Hash,
+			Status: git.FileStatus{
+				Staging:  git.Unmodified,
+				Worktree: git.Unmodified,
+				Extra:    "",
+			},
+			Size:     uint64(file.Size),
+			Mode:     osMode,
+			Modified: 0,
+		})
+
+		select {
+		case <-ctx.Done():
+			break Loop2
+		default:
+		}
+	}
+	return files, nil
+}
+
+func (r *Repo) GetDiff(ctx context.Context, commitID CommitID) (gitobject.Changes, error) {
+	if commitID.Ref == "working" {
+		// @@TODO
+		panic("not implemented")
+		// return r.GetDiffWorktree(ctx)
+	} else {
+		return r.GetDiffCommit(ctx, commitID)
+	}
+}
+
+func (r *Repo) GetDiffCommit(ctx context.Context, commitID CommitID) (gitobject.Changes, error) {
+	commit, err := r.ResolveCommit(commitID)
+	if err != nil {
+		return nil, err
+	}
+
+	// @@TODO: handle merges differently?
+	if commit.NumParents() > 1 {
+		return nil, nil
+	}
+
+	commitParent, err := commit.Parent(0)
+	if err != nil {
+		return nil, err
+	}
+
+	// patch, err := commit.PatchContext(context.TODO(), commitParent)
+	// if err != nil {
+	// 	return err
+	// }
+
+	commitTree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+	commitParentTree, err := commitParent.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	return gitobject.DiffTreeContext(context.TODO(), commitTree, commitParentTree)
+}
+
+// func (r *Repo) GetDiffWorktree(ctx context.Context) (gitobject.Changes, error) {
+// 	changes, err := diffStagingWithWorktree(r, false)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	return gitobject.NewChanges(changes)
+// }

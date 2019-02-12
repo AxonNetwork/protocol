@@ -180,8 +180,7 @@ message GetLocalRefsRequest {
 }
 
 message GetLocalRefsResponse {
-    string path = 1;
-    repeated Ref refs = 2;
+    repeated Ref refs = 1;
 }
 
 message GetRemoteRefsRequest {
@@ -284,6 +283,9 @@ message GetRepoHistoryResponse {
 message GetRepoFilesRequest {
     string repoID = 1;
     string path = 2;
+
+    bytes commitHash = 3;
+    string commitRef = 4;
 }
 
 message File {
