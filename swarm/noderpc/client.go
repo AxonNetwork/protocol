@@ -255,14 +255,6 @@ func (c *Client) RequestReplication(ctx context.Context, repoID string) chan May
 	return ch
 }
 
-func (c *Client) RepoHasObject(ctx context.Context, repoID string, objectID []byte) (bool, error) {
-	resp, err := c.client.RepoHasObject(ctx, &pb.RepoHasObjectRequest{RepoID: repoID, ObjectID: objectID})
-	if err != nil {
-		return false, err
-	}
-	return resp.HasObject, nil
-}
-
 func (c *Client) SignMessage(ctx context.Context, message []byte) ([]byte, error) {
 	resp, err := c.client.SignMessage(ctx, &pb.SignMessageRequest{Message: message})
 	if err != nil {

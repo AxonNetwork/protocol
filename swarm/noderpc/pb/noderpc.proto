@@ -32,7 +32,6 @@ service NodeRPC {
 
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
-  rpc RepoHasObject(RepoHasObjectRequest) returns (RepoHasObjectResponse) {}
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
   rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
 
@@ -302,16 +301,6 @@ message File {
 
 message GetRepoFilesResponse {
     repeated File files = 1;
-}
-
-message RepoHasObjectRequest {
-    string repoID = 1;
-    string path = 2;
-    bytes objectID = 3;
-}
-
-message RepoHasObjectResponse {
-    bool hasObject = 1;
 }
 
 message SignMessageRequest {

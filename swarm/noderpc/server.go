@@ -565,15 +565,6 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	return &pb.GetRepoFilesResponse{Files: files}, nil
 }
 
-func (s *Server) RepoHasObject(ctx context.Context, req *pb.RepoHasObjectRequest) (*pb.RepoHasObjectResponse, error) {
-	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &pb.RepoHasObjectResponse{HasObject: r.HasObject(req.ObjectID)}, nil
-}
-
 func (s *Server) SignMessage(ctx context.Context, req *pb.SignMessageRequest) (*pb.SignMessageResponse, error) {
 	signature, err := s.node.SignHash(req.Message)
 	if err != nil {
