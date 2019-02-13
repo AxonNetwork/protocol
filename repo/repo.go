@@ -155,9 +155,7 @@ func (r *Repo) HasObject(objectID []byte) bool {
 		return err == nil || !os.IsNotExist(err)
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
-		var hash gitplumbing.Hash
-		copy(hash[:], objectID)
-		err := r.Storer.HasEncodedObject(hash)
+		err := r.Storer.HasEncodedObject(util.GitHashFromBytes(objectID))
 		return err == nil
 	}
 
@@ -165,7 +163,7 @@ func (r *Repo) HasObject(objectID []byte) bool {
 }
 
 // Open an object for reading.  It is the caller's responsibility to .Close() the object when finished.
-func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
+func (r *Repo) OpenObject(objectID []byte) (ObjectReader, error) {
 	if len(objectID) == CONSCIENCE_HASH_LENGTH {
 		// Open a Conscience object
 		p := filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
@@ -181,11 +179,11 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 			return nil, errors.Wrapf(err, "could not stat file '%v'", p)
 		}
 
-		or := &util.ObjectReader{
+		or := &objectReader{
 			Reader:     f,
 			Closer:     f,
-			ObjectType: 0,
-			ObjectLen:  uint64(stat.Size()),
+			objectType: 0,
+			objectLen:  uint64(stat.Size()),
 		}
 		return or, nil
 
@@ -204,11 +202,11 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 		}
 		// It is the caller's responsibility to `.Close()` this reader, so we don't do it here.
 
-		or := &util.ObjectReader{
+		or := &objectReader{
 			Reader:     r,
 			Closer:     r,
-			ObjectType: obj.Type(),
-			ObjectLen:  uint64(obj.Size()),
+			objectType: obj.Type(),
+			objectLen:  uint64(obj.Size()),
 		}
 		return or, nil
 
@@ -217,17 +215,55 @@ func (r *Repo) OpenObject(objectID []byte) (*util.ObjectReader, error) {
 	}
 }
 
-func (r *Repo) ResolveCommitHash(commitID CommitID) (gitplumbing.Hash, error) {
+func (r *Repo) OpenFileInWorktree(filename string) (ObjectReader, error) {
+	f, err := os.Open(filepath.Join(r.Path, filename))
+	if err != nil {
+		return nil, err
+	}
+
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	return &objectReader{
+		Reader:    f,
+		Closer:    f,
+		objectLen: uint64(stat.Size()),
+		// objectType: ,
+	}, nil
+}
+
+func (r *Repo) OpenFileAtCommit(filename string, commitID CommitID) (ObjectReader, error) {
+	commit, err := r.ResolveCommit(commitID)
+	if err != nil {
+		return nil, err
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	treeEntry, err := tree.FindEntry(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.OpenObject(treeEntry.Hash[:])
+}
+
+func (r *Repo) ResolveCommitHash(commitID CommitID) (GitHash, error) {
 	if commitID.Ref != "" {
 		hash, err := r.ResolveRevision(gitplumbing.Revision(commitID.Ref))
 		if err != nil {
-			return gitplumbing.ZeroHash, err
+			return ZeroHash, err
 		} else if hash == nil {
-			return gitplumbing.ZeroHash, errors.Errorf("could not resolve commit ref '%s' to a revision", commitID.Ref)
+			return ZeroHash, errors.Errorf("could not resolve commit ref '%s' to a revision", commitID.Ref)
 		}
 		return *hash, nil
 
-	} else if commitID.Hash != gitplumbing.ZeroHash {
+	} else if commitID.Hash != ZeroHash {
 		return commitID.Hash, nil
 
 	} else {
@@ -370,66 +406,56 @@ func (r *Repo) PackfileWriter() (io.WriteCloser, error) {
 }
 
 func (r *Repo) ListFiles(ctx context.Context, commitID CommitID) ([]File, error) {
+	var files map[string]*File
+	var err error
 	if commitID.Ref == "working" {
-		return r.listFilesWorktree(ctx)
+		files, err = r.listFilesWorktree(ctx)
 	} else {
-		return r.listFilesCommit(ctx, commitID)
+		files, err = r.listFilesCommit(ctx, commitID)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	fileList := make([]File, len(files))
+	i := 0
+	for _, f := range files {
+		fileList[i] = *f
+		i++
+	}
+
+	return fileList, nil
 }
 
 // Returns the file list for the current worktree.
-func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
+func (r *Repo) listFilesWorktree(ctx context.Context) (map[string]*File, error) {
+	files, err := r.listFilesCommit(ctx, CommitID{Ref: "HEAD"})
+	if err == gitplumbing.ErrObjectNotFound {
+		files = map[string]*File{}
+	} else if err != nil {
+		return nil, err
+	}
+
 	wt, err := r.Worktree()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	statuses, err := wt.Status()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
-	ref, err := r.Reference("refs/heads/master", true)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not resolve refs/heads/master")
-	} else if ref == nil {
-		return nil, errors.Errorf("could not resolve refs/heads/master")
-	}
-
-	headCommit, err := r.CommitObject(ref.Hash())
-	if err != nil {
-		return nil, err
-	}
-
-	files := make([]File, len(statuses))
-	i := 0
 Loop:
 	for filename, status := range statuses {
-		f, err := headCommit.File(filename)
-		if err != nil {
-			return nil, err
+		if files[filename] == nil {
+			files[filename] = &File{}
 		}
 
-		var fileHash gitplumbing.Hash
-		if f != nil {
-			fileHash = f.Hash
-		}
-
-		stat, err := os.Stat(filepath.Join(r.Path, filename))
-		if err != nil {
-			log.Errorf("[repo] error opening")
-			return nil, errors.Wrapf(err, "[repo] error opening %v", filename)
-		}
-
-		files[i] = File{
-			Filename: filename,
-			Hash:     fileHash,
-			Status:   *status,
-			Size:     uint64(stat.Size()),
-			Mode:     stat.Mode(),
-			Modified: uint32(stat.ModTime().Unix()),
-		}
-		i++
+		f := files[filename]
+		f.Filename = filename
+		f.Status = *status
 
 		select {
 		case <-ctx.Done():
@@ -437,38 +463,52 @@ Loop:
 		default:
 		}
 	}
+
+	for filename, file := range files {
+		stat, err := os.Stat(filepath.Join(r.Path, filename))
+		if err != nil {
+			log.Errorf("[repo] error opening %v", filename)
+			// return nil, errors.Wrapf(err, "[repo] error opening %v", filename)
+			continue
+		}
+
+		file.Mode = stat.Mode()
+		file.Size = uint64(stat.Size())
+		file.Modified = uint32(stat.ModTime().Unix())
+	}
+
 	return files, nil
 }
 
 // Returns the file list for a commit specified by its hash or a commit ref.
-func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, error) {
+func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) (map[string]*File, error) {
 	commit, err := r.ResolveCommit(commitID)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	commitFiles, err := commit.Files()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	defer commitFiles.Close()
 
-	files := []File{}
+	files := map[string]*File{}
 Loop2:
 	for {
 		file, err := commitFiles.Next()
-		if err != nil {
-			return nil, err
-		} else if file == nil {
+		if err == io.EOF {
 			break
+		} else if err != nil {
+			return nil, errors.WithStack(err)
 		}
 
 		osMode, err := file.Mode.ToOSFileMode()
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
-		files = append(files, File{
+		files[file.Name] = &File{
 			Filename: file.Name,
 			Hash:     file.Hash,
 			Status: git.FileStatus{
@@ -479,7 +519,7 @@ Loop2:
 			Size:     uint64(file.Size),
 			Mode:     osMode,
 			Modified: 0,
-		})
+		}
 
 		select {
 		case <-ctx.Done():

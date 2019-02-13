@@ -282,7 +282,7 @@ message GetRepoHistoryResponse {
 
 message GetRepoFilesRequest {
     string repoID = 1;
-    string path = 2;
+    string repoRoot = 2;
 
     bytes commitHash = 3;
     string commitRef = 4;
@@ -306,7 +306,7 @@ message GetRepoFilesResponse {
 
 message RepoHasObjectRequest {
     string repoID = 1;
-    string repoRoot = 2;
+    string path = 2;
     bytes objectID = 3;
 }
 

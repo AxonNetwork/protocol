@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -12,7 +11,6 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"gopkg.in/src-d/go-git.v4"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 
 	"github.com/Conscience/protocol/log"
@@ -146,13 +144,10 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	// if local HEAD exists, push to contract
 	_, err = r.Head()
 	if err == nil {
-		log.Debugln("[checkpoint] git push origin master")
 		err = util.ExecAndScanStdout(ctx, []string{"git", "push", "origin", "master"}, req.Path, func(line string) error {
-			log.Debugln("[checkpoint]  -", line)
 			return nil
 		})
 		if err != nil {
-			log.Errorln("[checkpoint]  - error:", err)
 			return nil, errors.WithStack(err)
 		}
 	}
@@ -161,7 +156,6 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 }
 
 func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoRequest) (*pb.CheckpointRepoResponse, error) {
-	log.Debugln("[checkpoint] git add .")
 	err := util.ExecAndScanStdout(ctx, []string{"git", "add", "."}, req.Path, func(line string) error {
 		log.Debugln("[checkpoint]  -", line)
 		return nil
@@ -171,7 +165,6 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 		return nil, errors.WithStack(err)
 	}
 
-	log.Debugln("[checkpoint] git commit -m " + req.Message)
 	err = util.ExecAndScanStdout(ctx, []string{"git", "commit", "-m", req.Message}, req.Path, func(line string) error {
 		log.Debugln("[checkpoint]  -", line)
 		return nil
@@ -181,7 +174,6 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 		return nil, errors.WithStack(err)
 	}
 
-	log.Debugln("[checkpoint] git push origin master")
 	err = util.ExecAndScanStdout(ctx, []string{"git", "push", "origin", "master"}, req.Path, func(line string) error {
 		log.Debugln("[checkpoint]  -", line)
 		return nil
@@ -268,10 +260,8 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 }
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
-	var commitHash gitplumbing.Hash
-	copy(commitHash[:], req.Commit)
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize := s.node.FetchFromCommit(context.Background(), req.RepoID, req.Path, commitHash)
+	ch, uncompressedSize := s.node.FetchFromCommit(context.TODO(), req.RepoID, req.Path, util.GitHashFromBytes(req.Commit))
 
 	err := server.Send(&pb.FetchFromCommitResponse{
 		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
@@ -283,6 +273,12 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 	}
 
 	for pkt := range ch {
+		select {
+		case <-server.Context().Done():
+			return errors.WithStack(server.Context().Err())
+		default:
+		}
+
 		switch {
 		case pkt.Error != nil:
 			return errors.WithStack(pkt.Error)
@@ -385,10 +381,10 @@ func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) 
 	refs := []*pb.Ref{}
 	for {
 		ref, err := rIter.Next()
-		if err != nil {
-			return nil, err
-		} else if ref == nil {
+		if err == io.EOF {
 			break
+		} else if err != nil {
+			return nil, err
 		}
 
 		refs = append(refs, &pb.Ref{
@@ -473,6 +469,12 @@ func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) 
 func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRPC_RequestReplicationServer) error {
 	ch := s.node.RequestReplication(context.TODO(), req.RepoID)
 	for progress := range ch {
+		select {
+		case <-server.Context().Done():
+			return errors.WithStack(server.Context().Err())
+		default:
+		}
+
 		if progress.Error != nil {
 			return errors.WithStack(progress.Error)
 		}
@@ -496,7 +498,7 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return &pb.GetRepoHistoryResponse{Commits: []*pb.Commit{}}, nil
 	}
 
-	cIter, err := r.Log(&git.LogOptions{From: gitplumbing.ZeroHash, Order: git.LogOrderDFS})
+	cIter, err := r.Log(&git.LogOptions{From: repo.ZeroHash, Order: git.LogOrderDFS})
 	if err != nil {
 		return nil, err
 	}
@@ -537,7 +539,7 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 }
 
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
-	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
@@ -609,16 +611,13 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 		return err
 	}
 
-	var objectReader io.ReadCloser
-	var uncompressedSize uint64
+	var objectReader repo.ObjectReader
 
 	if len(req.ObjectID) > 0 {
-		reader, err := r.OpenObject(req.ObjectID)
+		objectReader, err = r.OpenObject(req.ObjectID)
 		if err != nil {
 			return err
 		}
-		objectReader = reader
-		uncompressedSize = reader.Len()
 
 	} else {
 		if len(req.CommitHash) != 20 && req.CommitRef == "" {
@@ -628,52 +627,23 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 		}
 
 		if req.CommitRef == "working" {
-			fullpath := filepath.Join(r.Path, req.Filename)
-
-			objectReader, err = os.Open(fullpath)
+			objectReader, err = r.OpenFileInWorktree(req.Filename)
 			if err != nil {
 				return err
 			}
-
-			stat, err := os.Stat(fullpath)
-			if err != nil {
-				return err
-			}
-
-			uncompressedSize = uint64(stat.Size())
 
 		} else {
-			commitHash, err := r.ResolveCommitHash(repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
+			objectReader, err = r.OpenFileAtCommit(req.Filename, repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
 			if err != nil {
 				return err
 			}
-
-			commit, err := r.CommitObject(commitHash)
-			if err != nil {
-				return err
-			}
-			tree, err := commit.Tree()
-			if err != nil {
-				return err
-			}
-			treeEntry, err := tree.FindEntry(req.Filename)
-			if err != nil {
-				return err
-			}
-			reader, err := r.OpenObject(treeEntry.Hash[:])
-			if err != nil {
-				return err
-			}
-
-			objectReader = reader
-			uncompressedSize = reader.Len()
 		}
 	}
 	defer objectReader.Close()
 
 	err = server.Send(&pb.GetObjectResponse{
 		Payload: &pb.GetObjectResponse_Header_{&pb.GetObjectResponse_Header{
-			UncompressedSize: uncompressedSize,
+			UncompressedSize: objectReader.Len(),
 		}},
 	})
 	if err != nil {
@@ -681,8 +651,8 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 	}
 
 	totalBytes := req.MaxSize
-	if totalBytes > uncompressedSize {
-		totalBytes = uncompressedSize
+	if totalBytes > objectReader.Len() {
+		totalBytes = objectReader.Len()
 	}
 
 	var sent uint64
@@ -755,12 +725,6 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 		defer func() { pw.CloseWithError(err) }()
 		err = patch.Encode(pw)
 	}()
-
-	// diffReader, err := nodegit.GetDiff(context.TODO(), r.Path, commitHash)
-	// if err != nil {
-	//  return err
-	// }
-	// defer diffReader.Close()
 
 	for {
 		data := make([]byte, OBJ_CHUNK_SIZE)

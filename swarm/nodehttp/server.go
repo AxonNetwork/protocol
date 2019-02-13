@@ -5,6 +5,7 @@ import (
 	"expvar"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"sort"
 	"time"
@@ -236,10 +237,10 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			refmap := map[string]RefMapping{}
 			for {
 				ref, err := rIter.Next()
-				if err != nil {
-					return err
-				} else if ref == nil {
+				if err == io.EOF {
 					break
+				} else if err != nil {
+					return err
 				}
 				refname := ref.Name().String()
 
