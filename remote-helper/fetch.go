@@ -4,16 +4,16 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"strings"
 
+	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -25,11 +25,11 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 		return nil
 	}
 
-	var commitHash gitplumbing.Hash
+	var commitHash git.Oid
 	copy(commitHash[:], commitHashSlice)
 
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, err := client.FetchFromCommit(context.Background(), repoID, Repo.Path, commitHash)
+	ch, uncompressedSize, err := client.FetchFromCommit(context.TODO(), repoID, Repo.Path, commitHash)
 	if err != nil {
 		return err
 	}
@@ -38,7 +38,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 	fmt.Fprintf(os.Stderr, "\n")
 
 	type PackfileDownload struct {
-		io.WriteCloser
+		repo.PackfileWriter
 		uncompressedSize int64
 		written          int64
 	}
@@ -63,7 +63,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 				}
 
 				packfiles[packfileID] = &PackfileDownload{
-					WriteCloser:      pw,
+					PackfileWriter:   pw,
 					uncompressedSize: pkt.PackfileHeader.UncompressedSize,
 					written:          0,
 				}
@@ -75,10 +75,12 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 			packfileID = hex.EncodeToString(pkt.PackfileData.PackfileID)
 
 			if pkt.PackfileData.End {
-				err = packfiles[packfileID].Close()
+				_, err = packfiles[packfileID].Commit()
 				if err != nil {
+					packfiles[packfileID].Free()
 					return errors.WithStack(err)
 				}
+				packfiles[packfileID].Free()
 
 				written -= packfiles[packfileID].written          // subtract the compressed byte count from written
 				written += packfiles[packfileID].uncompressedSize // add the uncompressed byte count

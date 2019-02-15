@@ -56,6 +56,7 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	defer Repo.Free()
 
 	err = speakGit(os.Stdin, os.Stdout)
 	if err != nil {

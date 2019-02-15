@@ -27,6 +27,7 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	defer r.Free()
 
 	repoID, err := r.RepoID()
 	if err != nil {

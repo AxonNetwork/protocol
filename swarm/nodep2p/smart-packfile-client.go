@@ -9,7 +9,7 @@ import (
 
 	peer "github.com/libp2p/go-libp2p-peer"
 	"github.com/pkg/errors"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+    "github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -51,6 +51,7 @@ type PackfileData struct {
 var ErrFetchingFromPeer = errors.New("fetching from peer")
 
 func NewSmartPackfileClient(node INode, repoID string, repoPath string, config *config.Config) *SmartPackfileClient {
+    // Intentionally ignore error: when freshly cloning, the repo will not be found, causing an error.
 	r, _ := node.RepoAtPathOrID(repoPath, repoID)
 
 	sc := &SmartPackfileClient{
@@ -62,7 +63,7 @@ func NewSmartPackfileClient(node INode, repoID string, repoPath string, config *
 	return sc
 }
 
-func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit gitplumbing.Hash) (<-chan MaybeFetchFromCommitPacket, int64) {
+func (sc *SmartPackfileClient) FetchFromCommit(ctx context.Context, commit git.Oid) (<-chan MaybeFetchFromCommitPacket, int64) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 	wg := &sync.WaitGroup{}
 
@@ -197,7 +198,7 @@ func aggregateWork(ctx context.Context, jobQueue chan job, batchSize uint, batch
 	return chBatch
 }
 
-func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit gitplumbing.Hash) ([]ManifestObject, error) {
+func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, repoID string, commit git.Oid) ([]ManifestObject, error) {
 	c, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -220,7 +221,7 @@ func (sc *SmartPackfileClient) requestManifestFromSwarm(ctx context.Context, rep
 	return nil, errors.Errorf("could not find provider for repo '%v'", repoID)
 }
 
-func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit gitplumbing.Hash) ([]ManifestObject, error) {
+func (sc *SmartPackfileClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, repoID string, commit git.Oid) ([]ManifestObject, error) {
 	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", repoID, commit, peerID.Pretty())
 
 	// Open the stream
@@ -298,8 +299,6 @@ func (sc *SmartPackfileClient) returnJobsToQueue(ctx context.Context, jobs []job
 		}
 	}
 }
-
-var retriedOnce sync.Once
 
 func (sc *SmartPackfileClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))

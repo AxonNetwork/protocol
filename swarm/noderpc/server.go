@@ -10,8 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"gopkg.in/src-d/go-git.v4"
-	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
+
+	"github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
@@ -124,6 +124,7 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 			return nil, errors.WithStack(err)
 		}
 	}
+	defer r.Free()
 
 	// Setup the Conscience plugins, etc.
 	err = r.SetupConfig(req.RepoID)
@@ -188,8 +189,7 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 
 func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoServer) error {
 	// @@TODO: give context a timeout and make it configurable
-	ctx := context.Background()
-	ch := nodegit.PullRepo(ctx, req.Path)
+	ch := nodegit.PullRepo(context.TODO(), req.Path)
 
 	for progress := range ch {
 		if progress.Error != nil {
@@ -212,8 +212,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 		repoRoot = s.node.Config.Node.ReplicationRoot
 	}
 
-	ctx := context.Background()
-	ch := nodegit.CloneRepo(ctx, repoRoot, req.RepoID)
+	ch := nodegit.CloneRepo(context.TODO(), repoRoot, req.RepoID)
 
 	for progress := range ch {
 		if progress.Error != nil {
@@ -241,6 +240,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	defer r.Free()
 
 	err = r.AddUserToConfig(req.Name, req.Email)
 	if err != nil {
@@ -261,7 +261,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize := s.node.FetchFromCommit(context.TODO(), req.RepoID, req.Path, util.GitHashFromBytes(req.Commit))
+	ch, uncompressedSize := s.node.FetchFromCommit(context.TODO(), req.RepoID, req.Path, *util.OidFromBytes(req.Commit))
 
 	err := server.Send(&pb.FetchFromCommitResponse{
 		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
@@ -372,24 +372,29 @@ func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) 
 		return nil, err
 	}
 
-	rIter, err := r.References()
+	rIter, err := r.NewReferenceIterator()
 	if err != nil {
 		return nil, err
 	}
-	defer rIter.Close()
+	defer rIter.Free()
 
 	refs := []*pb.Ref{}
 	for {
 		ref, err := rIter.Next()
-		if err == io.EOF {
+		if git.IsErrorCode(err, git.ErrIterOver) {
 			break
 		} else if err != nil {
 			return nil, err
 		}
 
+		ref, err = ref.Resolve()
+		if err != nil {
+			return nil, err
+		}
+
 		refs = append(refs, &pb.Ref{
-			RefName:    ref.Name().String(),
-			CommitHash: ref.Hash().String(),
+			RefName:    ref.Name(),
+			CommitHash: ref.Target().String(),
 		})
 	}
 
@@ -493,14 +498,9 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	}
 
 	// if HEAD does not exist, return empty commit list
-	_, err = r.Head()
+	head, err := r.Head()
 	if err != nil {
 		return &pb.GetRepoHistoryResponse{Commits: []*pb.Commit{}}, nil
-	}
-
-	cIter, err := r.Log(&git.LogOptions{From: repo.ZeroHash, Order: git.LogOrderDFS})
-	if err != nil {
-		return nil, err
 	}
 
 	logs, err := s.node.GetRefLogs(ctx, req.RepoID)
@@ -508,31 +508,32 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return nil, err
 	}
 
-	commits := []*pb.Commit{}
-	err = cIter.ForEach(func(commit *gitobject.Commit) error {
-		if commit == nil {
-			log.Warnf("[node] nil commit (repoID: %v)", req.RepoID)
-			return nil
-		}
-		commitHash := commit.Hash.String()
-		files, err := nodegit.GetFilesForCommit(ctx, r.Path, commitHash)
-		if err != nil {
-			return err
-		}
-		verified := logs[commitHash]
-		commits = append(commits, &pb.Commit{
-			CommitHash: commitHash,
-			Author:     commit.Author.String(),
-			Message:    commit.Message,
-			Timestamp:  uint64(commit.Author.When.Unix()),
-			Files:      files,
-			Verified:   verified,
-		})
-
-		return nil
-	})
+	commit, err := r.LookupCommit(head.Target())
 	if err != nil {
 		return nil, err
+	}
+
+	commits := []*pb.Commit{}
+	for commit != nil {
+		commitHash := commit.Id().String()
+
+		files, err := nodegit.GetFilesForCommit(ctx, r.Path, commitHash)
+		if err != nil {
+			return nil, err
+		}
+
+		author := commit.Author()
+
+		commits = append(commits, &pb.Commit{
+			CommitHash: commitHash,
+			Author:     author.Name + " <" + author.Email + ">", // @@TODO: break this up into .Name and .Email fields
+			Message:    commit.Message(),
+			Timestamp:  uint64(author.When.Unix()),
+			Files:      files,
+			Verified:   logs[commitHash],
+		})
+
+		commit = commit.Parent(0) // @@TODO: hard-coding '0' probably isn't going to work
 	}
 
 	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
@@ -544,7 +545,7 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 		return nil, err
 	}
 
-	fileList, err := r.ListFiles(ctx, repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
+	fileList, err := r.ListFiles(ctx, repo.CommitID{Hash: util.OidFromBytes(req.CommitHash), Ref: req.CommitRef})
 	if err != nil {
 		return nil, err
 	}
@@ -552,13 +553,13 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 	files := make([]*pb.File, len(fileList))
 	for i := range fileList {
 		files[i] = &pb.File{
-			Name:           fileList[i].Filename,
-			Hash:           fileList[i].Hash[:],
-			Mode:           uint32(fileList[i].Mode),
+			Name: fileList[i].Filename,
+			Hash: fileList[i].Hash[:],
+			// Mode:           uint32(fileList[i].Mode),
 			Size:           fileList[i].Size,
 			Modified:       fileList[i].Modified,
-			UnstagedStatus: string(fileList[i].Status.Worktree),
-			StagedStatus:   string(fileList[i].Status.Staging),
+			UnstagedStatus: string(fileList[i].Status.Unstaged),
+			StagedStatus:   string(fileList[i].Status.Staged),
 		}
 	}
 
@@ -624,7 +625,7 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 			}
 
 		} else {
-			objectReader, err = r.OpenFileAtCommit(req.Filename, repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
+			objectReader, err = r.OpenFileAtCommit(req.Filename, repo.CommitID{Hash: util.OidFromBytes(req.CommitHash), Ref: req.CommitRef})
 			if err != nil {
 				return err
 			}
@@ -693,50 +694,44 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer) error {
 	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
 	if err != nil {
+		log.Warnln("11111")
 		return err
 	}
 
 	if len(req.CommitHash) != 20 && req.CommitRef == "" {
+		log.Warnln("22222")
 		return errors.New("need commitHash or commitRef")
 	}
 
-	changes, err := r.GetDiff(context.TODO(), repo.CommitID{Hash: util.GitHashFromBytes(req.CommitHash), Ref: req.CommitRef})
+	diffReader, err := r.GetDiff(context.TODO(), repo.CommitID{Hash: util.OidFromBytes(req.CommitHash), Ref: req.CommitRef})
 	if err != nil {
+		log.Warnln("33333")
 		return err
 	}
-
-	patch, err := changes.PatchContext(context.TODO())
-	if err != nil {
-		return err
-	}
-
-	pr, pw := io.Pipe()
-	go func() {
-		var err error
-		defer func() { pw.CloseWithError(err) }()
-		err = patch.Encode(pw)
-	}()
 
 	for {
 		data := make([]byte, OBJ_CHUNK_SIZE)
-		n, err := io.ReadFull(pr, data)
+		n, err := io.ReadFull(diffReader, data)
 		if err == io.EOF {
 			break
 		} else if err == io.ErrUnexpectedEOF {
 			data = data[:n]
 		} else if err != nil {
+			log.Warnln("44444")
 			return err
 		}
 
 		err = server.Send(&pb.GetDiffResponse{Data: data})
 		if err != nil {
-			return err
+			log.Warnln("55555")
+			return errors.WithStack(err)
 		}
 	}
 
 	err = server.Send(&pb.GetDiffResponse{End: true})
 	if err != nil {
-		return err
+		log.Warnln("66666")
+		return errors.WithStack(err)
 	}
 	return nil
 }

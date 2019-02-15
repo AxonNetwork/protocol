@@ -15,7 +15,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 		x, err := handler(ctx, req)
 		if err != nil {
-			log.Errorf(trimStr(fmt.Sprintf("[rpc server] %v %+v %v", info.FullMethod, req, err), 300))
+			log.Errorf(trimStr(fmt.Sprintf("[rpc server] %v %+v %+v", info.FullMethod, req, err), 300))
 		}
 
 		log.Debugf(trimStr(fmt.Sprintf("[rpc server] %v %+v, %+v", info.FullMethod, req, x), 300))
@@ -25,10 +25,10 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		// log.Debugf("[rpc server] %v", info.FullMethod)
+		log.Debugf("[rpc server] %v", info.FullMethod)
 		err := handler(srv, stream)
 		if err != nil {
-			log.Errorf("[rpc server] %v", err)
+			log.Errorf("[rpc server] %+v", err)
 		}
 		return err
 	}

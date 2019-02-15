@@ -10,8 +10,7 @@ import (
 	"time"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-	"gopkg.in/src-d/go-git.v4/plumbing/format/packfile"
+    "github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/log"
 	. "github.com/Conscience/protocol/swarm/wire"
@@ -113,17 +112,32 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 		cached = createCachedPackfile(availableObjectIDs)
 		defer cached.Close()
 
-		availableHashes := make([]gitplumbing.Hash, len(availableObjectIDs))
+		availableHashes := make([]git.Oid, len(availableObjectIDs))
 		for i := range availableObjectIDs {
 			copy(availableHashes[i][:], availableObjectIDs[i])
 		}
 
-		mw := io.MultiWriter(stream, cached)
-		enc := packfile.NewEncoder(mw, r.Storer, false)
-		_, err = enc.Encode(availableHashes, 10) // @@TODO: do we need to negotiate the packfile window with the client?
-		if err != nil {
-			log.Errorln("[p2p server] error encoding packfile:", err)
-		}
+        packbuilder, err := r.NewPackbuilder()
+        if err != nil {
+            log.Errorln("[p2p server] error instantiating packbuilder:", err)
+            return
+        }
+
+        for i := range availableHashes {
+            err = packbuilder.Insert(&availableHashes[i], "")
+            if err != nil {
+                log.Errorln("[p2p server] error adding object to packbuilder:", err)
+                return
+            }
+        }
+
+        // This multiwriter will write the packfile to both an on-disk cache as well as the p2p stream.
+        mw := io.MultiWriter(stream, cached)
+        err = packbuilder.Write(mw)
+        if err != nil {
+            log.Errorln("[p2p server] error writing packfile to stream:", err)
+            return
+        }
 	}
 }
 

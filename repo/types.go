@@ -2,49 +2,54 @@ package repo
 
 import (
 	"io"
-	"os"
 
-	git "gopkg.in/src-d/go-git.v4"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+	"github.com/libgit2/git2go"
 )
-
-type GitHash = gitplumbing.Hash
-
-var ZeroHash = gitplumbing.ZeroHash
 
 // This is used by various functions to specify a commit.  Either .Hash or .Ref should be non-zero,
 // but never both.
 type CommitID struct {
-	Hash gitplumbing.Hash
+	Hash *git.Oid
 	Ref  string
 }
 
 type File struct {
 	Filename string
-	Hash     gitplumbing.Hash
-	Status   git.FileStatus
+	Hash     git.Oid
 	Size     uint64
-	Mode     os.FileMode
 	Modified uint32
+	Status   Status
+	// Mode     os.FileMode
+}
+
+type Status struct {
+	Staged   rune
+	Unstaged rune
 }
 
 type ObjectReader interface {
 	io.ReadCloser
 	Len() uint64
-	Type() gitplumbing.ObjectType
+	Type() git.ObjectType
 }
 
 type objectReader struct {
 	io.Reader
 	io.Closer
 	objectLen  uint64
-	objectType gitplumbing.ObjectType
+	objectType git.ObjectType
 }
 
 func (or objectReader) Len() uint64 {
 	return or.objectLen
 }
 
-func (or objectReader) Type() gitplumbing.ObjectType {
+func (or objectReader) Type() git.ObjectType {
 	return or.objectType
+}
+
+type FuncCloser func() error
+
+func (fc FuncCloser) Close() error {
+	return fc()
 }

@@ -296,7 +296,6 @@ message File {
     string unstagedStatus = 6;
     string stagedStatus = 7;
     bool mergeConflict = 8;
-    bool mergeUnresolved = 9;
 }
 
 message GetRepoFilesResponse {

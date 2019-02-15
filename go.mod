@@ -1,28 +1,30 @@
 module github.com/Conscience/protocol
 
+replace github.com/libgit2/git2go => ./vendor/github.com/libgit2/git2go
+
 require (
 	github.com/BurntSushi/toml v0.3.1
+	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/Shopify/logrus-bugsnag v0.0.0-20171204204709-577dee27f20d
 	github.com/aclements/go-rabin v0.0.0-20170911142644-d0b643ea1a4c
-	github.com/aead/siphash v1.0.1 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
+	github.com/allegro/bigcache v1.1.0 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20181109020153-5faa74ffbed7 // indirect
 	github.com/brynbellomy/debugcharts v0.0.0-20180826220201-c3f57e57ea6f
-	github.com/btcsuite/btcd v0.0.0-20181123190223-3dcf298fed2d
-	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f // indirect
+	github.com/btcsuite/btcd v0.0.0-20181130015935-7d2daa5bfef2
 	github.com/btcsuite/btcutil v0.0.0-20180706230648-ab6388e0c60a
-	github.com/btcsuite/go-socks v0.0.0-20170105172521-4720035b7bfd // indirect
 	github.com/btcsuite/goleveldb v1.0.0 // indirect
-	github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792 // indirect
-	github.com/bugsnag/bugsnag-go v1.3.2
+	github.com/bugsnag/bugsnag-go v1.4.0
 	github.com/bugsnag/panicwrap v1.2.0 // indirect
 	github.com/coreos/go-semver v0.2.0 // indirect
 	github.com/deckarep/golang-set v1.7.1 // indirect
 	github.com/dustin/go-humanize v1.0.0
-	github.com/ethereum/go-ethereum v1.8.18
+	github.com/ethereum/go-ethereum v1.8.19
 	github.com/fd/go-nat v1.0.0 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
+	github.com/gofrs/uuid v3.1.0+incompatible // indirect
 	github.com/gogo/protobuf v1.1.1 // indirect
+	github.com/golang/lint v0.0.0-20180702182130-06c8688daad7 // indirect
 	github.com/golang/protobuf v1.2.0
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/gorilla/websocket v1.4.0 // indirect
@@ -30,6 +32,7 @@ require (
 	github.com/gxed/eventfd v0.0.0-20160916113412-80a92cca79a8 // indirect
 	github.com/gxed/hashland v0.0.0-20180221191214-d9f6b97f8db2 // indirect
 	github.com/hashicorp/golang-lru v0.5.0 // indirect
+	github.com/ijc25/Gotty v0.0.0-20170406111628-a8b993ba6abd
 	github.com/ipfs/go-cid v0.9.0
 	github.com/ipfs/go-datastore v3.2.0+incompatible
 	github.com/ipfs/go-ipfs-util v1.2.8 // indirect
@@ -37,9 +40,9 @@ require (
 	github.com/ipfs/go-todocounter v1.0.1 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.0.0-20150120210811-aac704a3f4f2 // indirect
 	github.com/jbenet/goprocess v0.0.0-20160826012719-b497e2f366b8 // indirect
-	github.com/jrick/logrotate v1.0.0 // indirect
 	github.com/kardianos/osext v0.0.0-20170510131534-ae77be60afb1 // indirect
 	github.com/kkdai/bstream v0.0.0-20181106074824-b3251f7901ec // indirect
+	github.com/libgit2/git2go v0.0.0-20190104134018-ecaeb7a21d47
 	github.com/libp2p/go-addr-util v2.0.7+incompatible // indirect
 	github.com/libp2p/go-buffer-pool v0.1.1 // indirect
 	github.com/libp2p/go-conn-security v0.1.15 // indirect
@@ -110,7 +113,8 @@ require (
 	github.com/whyrusleeping/mafmt v1.2.8 // indirect
 	github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7 // indirect
 	github.com/whyrusleeping/yamux v1.1.2 // indirect
-	golang.org/x/net v0.0.0-20181114220301-adae6a3d119a
-	google.golang.org/grpc v1.16.0
-	gopkg.in/src-d/go-git.v4 v4.8.0
+	golang.org/x/net v0.0.0-20181207154023-610586996380
+	google.golang.org/grpc v1.17.0
+	gopkg.in/libgit2/git2go.v26 v26.0.0-20190104134959-c9f7fd544d39 // indirect
+	gopkg.in/src-d/go-git.v4 v4.8.1
 )

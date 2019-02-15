@@ -25,198 +25,77 @@ echo Building:
 [[ -n $linux   ]] && echo   - linux
 
 
-function get_deps {
-    set -x
-    # GO111MODULE=on go get github.com/whyrusleeping/gx
-    # GO111MODULE=on go get github.com/whyrusleeping/gx-go
-    # gx install
-
-    # Install regular packages
-    GO111MODULE=on go get github.com/sirupsen/logrus
-    GO111MODULE=on go get github.com/BurntSushi/toml
-    GO111MODULE=on go get github.com/mitchellh/go-homedir
-    GO111MODULE=on go get github.com/pkg/errors
-    GO111MODULE=on go get github.com/ethereum/go-ethereum
-    GO111MODULE=on go get github.com/tyler-smith/go-bip39
-    GO111MODULE=on go get github.com/lunixbochs/struc
-    GO111MODULE=on go get github.com/btcsuite/btcd
-    GO111MODULE=on go get github.com/btcsuite/btcutil
-    GO111MODULE=on go get gopkg.in/src-d/go-git.v4
-    GO111MODULE=on go get github.com/urfave/cli
-    GO111MODULE=on go get github.com/aclements/go-rabin/rabin
-    GO111MODULE=on go get github.com/dustin/go-humanize
-    GO111MODULE=on go get github.com/golang/protobuf/proto
-    GO111MODULE=on go get golang.org/x/net/context
-    GO111MODULE=on go get google.golang.org/grpc
-    GO111MODULE=on go get github.com/brynbellomy/debugcharts
-    GO111MODULE=on go get github.com/Shopify/logrus-bugsnag
-    GO111MODULE=on go get github.com/bugsnag/bugsnag-go
-    GO111MODULE=on go get github.com/ipfs/go-cid
-    GO111MODULE=on go get github.com/ipfs/go-datastore
-    GO111MODULE=on go get github.com/ipfs/go-datastore/sync
-    GO111MODULE=on go get github.com/libp2p/go-libp2p
-    GO111MODULE=on go get github.com/libp2p/go-libp2p-host
-    GO111MODULE=on go get github.com/libp2p/go-libp2p-kad-dht
-    GO111MODULE=on go get github.com/libp2p/go-libp2p-kbucket
-    GO111MODULE=on go get github.com/libp2p/go-libp2p-net
-    GO111MODULE=on go get github.com/libp2p/go-libp2p-peerstore
-    set +x
-}
-
-
 function build_native {
     mkdir -p build/native
     cd swarm/cmd
-    GO111MODULE=on go build -o main ./*.go
+    GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
     mv main ../../build/native/conscience-node
     cd -
 
     mkdir -p build/native
     cd remote-helper
-    GO111MODULE=on go build -o main ./*.go
+    GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
     mv main ../build/native/git-remote-conscience
     cd -
 
     # mkdir -p build/native
     # cd filters/encode
-    # GO111MODULE=on go build -o main ./*.go
+    # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
     # mv main ../../build/native/conscience_encode
     # cd -
 
     # mkdir -p build/native
     # cd filters/decode
-    # GO111MODULE=on go build -o main ./*.go
+    # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
     # mv main ../../build/native/conscience_decode
     # cd -
 
     # mkdir -p build/native
     # cd filters/diff
-    # GO111MODULE=on go build -o main ./*.go
+    # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
     # mv main ../../build/native/conscience_diff
     # cd -
 
     # mkdir -p build/native
     # cd cmd
-    # GO111MODULE=on go build -o main ./*.go
+    # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
     # mv main ../build/native/conscience
     # cd -
 }
 
-function build_darwin {
-    mkdir -p build/darwin
-    cd swarm/cmd
-    xgo --targets=darwin/amd64 -out main .
-    mv main-darwin-10.6-amd64 ../../build/darwin/conscience-node
-    cd -
+function build_libgit2 {
+    local GIT2GO_PATH = "vendor/github.com/libgit2/git2go"
 
-    mkdir -p build/darwin
-    cd remote-helper
-    xgo --targets=darwin/amd64 -out main .
-    mv main-darwin-10.6-amd64 ../build/darwin/git-remote-conscience
-    cd -
+    [[ -d $(GIT2GO_PATH) ]] ||
+        mkdir -p vendor/github.com/libgit2 &&
+        cd vendor/github.com/libgit2 &&
+        git clone https://github.com/Conscience/git2go &&
+        cd git2go &&
+        git checkout 81a759a2593aeb28b7bb07439da9796489bfe3bb &&
+        # git remote add lhchavez https://github.com/lhchavez/git2go &&
+        # git fetch --all &&
+        # git cherry-pick 122ccfadea1e219c819adf1e62534f0b869d82a3 &&
+        touch go.mod &&
+        git submodule update --init &&
 
-    # mkdir -p build/darwin
-    # cd filters/encode
-    # xgo --targets=darwin/amd64 -out main .
-    # mv main-darwin-10.6-amd64 ../../build/darwin/conscience_encode
-    # cd -
+        cd vendor/libgit2 &&
+        mkdir -p install/lib &&
+        mkdir -p build &&
+        cd build &&
 
-    # mkdir -p build/darwin
-    # cd filters/decode
-    # xgo --targets=darwin/amd64 -out main .
-    # mv main-darwin-10.6-amd64 ../../build/darwin/conscience_decode
-    # cd -
-
-    # mkdir -p build/darwin
-    # cd filters/diff
-    # xgo --targets=darwin/amd64 -out main .
-    # mv main-darwin-10.6-amd64 ../../build/darwin/conscience_diff
-    # cd -
-
-    # mkdir -p build/darwin
-    # cd cmd
-    # xgo --targets=darwin/amd64 -out main .
-    # mv main-darwin-10.6-amd64 ../build/darwin/conscience
-    # cd -
+        cmake -DTHREADSAFE=ON \
+          -DBUILD_CLAR=OFF \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_C_FLAGS=-fPIC \
+          -DUSE_SSH=OFF \
+          -DCURL=OFF \
+          -DUSE_HTTPS=OFF \
+          -DUSE_BUNDLED_ZLIB=ON \
+          -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
+          -DCMAKE_INSTALL_PREFIX=../install \
+          .. && \
+        cmake --build .
 }
-
-function build_linux {
-    mkdir -p build/linux
-    cd swarm/cmd
-    xgo --targets=linux/amd64 -out main .
-    mv main-linux-amd64 ../../build/linux/conscience-node
-    cd -
-
-    mkdir -p build/linux
-    cd remote-helper
-    xgo --targets=linux/amd64 -out main .
-    mv main-linux-amd64 ../build/linux/git-remote-conscience
-    cd -
-
-    # mkdir -p build/linux
-    # cd filters/encode
-    # xgo --targets=linux/amd64 -out main .
-    # mv main-linux-amd64 ../../build/linux/conscience_encode
-    # cd -
-
-    # mkdir -p build/linux
-    # cd filters/decode
-    # xgo --targets=linux/amd64 -out main .
-    # mv main-linux-amd64 ../../build/linux/conscience_decode
-    # cd -
-
-    # mkdir -p build/linux
-    # cd filters/diff
-    # xgo --targets=linux/amd64 -out main .
-    # mv main-linux-amd64 ../../build/linux/conscience_diff
-    # cd -
-
-    # mkdir -p build/linux
-    # cd cmd
-    # xgo --targets=linux/amd64 -out main .
-    # mv main-linux-amd64 ../build/linux/conscience
-    # cd -
-}
-
-function build_windows {
-    mkdir -p build/windows
-    cd swarm/cmd
-    xgo --targets=windows/amd64 -out main .
-    mv main-windows-4.0-amd64.exe ../../build/windows/conscience-node.exe
-    cd -
-
-    mkdir -p build/windows
-    cd remote-helper
-    xgo --targets=windows/amd64 -out main .
-    mv main-windows-4.0-amd64.exe ../build/windows/git-remote-conscience.exe
-    cd -
-
-    # mkdir -p build/windows
-    # cd filters/encode
-    # xgo --targets=windows/amd64 -out main .
-    # mv main-windows-4.0-amd64.exe ../../build/windows/conscience_encode.exe
-    # cd -
-
-    # mkdir -p build/windows
-    # cd filters/decode
-    # xgo --targets=windows/amd64 -out main .
-    # mv main-windows-4.0-amd64.exe ../../build/windows/conscience_decode.exe
-    # cd -
-
-    # mkdir -p build/windows
-    # cd filters/diff
-    # xgo --targets=windows/amd64 -out main .
-    # mv main-windows-4.0-amd64.exe ../../build/windows/conscience_diff.exe
-    # cd -
-
-    # mkdir -p build/windows
-    # cd cmd
-    # xgo --targets=windows/amd64 -out main .
-    # mv main-windows-4.0-amd64.exe ../build/windows/conscience.exe
-    # cd -
-}
-
-get_deps
 
 [[ -n $darwin ]] && build_darwin
 [[ -n $linux ]] && build_linux

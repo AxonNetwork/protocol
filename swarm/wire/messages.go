@@ -1,7 +1,7 @@
 package wire
 
 import (
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+	"github.com/libgit2/git2go"
 )
 
 type GetPackfileRequest struct {
@@ -28,7 +28,7 @@ type PackfileStreamChunk struct {
 type GetManifestRequest struct {
 	RepoIDLen    int `struc:"sizeof=RepoID"`
 	RepoID       string
-	Commit       gitplumbing.Hash
+	Commit       git.Oid
 	SignatureLen int `struc:"sizeof=Signature"`
 	Signature    []byte
 }

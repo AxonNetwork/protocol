@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+    "github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/util"
 )
@@ -28,12 +28,17 @@ func push(srcRefName string, destRefName string) error {
 		return err
 	}
 
-	srcRef, err := Repo.Reference(gitplumbing.ReferenceName(srcRefName), false)
-	if err != nil {
-		return errors.WithStack(err)
-	}
+    srcRef, err := Repo.References.Lookup(srcRefName)
+    if err != nil {
+        return err
+    }
 
-	commitHash := srcRef.Hash().String()
+    srcRef, err = srcRef.Resolve()
+    if err != nil {
+        return err
+    }
+
+	commitHash := srcRef.Target().String()
 
 	// @@TODO: give context a timeout and make it configurable
 	ctx, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)

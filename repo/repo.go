@@ -3,19 +3,13 @@ package repo
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
-
-	"gopkg.in/src-d/go-git.v4"
-	gitconfig "gopkg.in/src-d/go-git.v4/config"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-	gitconfigformat "gopkg.in/src-d/go-git.v4/plumbing/format/config"
-	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
-	"gopkg.in/src-d/go-git.v4/plumbing/storer"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/util"
@@ -34,32 +28,24 @@ const (
 )
 
 var (
-	ErrRepoNotFound   = git.ErrRepositoryNotExists
-	ErrObjectNotFound = fmt.Errorf("object not found")
-	ErrBadChecksum    = fmt.Errorf("object error: bad checksum")
+	Err404 = errors.New("not found")
 )
 
 func EnsureExists(path string) (*Repo, error) {
 	r, err := Open(path)
 	if err == nil {
 		return r, nil
-	} else if errors.Cause(err) != ErrRepoNotFound {
+	} else if errors.Cause(err) != Err404 {
 		return nil, err
 	}
 	return Init(path)
 }
 
 func Init(path string) (*Repo, error) {
-	gitRepo, err := git.PlainInit(path, false)
+	gitRepo, err := git.InitRepository(path, false)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not initialize repo at path '%v'", path)
 	}
-
-	f, err := os.Create(filepath.Join(path, ".git", "config"))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not create .git/config at path '%v'", path)
-	}
-	defer f.Close()
 
 	return &Repo{
 		Repository: gitRepo,
@@ -68,9 +54,11 @@ func Init(path string) (*Repo, error) {
 }
 
 func Open(path string) (*Repo, error) {
-	gitRepo, err := git.PlainOpen(path)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not open repo at path '%v'", path)
+	gitRepo, err := git.OpenRepository(path)
+	if err != nil && strings.Contains(err.Error(), "failed to resolve path") {
+		return nil, errors.WithStack(Err404)
+	} else if err != nil {
+		return nil, errors.WithStack(err)
 	}
 
 	return &Repo{
@@ -84,67 +72,14 @@ func (r *Repo) RepoID() (string, error) {
 	if err != nil {
 		return "", errors.Wrapf(err, "could not open repo config at path '%v'", r.Path)
 	}
+	defer cfg.Free()
 
-	section := cfg.Raw.Section("conscience")
-	if section == nil {
-		return "", errors.Errorf("repo config doesn't have conscience section (path: %v)", r.Path)
-	}
-	repoID := section.Option("repoid")
-	if repoID == "" {
-		return "", errors.Errorf("repo config doesn't have conscience.repoid key (path: %v)", r.Path)
+	repoID, err := cfg.LookupString("conscience.repoid")
+	if err != nil {
+		return "", errors.Wrapf(err, "error looking up conscience.repoid in .git/config (path: %v)", r.Path)
 	}
 
 	return repoID, nil
-}
-
-func (r *Repo) ForEachObjectID(fn func([]byte) error) error {
-	// First crawl the Git objects
-	oIter, err := r.Repository.Objects()
-	if err != nil {
-		return errors.Wrapf(err, "could not fetch repo object iterator (path: %v)", r.Path)
-	}
-
-	err = oIter.ForEach(func(obj gitobject.Object) error {
-		id := obj.ID()
-		return fn(id[:])
-	})
-	if err != nil {
-		return errors.Wrapf(err, "could not iterate over repo objects (path: %v)", r.Path)
-	}
-	oIter.Close()
-
-	// Then crawl the Conscience objects
-	dataDir, err := os.Open(filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR))
-	if err == nil {
-		defer dataDir.Close()
-
-		entries, err := dataDir.Readdir(-1)
-		if err != nil {
-			return errors.Wrapf(err, "could not crawl conscience objects (path: %v)", r.Path)
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-
-			// @@TODO: read the contents of each object and compare its name to its hash?
-			id, err := hex.DecodeString(entry.Name())
-			if err != nil {
-				log.Errorf("bad conscience data object name: %v", entry.Name())
-				continue
-			} else if len(id) != CONSCIENCE_HASH_LENGTH {
-				log.Errorf("bad conscience data object name: %v", entry.Name())
-				continue
-			}
-
-			err = fn(id)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // Returns true if the object is known, false otherwise.
@@ -155,7 +90,8 @@ func (r *Repo) HasObject(objectID []byte) bool {
 		return err == nil || !os.IsNotExist(err)
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
-		err := r.Storer.HasEncodedObject(util.GitHashFromBytes(objectID))
+		x, err := r.Lookup(util.OidFromBytes(objectID))
+		x.Free()
 		return err == nil
 	}
 
@@ -169,10 +105,11 @@ func (r *Repo) OpenObject(objectID []byte) (ObjectReader, error) {
 		p := filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 
 		f, err := os.Open(p)
-		if err != nil {
-			return nil, errors.WithStack(ErrObjectNotFound)
+		if os.IsNotExist(err) {
+			return nil, errors.WithStack(Err404)
+		} else if err != nil {
+			return nil, errors.WithStack(err)
 		}
-		defer f.Close()
 
 		stat, err := f.Stat()
 		if err != nil {
@@ -188,25 +125,25 @@ func (r *Repo) OpenObject(objectID []byte) (ObjectReader, error) {
 		return or, nil
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
-		var hash gitplumbing.Hash
-		copy(hash[:], objectID)
-		obj, err := r.Storer.EncodedObject(gitplumbing.AnyObject, hash)
+		odb, err := r.Odb()
 		if err != nil {
-			return nil, errors.Wrapf(err, "error fetching encoded git object from repo (path: %v, object: %v)", r.Path, hash.String())
+			return nil, errors.WithStack(err)
 		}
 
-		r, err := obj.Reader()
+		stream, err := odb.NewReadStream(util.OidFromBytes(objectID))
 		if err != nil {
-			log.Errorf("WEIRD ERROR (@@todo: diagnose): %v", err)
-			return nil, errors.WithStack(ErrObjectNotFound)
+			return nil, errors.WithStack(err)
 		}
-		// It is the caller's responsibility to `.Close()` this reader, so we don't do it here.
 
 		or := &objectReader{
-			Reader:     r,
-			Closer:     r,
-			objectType: obj.Type(),
-			objectLen:  uint64(obj.Size()),
+			Reader: stream,
+			Closer: FuncCloser(func() error {
+				stream.Close()
+				stream.Free()
+				return nil
+			}),
+			objectType: stream.Type,
+			objectLen:  stream.Size,
 		}
 		return or, nil
 
@@ -217,13 +154,15 @@ func (r *Repo) OpenObject(objectID []byte) (ObjectReader, error) {
 
 func (r *Repo) OpenFileInWorktree(filename string) (ObjectReader, error) {
 	f, err := os.Open(filepath.Join(r.Path, filename))
-	if err != nil {
-		return nil, err
+	if os.IsNotExist(err) {
+		return nil, errors.WithStack(Err404)
+	} else if err != nil {
+		return nil, errors.WithStack(err)
 	}
 
 	stat, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &objectReader{
@@ -239,62 +178,56 @@ func (r *Repo) OpenFileAtCommit(filename string, commitID CommitID) (ObjectReade
 	if err != nil {
 		return nil, err
 	}
+	defer commit.Free()
 
 	tree, err := commit.Tree()
 	if err != nil {
 		return nil, err
 	}
+	defer tree.Free()
 
-	treeEntry, err := tree.FindEntry(filename)
-	if err != nil {
-		return nil, err
+	treeEntry := tree.EntryByName(filename)
+	if treeEntry == nil {
+		return nil, errors.WithStack(Err404)
 	}
 
-	return r.OpenObject(treeEntry.Hash[:])
+	return r.OpenObject(treeEntry.Id[:])
 }
 
-func (r *Repo) ResolveCommitHash(commitID CommitID) (GitHash, error) {
+func (r *Repo) ResolveCommitHash(commitID CommitID) (git.Oid, error) {
 	if commitID.Ref != "" {
-		hash, err := r.ResolveRevision(gitplumbing.Revision(commitID.Ref))
+		ref, err := r.References.Lookup(commitID.Ref)
 		if err != nil {
-			return ZeroHash, err
-		} else if hash == nil {
-			return ZeroHash, errors.Errorf("could not resolve commit ref '%s' to a revision", commitID.Ref)
+			return git.Oid{}, err
 		}
-		return *hash, nil
+		defer ref.Free()
 
-	} else if commitID.Hash != ZeroHash {
-		return commitID.Hash, nil
+		ref, err = ref.Resolve()
+		if err != nil {
+			return git.Oid{}, err
+		}
+		defer ref.Free()
+
+		oid := ref.Target()
+		if oid == nil {
+			return git.Oid{}, errors.Errorf("could not resolve commit ref '%s' to a revision", commitID.Ref)
+		}
+		return *oid, nil
+
+	} else if commitID.Hash != nil && !commitID.Hash.IsZero() {
+		return *commitID.Hash, nil
 
 	} else {
-		return gitplumbing.ZeroHash, errors.Errorf("must specify commit hash or commit ref")
+		return git.Oid{}, errors.Errorf("must specify commit hash or commit ref")
 	}
 }
 
-func (r *Repo) ResolveCommit(commitID CommitID) (*gitobject.Commit, error) {
-	hash, err := r.ResolveCommitHash(commitID)
+func (r *Repo) ResolveCommit(commitID CommitID) (*git.Commit, error) {
+	oid, err := r.ResolveCommitHash(commitID)
 	if err != nil {
 		return nil, err
 	}
-	return r.CommitObject(hash)
-}
-
-func writeConfig(path string, rawCfg *gitconfigformat.Config) error {
-	p := filepath.Join(path, ".git", "config")
-	f, err := os.OpenFile(p, os.O_WRONLY, os.ModeAppend)
-	if err != nil {
-		return errors.Wrapf(err, "could not open .git/config (path: %v)", path)
-	}
-	defer f.Close()
-
-	w := io.Writer(f)
-
-	enc := gitconfigformat.NewEncoder(w)
-	err = enc.Encode(rawCfg)
-	if err != nil {
-		return errors.Wrapf(err, "could not encode git config (path: %v)", path)
-	}
-	return nil
+	return r.LookupCommit(&oid)
 }
 
 func (r *Repo) SetupConfig(repoID string) error {
@@ -302,70 +235,71 @@ func (r *Repo) SetupConfig(repoID string) error {
 	if err != nil {
 		return errors.Wrapf(err, "could not get repo config (repoID: %v, path: %v)", repoID, r.Path)
 	}
+	defer cfg.Free()
 
-	raw := cfg.Raw
-	changed := false
-	section := raw.Section("conscience")
-
-	if section.Option("repoid") != repoID {
-		raw.SetOption("conscience", "", "repoid", repoID)
-		changed = true
+	_repoID, err := cfg.LookupString("conscience.repoid")
+	if err != nil || _repoID != repoID {
+		err = cfg.SetString("conscience.repoid", repoID)
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	}
 
-	filter := raw.Section("filter").Subsection("conscience")
-	if filter.Option("clean") != "conscience_encode" {
-		raw.SetOption("filter", "conscience", "clean", "conscience_encode")
-		changed = true
-	}
-	if filter.Option("smudge") != "conscience_decode" {
-		raw.SetOption("filter", "conscience", "smudge", "conscience_decode")
-		changed = true
+	cleanFilter, err := cfg.LookupString("filter.conscience.clean")
+	if err != nil || cleanFilter != "conscience_encode" {
+		err = cfg.SetString("filter.conscience.clean", "conscience_encode")
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	}
 
-	if changed {
-		writeConfig(r.Path, raw)
+	smudgeFilter, err := cfg.LookupString("filter.conscience.smudge")
+	if err != nil || smudgeFilter != "conscience_encode" {
+		err = cfg.SetString("filter.conscience.smudge", "conscience_decode")
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	}
 
 	// Check the remotes
 	{
-		remotes, err := r.Remotes()
+		remoteNames, err := r.Remotes.List()
 		if err != nil {
-			return errors.Wrapf(err, "could not read git remote config (repoID: %v, path: %v)", repoID, r.Path)
+			return errors.WithStack(err)
 		}
 
 		found := false
-		hasOrigin := false
-		for _, remote := range remotes {
-			log.Printf("remote <%v> URLs: %v", remote.Config().Name, remote.Config().URLs)
-
-			if remote.Config().Name == "origin" {
-				hasOrigin = true
+		for _, remoteName := range remoteNames {
+			remote, err := r.Remotes.Lookup(remoteName)
+			if err != nil {
+				return errors.WithStack(err)
 			}
 
-			for _, url := range remote.Config().URLs {
-				if url == "conscience://"+repoID {
-					found = true
-					break
-				}
+			url := remote.Url()
+			remote.Free()
+
+			if url == "conscience://"+repoID {
+				found = true
+				break
 			}
 		}
 
 		if !found {
 			remoteName := "origin"
-			if hasOrigin {
+
+			remote, err := r.Remotes.Lookup("origin")
+			if err == nil {
+				remote.Free()
+				// Already has an 'origin' remote, so we use the repoID instead.
 				// @@TODO: what if this remote name already exists too?
 				remoteName = repoID
 			}
 
-			_, err = r.CreateRemote(&gitconfig.RemoteConfig{
-				Name:  remoteName,
-				URLs:  []string{"conscience://" + repoID},
-				Fetch: []gitconfig.RefSpec{gitconfig.RefSpec("+refs/heads/*:refs/remotes/" + remoteName + "/*")},
-			})
-
+			remote, err = r.Remotes.CreateWithFetchspec(remoteName, "conscience://"+repoID, "+refs/heads/*:refs/remotes/"+remoteName+"/*")
 			if err != nil {
 				return errors.Wrapf(err, "could not create remote (repoID: %v, path: %v)", repoID, r.Path)
 			}
+			remote.Free()
 		}
 	}
 
@@ -377,207 +311,335 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 	if err != nil {
 		return errors.Wrapf(err, "could not get repo config (path: %v)", r.Path)
 	}
-	raw := cfg.Raw
-	changed := false
+	defer cfg.Free()
+
 	if len(name) > 0 {
-		raw.SetOption("user", "", "name", name)
-		changed = true
-	}
-	if len(email) > 0 {
-		raw.SetOption("user", "", "email", email)
-		changed = true
-	}
-	if changed {
-		err = writeConfig(r.Path, raw)
+		err = cfg.SetString("user.name", name)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
+		}
+	}
+
+	if len(email) > 0 {
+		err = cfg.SetString("user.email", email)
+		if err != nil {
+			return errors.WithStack(err)
 		}
 	}
 	return nil
 }
 
-func (r *Repo) PackfileWriter() (io.WriteCloser, error) {
-	pfw, ok := r.Storer.(storer.PackfileWriter)
-	if !ok {
-		return nil, errors.Errorf("Repository storer is not a storer.PackfileWriter")
+type PackfileWriter interface {
+	io.Writer
+	Commit() (*git.Oid, error)
+	Free()
+}
+
+// @@TODO: try implementing https://github.com/libgit2/git2go/pull/416
+func (r *Repo) PackfileWriter() (PackfileWriter, error) {
+	odb, err := r.Odb()
+	if err != nil {
+		return nil, err
 	}
 
-	return pfw.PackfileWriter()
+	return git.NewIndexer(filepath.Join(r.Path, ".git", "objects", "pack"), odb, func(stats git.TransferProgress) git.ErrorCode {
+		return git.ErrOk
+	})
 }
 
 func (r *Repo) ListFiles(ctx context.Context, commitID CommitID) ([]File, error) {
-	var files map[string]*File
-	var err error
 	if commitID.Ref == "working" {
-		files, err = r.listFilesWorktree(ctx)
+		return r.listFilesWorktree(ctx)
 	} else {
-		files, err = r.listFilesCommit(ctx, commitID)
+		return r.listFilesCommit(ctx, commitID)
 	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	fileList := make([]File, len(files))
-	i := 0
-	for _, f := range files {
-		fileList[i] = *f
-		i++
-	}
-
-	return fileList, nil
 }
 
 // Returns the file list for the current worktree.
-func (r *Repo) listFilesWorktree(ctx context.Context) (map[string]*File, error) {
-	files, err := r.listFilesCommit(ctx, CommitID{Ref: "HEAD"})
-	if err == gitplumbing.ErrObjectNotFound {
-		files = map[string]*File{}
-	} else if err != nil {
+func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
+	statusList, err := r.StatusList(&git.StatusOptions{
+		Flags: git.StatusOptIncludeUntracked | git.StatusOptIncludeUnmodified | git.StatusOptRecurseUntrackedDirs | git.StatusOptRenamesHeadToIndex | git.StatusOptRenamesIndexToWorkdir,
+		Show:  git.StatusShowIndexAndWorkdir,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer statusList.Free()
+
+	n, err := statusList.EntryCount()
+	if err != nil {
 		return nil, err
 	}
 
-	wt, err := r.Worktree()
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	statuses, err := wt.Status()
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-Loop:
-	for filename, status := range statuses {
-		if files[filename] == nil {
-			files[filename] = &File{}
-		}
-
-		f := files[filename]
-		f.Filename = filename
-		f.Status = *status
-
-		select {
-		case <-ctx.Done():
-			break Loop
-		default:
-		}
-	}
-
-	for filename, file := range files {
-		stat, err := os.Stat(filepath.Join(r.Path, filename))
+	files := make([]File, n)
+	for i := 0; i < n; i++ {
+		entry, err := statusList.ByIndex(i)
 		if err != nil {
-			log.Errorf("[repo] error opening %v", filename)
-			// return nil, errors.Wrapf(err, "[repo] error opening %v", filename)
-			continue
+			return nil, err
 		}
 
-		file.Mode = stat.Mode()
+		files[i] = mapStatusEntry(entry)
+	}
+	return files, nil
+}
+
+// Simplifies the interpretation of 'status' for a UI that primarily needs to display information
+// about files in the worktree
+func mapStatusEntry(entry git.StatusEntry) File {
+	// Notes:
+	// - IndexToWorkdir.NewFile.Oid is ~always~ empty, presumably because by definition it means "file that isn't in the object DB yet."
+
+	var file File
+	file.Filename = entry.IndexToWorkdir.NewFile.Path
+
+	if (entry.Status & git.StatusIndexNew) > 0 {
+		file.Filename = entry.HeadToIndex.NewFile.Path
+		file.Status.Staged = '?'
+
+	} else if (entry.Status & git.StatusIndexModified) > 0 {
+		file.Filename = entry.HeadToIndex.NewFile.Path
+		file.Status.Staged = 'M'
+
+	} else if (entry.Status & git.StatusIndexDeleted) > 0 {
+		file.Filename = entry.HeadToIndex.NewFile.Path
+		file.Status.Staged = 'D'
+
+	} else if (entry.Status & git.StatusIndexRenamed) > 0 {
+		file.Filename = entry.HeadToIndex.NewFile.Path
+		file.Status.Staged = 'M'
+
+	} else if (entry.Status & git.StatusIndexTypeChange) > 0 {
+		file.Filename = entry.HeadToIndex.NewFile.Path
+		file.Status.Staged = 'M'
+	}
+
+	// ----
+
+	if (entry.Status & git.StatusWtNew) > 0 {
+		file.Filename = entry.IndexToWorkdir.NewFile.Path
+		file.Status.Unstaged = '?'
+
+	} else if (entry.Status & git.StatusWtModified) > 0 {
+		file.Filename = entry.IndexToWorkdir.NewFile.Path
+		file.Status.Unstaged = 'M'
+		file.Hash = *entry.IndexToWorkdir.OldFile.Oid
+
+	} else if (entry.Status & git.StatusWtDeleted) > 0 {
+		file.Filename = entry.IndexToWorkdir.NewFile.Path
+		file.Status.Unstaged = 'D'
+		file.Hash = *entry.IndexToWorkdir.OldFile.Oid
+
+	} else if (entry.Status & git.StatusWtTypeChange) > 0 {
+		file.Filename = entry.IndexToWorkdir.NewFile.Path
+		file.Status.Unstaged = 'M'
+		file.Hash = *entry.IndexToWorkdir.OldFile.Oid
+
+	} else if (entry.Status & git.StatusWtRenamed) > 0 {
+		file.Filename = entry.IndexToWorkdir.NewFile.Path
+		file.Status.Unstaged = 'M'
+		file.Hash = *entry.IndexToWorkdir.OldFile.Oid
+	}
+
+	// ----
+
+	if (entry.Status & git.StatusConflicted) > 0 {
+		file.Filename = entry.HeadToIndex.NewFile.Path
+		file.Status.Unstaged = 'U'
+		file.Hash = *entry.IndexToWorkdir.OldFile.Oid
+	}
+	// if (entry.Status & git.StatusIgnored) > 0 {
+	// }
+
+	stat, err := os.Stat(file.Filename)
+	if err == nil {
 		file.Size = uint64(stat.Size())
 		file.Modified = uint32(stat.ModTime().Unix())
 	}
 
-	return files, nil
+	return file
 }
 
 // Returns the file list for a commit specified by its hash or a commit ref.
-func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) (map[string]*File, error) {
+func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, error) {
 	commit, err := r.ResolveCommit(commitID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	defer commit.Free()
 
-	commitFiles, err := commit.Files()
+	tree, err := commit.Tree()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	defer commitFiles.Close()
+	defer tree.Free()
 
-	files := map[string]*File{}
-Loop2:
-	for {
-		file, err := commitFiles.Next()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		osMode, err := file.Mode.ToOSFileMode()
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		files[file.Name] = &File{
-			Filename: file.Name,
-			Hash:     file.Hash,
-			Status: git.FileStatus{
-				Staging:  git.Unmodified,
-				Worktree: git.Unmodified,
-				Extra:    "",
-			},
-			Size:     uint64(file.Size),
-			Mode:     osMode,
-			Modified: 0,
-		}
-
+	files := []File{}
+	err = tree.Walk(func(name string, entry *git.TreeEntry) int {
 		select {
 		case <-ctx.Done():
-			break Loop2
+			return -1 // @@TODO: make sure this actually breaks the loop; docs aren't very clear
 		default:
 		}
+
+		if entry.Filemode != git.FilemodeBlob && entry.Filemode != git.FilemodeBlobExecutable {
+			return 0
+		}
+
+		blob, err := r.LookupBlob(entry.Id)
+		if err != nil {
+			log.Errorln("error looking up blob:", err)
+			return 0
+		}
+		defer blob.Free()
+
+		files = append(files, File{
+			Filename: entry.Name,
+			Hash:     *entry.Id,
+			Status: Status{
+				Unstaged: ' ',
+				Staged:   ' ',
+			},
+			Size:     uint64(blob.Size()),
+			Modified: 0,
+		})
+
+		return 0
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
 	}
+
 	return files, nil
 }
 
-func (r *Repo) GetDiff(ctx context.Context, commitID CommitID) (gitobject.Changes, error) {
+func (r *Repo) GetDiff(ctx context.Context, commitID CommitID) (io.Reader, error) {
 	if commitID.Ref == "working" {
-		// @@TODO
-		panic("not implemented")
-		// return r.GetDiffWorktree(ctx)
+		return r.GetDiffWorktree(ctx)
 	} else {
 		return r.GetDiffCommit(ctx, commitID)
 	}
 }
 
-func (r *Repo) GetDiffCommit(ctx context.Context, commitID CommitID) (gitobject.Changes, error) {
+func (r *Repo) GetDiffCommit(ctx context.Context, commitID CommitID) (io.Reader, error) {
 	commit, err := r.ResolveCommit(commitID)
 	if err != nil {
 		return nil, err
 	}
+	defer commit.Free()
 
 	// @@TODO: handle merges differently?
-	if commit.NumParents() > 1 {
+	if commit.ParentCount() > 1 {
 		return nil, nil
 	}
 
-	commitParent, err := commit.Parent(0)
-	if err != nil {
-		return nil, err
-	}
-
-	// patch, err := commit.PatchContext(context.TODO(), commitParent)
-	// if err != nil {
-	// 	return err
-	// }
-
 	commitTree, err := commit.Tree()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
-	commitParentTree, err := commitParent.Tree()
+	defer commitTree.Free()
+
+	var commitParentTree *git.Tree
+	commitParent := commit.Parent(0)
+	if commitParent != nil {
+		defer commitParent.Free()
+
+		commitParentTree, err = commitParent.Tree()
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		defer commitParentTree.Free()
+	}
+
+	diffOpts, err := git.DefaultDiffOptions()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	diff, err := r.DiffTreeToTree(commitParentTree, commitTree, &diffOpts)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return pipeDiff(diff), nil
+}
+
+func (r *Repo) GetDiffWorktree(ctx context.Context) (io.Reader, error) {
+	var mostRecentCommitTree *git.Tree
+
+	headRef, err := r.Head()
+	if err != nil {
+		// This is probably a new repository with no commits.  By passing a nil tree into
+		// r.DiffTreeToWorkdir(...), we will receive a diff containing the full contents of the workdir.
+	} else {
+		defer headRef.Free()
+
+		headRef, err = headRef.Resolve()
+		if err != nil {
+			return nil, err
+		}
+		defer headRef.Free()
+
+		commitOid := headRef.Target()
+		commit, err := r.LookupCommit(commitOid)
+		if err != nil {
+			return nil, err
+		}
+		defer commit.Free()
+
+		mostRecentCommitTree, err = commit.Tree()
+		if err != nil {
+			return nil, err
+		}
+		defer mostRecentCommitTree.Free()
+	}
+
+	diffOpts, err := git.DefaultDiffOptions()
 	if err != nil {
 		return nil, err
 	}
 
-	return gitobject.DiffTreeContext(context.TODO(), commitTree, commitParentTree)
+	diff, err := r.DiffTreeToWorkdir(mostRecentCommitTree, &diffOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	return pipeDiff(diff), nil
 }
 
-// func (r *Repo) GetDiffWorktree(ctx context.Context) (gitobject.Changes, error) {
-// 	changes, err := diffStagingWithWorktree(r, false)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+func pipeDiff(diff *git.Diff) io.Reader {
+	pr, pw := io.Pipe()
 
-// 	return gitobject.NewChanges(changes)
-// }
+	go func() {
+		var err error
+		defer diff.Free()
+		defer func() { pw.CloseWithError(err) }()
+
+		numDeltas, err := diff.NumDeltas()
+		if err != nil {
+			err = errors.WithStack(err)
+			return
+		}
+
+		for i := 0; i < numDeltas; i++ {
+			patch, err := diff.Patch(i)
+			if err != nil {
+				err = errors.WithStack(err)
+				return
+			}
+
+			patchStr, err := patch.String()
+			if err != nil {
+				err = errors.WithStack(err)
+				return
+			}
+
+			_, err = pw.Write([]byte(patchStr))
+			if err != nil {
+				err = errors.WithStack(err)
+				return
+			}
+		}
+	}()
+
+	return pr
+}

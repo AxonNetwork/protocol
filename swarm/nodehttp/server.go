@@ -5,12 +5,12 @@ import (
 	"expvar"
 	"fmt"
 	"html/template"
-	"io"
 	"net/http"
 	"sort"
 	"time"
 
 	"github.com/brynbellomy/debugcharts"
+	git "github.com/libgit2/git2go"
 
 	peer "github.com/libp2p/go-libp2p-peer"
 
@@ -223,11 +223,11 @@ func (s *Server) handleIndex() http.HandlerFunc {
 				return err
 			}
 
-			rIter, err := r.References()
+			rIter, err := r.NewReferenceIterator()
 			if err != nil {
 				return err
 			}
-			defer rIter.Close()
+			defer rIter.Free()
 
 			remoteRefs, _, err := s.node.GetRemoteRefs(context.TODO(), repoID, 50, 0)
 			if err != nil {
@@ -237,16 +237,22 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			refmap := map[string]RefMapping{}
 			for {
 				ref, err := rIter.Next()
-				if err == io.EOF {
+				if git.IsErrorCode(err, git.ErrIterOver) {
 					break
 				} else if err != nil {
 					return err
 				}
-				refname := ref.Name().String()
+
+				ref, err = ref.Resolve()
+				if err != nil {
+					return err
+				}
+
+				refname := ref.Name()
 
 				refmap[refname] = RefMapping{
 					RefName:      refname,
-					LocalCommit:  ref.Hash().String(),
+					LocalCommit:  ref.Target().String(),
 					RemoteCommit: remoteRefs[refname].CommitHash,
 				}
 			}

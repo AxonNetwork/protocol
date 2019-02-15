@@ -5,8 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
+    "github.com/libgit2/git2go"
 
 	"github.com/pkg/errors"
 
@@ -16,25 +15,30 @@ import (
 	"github.com/Conscience/protocol/util"
 )
 
-func getManifest(r *repo.Repo, commitHash gitplumbing.Hash) ([]ManifestObject, error) {
-	objectHashes := make(map[gitplumbing.Hash]bool)
+func getManifest(r *repo.Repo, commitHash git.Oid) ([]ManifestObject, error) {
+	objectHashes := make(map[git.Oid]bool)
 	err := objectHashesForCommit(r, commitHash, objectHashes)
 	if err != nil {
 		return nil, err
 	}
 
+    odb, err := r.Odb()
+    if err != nil {
+        return nil, err
+    }
+
 	manifest := []ManifestObject{}
 	for hash := range objectHashes {
-		size, err := r.Storer.EncodedObjectSize(hash)
-		if err != nil {
-			return nil, err
-		}
+        obj, err := odb.Read(&hash)
+        if err != nil {
+            return nil, err
+        }
 
 		// If we don't copy the hash here, they all end up being the same
-		var h gitplumbing.Hash
+		var h git.Oid
 		copy(h[:], hash[:])
 
-		manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: size})
+		manifest = append(manifest, ManifestObject{Hash: h[:], UncompressedSize: int64(obj.Len())})
 	}
 
 	return manifest, nil
@@ -98,8 +102,8 @@ func createCachedManifest(repoID string, manifest []ManifestObject) (err error) 
 	return
 }
 
-func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[gitplumbing.Hash]bool) error {
-	stack := []gitplumbing.Hash{commitHash}
+func objectHashesForCommit(r *repo.Repo, commitHash git.Oid, seen map[git.Oid]bool) error {
+	stack := []git.Oid{commitHash}
 
 	for len(stack) > 0 {
 		if seen[stack[0]] {
@@ -107,52 +111,52 @@ func objectHashesForCommit(r *repo.Repo, commitHash gitplumbing.Hash, seen map[g
 			continue
 		}
 
-		commit, err := r.CommitObject(stack[0])
+		commit, err := r.LookupCommit(&stack[0])
 		if err != nil {
 			return err
 		}
 
-		parentHashes := []gitplumbing.Hash{}
-		for _, h := range commit.ParentHashes {
-			if _, wasSeen := seen[h]; !wasSeen {
-				parentHashes = append(parentHashes, h)
+        parentCount := commit.ParentCount()
+		parentHashes := []git.Oid{}
+        for i := uint(0); i < parentCount; i++ {
+            hash := commit.ParentId(i)
+			if _, wasSeen := seen[*hash]; !wasSeen {
+				parentHashes = append(parentHashes, *hash)
 			}
 		}
 
 		stack = append(stack[1:], parentHashes...)
 
-		// Walk the tree for this commit
-		tree, err := r.TreeObject(commit.TreeHash)
+		tree, err := commit.Tree()
 		if err != nil {
 			return err
 		}
 
-		walker := gitobject.NewTreeWalker(tree, true, seen)
+        var innerErr error
+        err = tree.Walk(func(name string, entry *git.TreeEntry) int {
+            obj, innerErr := r.Lookup(entry.Id)
+            if innerErr != nil {
+                return -1
+            }
 
-		for {
-			_, entry, err := walker.Next()
-			if err == io.EOF {
-				walker.Close()
-				break
-			} else if err != nil {
-				walker.Close()
-				return err
-			}
-			obj, err := r.Object(gitplumbing.AnyObject, entry.Hash)
-			if err != nil {
-				log.Printf("[err] error on r.Object: %v\n", err)
-				continue
-			}
-			switch obj.Type() {
-			case gitplumbing.TreeObject, gitplumbing.BlobObject:
-				seen[entry.Hash] = true
-			default:
-				log.Printf("found weird object: %v (%v)\n", entry.Hash.String(), obj.Type())
-			}
-		}
+            switch obj.Type() {
+            case git.ObjectTree, git.ObjectBlob:
+                seen[*entry.Id] = true
+            default:
+                log.Printf("found weird object: %v (%v)\n", entry.Id.String(), obj.Type().String())
+            }
 
-		seen[commit.Hash] = true
-		seen[commit.TreeHash] = true
+            return 0
+        })
+
+        if err != nil {
+            return err
+        } else if innerErr != nil {
+            return innerErr
+        }
+
+		seen[*commit.Id()] = true
+		seen[*commit.TreeId()] = true
 	}
 
 	return nil

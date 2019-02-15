@@ -25,7 +25,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p-protocol"
 	ma "github.com/multiformats/go-multiaddr"
 
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
+    "github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -251,9 +251,6 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 				return err
 			}
 
-			// return r.ForEachObjectID(func(objectID []byte) error {
-			//  return n.announceObject(ctx, repoID, objectID)
-			// })
 			return nil
 		})
 		if err != nil {
@@ -277,9 +274,6 @@ func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 		return err
 	}
 
-	// return repo.ForEachObjectID(func(objectID []byte) error {
-	//  return n.announceObject(ctx, repoID, objectID)
-	// })
 	return nil
 }
 
@@ -356,7 +350,7 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit gitplumbing.Hash) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64) {
 	c := nodep2p.NewSmartPackfileClient(n, repoID, repoPath, &n.Config)
 	return c.FetchFromCommit(ctx, commit)
 }

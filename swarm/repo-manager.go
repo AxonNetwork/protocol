@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	"gopkg.in/src-d/go-git.v4"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -28,7 +27,7 @@ func NewRepoManager(config *config.Config) *RepoManager {
 	foundRepos := []string{}
 	for _, path := range rm.config.Node.LocalRepos {
 		_, err := rm.openRepo(path, false)
-		if errors.Cause(err) == git.ErrRepositoryNotExists {
+		if errors.Cause(err) == repo.Err404 {
 			log.Errorf("[repo manager] removing missing repo: %v", path)
 			continue
 		} else if err != nil {
