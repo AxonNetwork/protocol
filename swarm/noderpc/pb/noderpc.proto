@@ -37,6 +37,8 @@ service NodeRPC {
 
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponse) {}
   rpc GetDiff(GetDiffRequest) returns (stream GetDiffResponse) {}
+
+  rpc WatchRepo(WatchRepoRequest) returns (stream WatchRepoResponse) {}
 }
 
 message SetUsernameRequest {
@@ -362,4 +364,29 @@ message GetDiffRequest {
 message GetDiffResponse {
     bytes data = 1;
     bool end = 2;
+}
+
+message WatchRepoRequest {
+    // need one or the other
+    string repoID = 1;
+    string repoRoot = 2;
+    repeated uint64 eventTypes = 3;
+
+    uint64 refUpdatedStart = 4;
+}
+
+message WatchRepoResponse {
+    uint64 eventType = 1;
+
+    message RefUpdated {
+        string commit = 1;
+        string refHash = 2;
+        string txHash = 3;
+        uint64 time = 4;
+        uint64 blockNumber = 5;
+    }
+
+    oneof payload {
+        RefUpdated RefUpdateed = 2;
+    }
 }

@@ -254,33 +254,28 @@ func (n *Client) GetRefs(ctx context.Context, repoID string, pageSize uint64, pa
 	return refs, x.Total.Uint64(), nil
 }
 
-type RefLog struct {
-	Commit string
-	Time   *big.Int
-}
+// func (n *Client) GetRefLogs(ctx context.Context, repoID string) (map[string]uint64, error) {
+// 	opts := &bind.FilterOpts{Context: ctx}
+// 	users := []common.Address{}
+// 	repoIDs := []string{repoID}
+// 	refs := []string{}
 
-func (n *Client) GetRefLogs(ctx context.Context, repoID string) (map[string]uint64, error) {
-	opts := &bind.FilterOpts{Context: ctx}
-	users := []common.Address{}
-	repoIDs := []string{repoID}
-	refs := []string{}
+// 	iter, err := n.protocolContract.ProtocolFilterer.FilterLogUpdateRef(opts, users, repoIDs, refs)
+// 	if err != nil {
+// 		return map[string]uint64{}, err
+// 	}
+// 	defer iter.Close()
 
-	iter, err := n.protocolContract.ProtocolFilterer.FilterLogUpdateRef(opts, users, repoIDs, refs)
-	if err != nil {
-		return map[string]uint64{}, err
-	}
-	defer iter.Close()
-
-	logs := make(map[string]uint64)
-	for iter.Next() {
-		block, err := n.ethClient.BlockByNumber(ctx, big.NewInt(int64(iter.Event.Raw.BlockNumber)))
-		if err != nil {
-			return map[string]uint64{}, err
-		}
-		logs[iter.Event.CommitHash] = block.Time().Uint64()
-	}
-	return logs, nil
-}
+// 	logs := make(map[string]uint64)
+// 	for iter.Next() {
+// 		block, err := n.ethClient.BlockByNumber(ctx, big.NewInt(int64(iter.Event.Raw.BlockNumber)))
+// 		if err != nil {
+// 			return map[string]uint64{}, err
+// 		}
+// 		logs[iter.Event.CommitHash] = block.Time().Uint64()
+// 	}
+// 	return logs, nil
+// }
 
 func (n *Client) SetRepoPublic(ctx context.Context, repoID string, isPublic bool) (*Transaction, error) {
 	tx, err := n.protocolContract.SetPublic(n.transactOpts(ctx), repoID, isPublic)
@@ -340,4 +335,13 @@ func (n *Client) SetUserPermissions(ctx context.Context, repoID string, username
 		return nil, err
 	}
 	return &Transaction{tx, n.ethClient}, nil
+}
+
+func (n *Client) CurrentBlock(ctx context.Context) (uint64, error) {
+	header, err := n.ethClient.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	return header.Number.Uint64(), nil
 }

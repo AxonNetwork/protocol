@@ -189,6 +189,14 @@ func (rm *RepoManager) RepoAtPathOrID(path string, repoID string) (*repo.Repo, e
 	return nil, errors.Errorf("must provide either 'path' or 'repoID'")
 }
 
+func (rm *RepoManager) RepoIDList() []string {
+	repoIDs := make([]string, 0)
+	for repoID, _ := range rm.repos {
+		repoIDs = append(repoIDs, repoID)
+	}
+	return repoIDs
+}
+
 func (rm *RepoManager) ForEachRepo(fn func(*repo.Repo) error) error {
 	for _, entry := range rm.reposByPath {
 		err := fn(entry)

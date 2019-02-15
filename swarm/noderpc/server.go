@@ -503,11 +503,6 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return nil, err
 	}
 
-	logs, err := s.node.GetRefLogs(ctx, req.RepoID)
-	if err != nil {
-		return nil, err
-	}
-
 	commits := []*pb.Commit{}
 	err = cIter.ForEach(func(commit *gitobject.Commit) error {
 		if commit == nil {
@@ -519,14 +514,13 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		if err != nil {
 			return err
 		}
-		verified := logs[commitHash]
+
 		commits = append(commits, &pb.Commit{
 			CommitHash: commitHash,
 			Author:     commit.Author.String(),
 			Message:    commit.Message,
 			Timestamp:  uint64(commit.Author.When.Unix()),
 			Files:      files,
-			Verified:   verified,
 		})
 
 		return nil
@@ -738,5 +732,30 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *Server) WatchRepo(req *pb.WatchRepoRequest, server pb.NodeRPC_WatchRepoServer) error {
+	eventTypes := make([]swarm.EventType, 0)
+	for _, t := range req.EventTypes {
+		eventTypes = append(eventTypes, swarm.EventType(t))
+	}
+
+	settings := &swarm.WatcherSettings{
+		EventTypes:      eventTypes,
+		RefUpdatedStart: req.RefUpdatedStart,
+	}
+
+	ctx := context.Background()
+	watcher := s.node.Watch(ctx, settings)
+
+	log.Println("watcher: ", watcher)
+
+	// for event := range watcher.EventCh {
+	// 	switch event {
+
+	// 	}
+	// 	log.Println(event)
+	// }
 	return nil
 }
