@@ -402,6 +402,26 @@ func (n *Node) RepoAtPathOrID(path string, repoID string) (*repo.Repo, error) {
 	return n.repoManager.RepoAtPathOrID(path, repoID)
 }
 
+func (n *Node) TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error) {
+	r, err := n.repoManager.TrackRepo(repoPath, forceReload)
+	if err != nil {
+		return nil, err
+	}
+	repoID, err := r.RepoID()
+	if err != nil {
+		return nil, err
+	}
+	event := MaybeEvent{
+		EventType: AddedRepo,
+		AddedRepoEvent: &AddedRepoEvent{
+			RepoRoot: repoPath,
+			RepoID:   repoID,
+		},
+	}
+	n.NotifyWatchers(event)
+	return n.repoManager.TrackRepo(repoPath, forceReload)
+}
+
 func (n *Node) ID() peer.ID {
 	return n.host.ID()
 }
@@ -500,6 +520,10 @@ func (n *Node) WatchRefLogs(ctx context.Context, repoIDs []string, start uint64)
 	return n.eth.WatchRefLogs(ctx, repoIDs, start)
 }
 
+func (n *Node) GetRefLogs(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]nodeeth.RefLog, error) {
+	return n.eth.GetRefLogs(ctx, repoIDs, start, end)
+}
+
 func (n *Node) SignHash(data []byte) ([]byte, error) {
 	return n.eth.SignHash(data)
 }
@@ -527,19 +551,19 @@ func (n *Node) GetBandwidthTotals() metrics.Stats {
 func (n *Node) Watch(ctx context.Context, settings *WatcherSettings) *Watcher {
 	w := NewWatcher(ctx, settings)
 
-	if w.IsWatching(RefUpdated) {
+	if w.IsWatching(UpdatedRef) {
 		repoIDs := n.repoManager.RepoIDList()
-		rw := n.WatchRefLogs(ctx, repoIDs, settings.RefUpdatedStart)
+		rw := n.WatchRefLogs(ctx, repoIDs, settings.UpdatedRefStart)
 		go w.AddRefLogWatcher(rw)
 	}
 
 	return w
 }
 
-func (n *Node) NotifyWatchers(repoID string, eventType EventType) {
+func (n *Node) NotifyWatchers(event MaybeEvent) {
 	for _, w := range n.watchers {
-		if w.IsWatching(eventType) {
-			go w.Notify(repoID, eventType)
+		if w.IsWatching(event.EventType) {
+			go w.Notify(event)
 		}
 	}
 }

@@ -31,6 +31,7 @@ service NodeRPC {
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
 
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
+  rpc GetRefLogs(GetRefLogsRequest) returns (GetRefLogsResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
   rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
@@ -38,7 +39,7 @@ service NodeRPC {
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponse) {}
   rpc GetDiff(GetDiffRequest) returns (stream GetDiffResponse) {}
 
-  rpc WatchRepo(WatchRepoRequest) returns (stream WatchRepoResponse) {}
+  rpc Watch(WatchRequest) returns (stream WatchResponse) {}
 }
 
 message SetUsernameRequest {
@@ -265,20 +266,40 @@ message SetUserPermissionsResponse {}
 message GetRepoHistoryRequest {
     string repoID = 1;
     string path = 2;
-    uint64 page = 3;
+    string lastCommitFetched = 3;
+    string toCommit = 4;
+    uint64 pageSize = 5;
 }
 
 message Commit {
     string commitHash = 1;
     string author = 2;
     string message = 3;
-    uint64 timestamp = 4;
-    repeated string files = 5;
-    uint64 verified = 6;
+    repeated string files = 4;
+    uint64 timestamp = 5;
 }
 
 message GetRepoHistoryResponse {
     repeated Commit commits = 1;
+}
+
+message GetRefLogsRequest {
+    string repoID = 1;
+    uint64 startBlock = 2;
+    uint64 endBlock = 3;
+}
+
+message RefLog {
+    string commit = 1;
+    string refHash = 2;
+    string repoID = 3;
+    string txHash = 4;
+    uint64 time = 5;
+    uint64 blockNumber = 6;
+}
+
+message GetRefLogsResponse {
+    repeated RefLog refLogs = 1;
 }
 
 message GetRepoFilesRequest {
@@ -366,27 +387,33 @@ message GetDiffResponse {
     bool end = 2;
 }
 
-message WatchRepoRequest {
-    // need one or the other
-    string repoID = 1;
-    string repoRoot = 2;
-    repeated uint64 eventTypes = 3;
+message WatchRequest {
+    repeated uint64 eventTypes = 1;
 
-    uint64 refUpdatedStart = 4;
+    uint64 updatedRefStart = 2;
 }
 
-message WatchRepoResponse {
+message WatchResponse {
     uint64 eventType = 1;
 
-    message RefUpdated {
-        string commit = 1;
-        string refHash = 2;
-        string txHash = 3;
-        uint64 time = 4;
-        uint64 blockNumber = 5;
+    message AddedRepo {
+        string repoID = 1;
+        string repoRoot = 2;
+    }
+
+    message PulledRepo {
+        string repoID = 1;
+        string repoRoot = 2;
+        string newHEAD = 3;
+    }
+
+    message UpdatedRef {
+        RefLog refLog = 1;
     }
 
     oneof payload {
-        RefUpdated RefUpdateed = 2;
+        AddedRepo addedRepo = 2;
+        PulledRepo pulledRepo = 3;
+        UpdatedRef updatedRef = 4;
     }
 }

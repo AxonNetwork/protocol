@@ -9,11 +9,12 @@ import (
 type EventType int
 
 const (
-	RepoAdded EventType = iota
+	AddedRepo EventType = iota
 	PulledRepo
-	RefUpdated
-	ReplicationRequested
-	BecomeReplicatorRequested
+	UpdatedRef
+	// RemovedRepo
+	// ReplicationRequested
+	// BecomeReplicatorRequested
 	// ClonedRepo
 	// CheckpointedRepo
 	// BehindRemote
@@ -21,8 +22,22 @@ const (
 )
 
 type MaybeEvent struct {
+	EventType       EventType
+	AddedRepoEvent  *AddedRepoEvent
+	PulledRepoEvent *PulledRepoEvent
 	UpdatedRefEvent *UpdatedRefEvent
 	Error           error
+}
+
+type AddedRepoEvent struct {
+	RepoID   string
+	RepoRoot string
+}
+
+type PulledRepoEvent struct {
+	RepoID   string
+	RepoRoot string
+	NewHEAD  string
 }
 
 type UpdatedRefEvent struct {
@@ -31,7 +46,7 @@ type UpdatedRefEvent struct {
 
 type WatcherSettings struct {
 	EventTypes      []EventType
-	RefUpdatedStart uint64
+	UpdatedRefStart uint64
 }
 
 type Watcher struct {
@@ -49,10 +64,10 @@ func NewWatcher(ctx context.Context, settings *WatcherSettings) *Watcher {
 	}
 }
 
-func (w *Watcher) Notify(repoID string, eventType EventType) {
-	if eventType == RepoAdded && w.refWatcher != nil {
-		w.refWatcher.AddRepo(repoID)
-	}
+func (w *Watcher) Notify(event MaybeEvent) {
+	// if eventType == RepoAdded && w.refWatcher != nil {
+	// 	w.refWatcher.AddRepo(repoID)
+	// }
 	// w.EventCh <- MaybeEvent{RepoID: repoID, EventType: eventType}
 }
 
@@ -77,6 +92,7 @@ func (w *Watcher) AddRefLogWatcher(rw *nodeeth.RefLogWatcher) {
 			return
 		}
 		w.EventCh <- MaybeEvent{
+			EventType: UpdatedRef,
 			UpdatedRefEvent: &UpdatedRefEvent{
 				RefLog: maybeLog.Log,
 			},

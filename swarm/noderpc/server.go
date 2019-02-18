@@ -1,6 +1,7 @@
 package noderpc
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -11,7 +12,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"gopkg.in/src-d/go-git.v4"
-	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
+	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
@@ -498,38 +499,83 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return &pb.GetRepoHistoryResponse{Commits: []*pb.Commit{}}, nil
 	}
 
-	cIter, err := r.Log(&git.LogOptions{From: repo.ZeroHash, Order: git.LogOrderDFS})
+	from := repo.ZeroHash
+	if len(req.LastCommitFetched) > 0 {
+		hex, err := hex.DecodeString(req.LastCommitFetched)
+		if err != nil {
+			return nil, err
+		}
+		hash := [20]byte{}
+		copy(hash[:], hex[:])
+		from = gitplumbing.Hash(hash)
+	}
+
+	cIter, err := r.Log(&git.LogOptions{From: from, Order: git.LogOrderDFS})
 	if err != nil {
 		return nil, err
 	}
 
 	commits := []*pb.Commit{}
-	err = cIter.ForEach(func(commit *gitobject.Commit) error {
-		if commit == nil {
-			log.Warnf("[node] nil commit (repoID: %v)", req.RepoID)
-			return nil
+	for {
+		commit, err := cIter.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
 		}
+
 		commitHash := commit.Hash.String()
+		if commitHash == req.LastCommitFetched {
+			// client already has this commit
+			continue
+		}
+
 		files, err := nodegit.GetFilesForCommit(ctx, r.Path, commitHash)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		commits = append(commits, &pb.Commit{
 			CommitHash: commitHash,
 			Author:     commit.Author.String(),
 			Message:    commit.Message,
-			Timestamp:  uint64(commit.Author.When.Unix()),
 			Files:      files,
+			Timestamp:  uint64(commit.Author.When.Unix()),
 		})
 
-		return nil
-	})
+		if len(commits) >= int(req.PageSize) || commitHash == req.ToCommit {
+			break
+		}
+	}
+
+	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
+}
+
+func (s *Server) GetRefLogs(ctx context.Context, req *pb.GetRefLogsRequest) (*pb.GetRefLogsResponse, error) {
+	repoIDs := []string{req.RepoID}
+	var end *uint64
+	if req.EndBlock > 0 {
+		end = &req.EndBlock
+	}
+
+	reflogs, err := s.node.GetRefLogs(ctx, repoIDs, req.StartBlock, end)
 	if err != nil {
 		return nil, err
 	}
 
-	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
+	logResp := make([]*pb.RefLog, len(reflogs))
+	for i, reflog := range reflogs {
+		logResp[i] = &pb.RefLog{
+			Commit:      reflog.Commit,
+			RefHash:     reflog.RefHash,
+			RepoID:      req.RepoID,
+			TxHash:      reflog.TxHash,
+			Time:        reflog.Time,
+			BlockNumber: reflog.BlockNumber,
+		}
+	}
+
+	return &pb.GetRefLogsResponse{RefLogs: logResp}, nil
 }
 
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
@@ -735,7 +781,7 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 	return nil
 }
 
-func (s *Server) WatchRepo(req *pb.WatchRepoRequest, server pb.NodeRPC_WatchRepoServer) error {
+func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) error {
 	eventTypes := make([]swarm.EventType, 0)
 	for _, t := range req.EventTypes {
 		eventTypes = append(eventTypes, swarm.EventType(t))
@@ -743,19 +789,62 @@ func (s *Server) WatchRepo(req *pb.WatchRepoRequest, server pb.NodeRPC_WatchRepo
 
 	settings := &swarm.WatcherSettings{
 		EventTypes:      eventTypes,
-		RefUpdatedStart: req.RefUpdatedStart,
+		UpdatedRefStart: req.UpdatedRefStart,
 	}
 
 	ctx := context.Background()
 	watcher := s.node.Watch(ctx, settings)
 
-	log.Println("watcher: ", watcher)
+	for evt := range watcher.EventCh {
+		select {
+		case <-server.Context().Done():
+			return errors.WithStack(server.Context().Err())
+		default:
+		}
 
-	// for event := range watcher.EventCh {
-	// 	switch event {
+		var err error
 
-	// 	}
-	// 	log.Println(event)
-	// }
+		switch {
+		case evt.Error != nil:
+			return errors.WithStack(evt.Error)
+
+		case evt.AddedRepoEvent != nil:
+			err = server.Send(&pb.WatchResponse{
+				Payload: &pb.WatchResponse_AddedRepo_{&pb.WatchResponse_AddedRepo{
+					RepoID:   evt.AddedRepoEvent.RepoID,
+					RepoRoot: evt.AddedRepoEvent.RepoRoot,
+				}},
+			})
+
+		case evt.PulledRepoEvent != nil:
+			err = server.Send(&pb.WatchResponse{
+				Payload: &pb.WatchResponse_PulledRepo_{&pb.WatchResponse_PulledRepo{
+					RepoID:   evt.PulledRepoEvent.RepoID,
+					RepoRoot: evt.PulledRepoEvent.RepoRoot,
+					NewHEAD:  evt.PulledRepoEvent.NewHEAD,
+				}},
+			})
+
+		case evt.UpdatedRefEvent != nil:
+			err = server.Send(&pb.WatchResponse{
+				Payload: &pb.WatchResponse_UpdatedRef_{&pb.WatchResponse_UpdatedRef{
+					RefLog: &pb.RefLog{
+						Commit:      evt.UpdatedRefEvent.RefLog.Commit,
+						RefHash:     evt.UpdatedRefEvent.RefLog.RefHash,
+						RepoID:      evt.UpdatedRefEvent.RefLog.RepoID,
+						TxHash:      evt.UpdatedRefEvent.RefLog.TxHash,
+						Time:        evt.UpdatedRefEvent.RefLog.Time,
+						BlockNumber: evt.UpdatedRefEvent.RefLog.BlockNumber,
+					},
+				}},
+			})
+
+		}
+
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
 	return nil
 }

@@ -42,7 +42,6 @@ func (rw *RefLogWatcher) Close() {
 }
 
 func (n *Client) WatchRefLogs(ctx context.Context, repoIDs []string, start uint64) *RefLogWatcher {
-
 	cursor := start
 	logsTimer := time.NewTicker(5 * time.Second)
 
@@ -91,7 +90,7 @@ func (n *Client) WatchRefLogs(ctx context.Context, repoIDs []string, start uint6
 	return rw
 }
 
-func (n *Client) GetRefLogs(ctx context.Context, repoIDs []string, start uint64, repoIDByHash map[string]string) ([]RefLog, error) {
+func (n *Client) GetRefLogs(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]RefLog, error) {
 	opts := &bind.FilterOpts{
 		Context: ctx,
 		Start:   start,
