@@ -86,7 +86,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 
 	// @@TODO: give context a timeout and make it configurable
 	ctx := context.Background()
-	ch := nodegit.PullRepo(ctx, repo.Path)
+	ch := nodegit.PullRepo(ctx, repo.Path())
 
 	for progress := range ch {
 		if progress.Error != nil {

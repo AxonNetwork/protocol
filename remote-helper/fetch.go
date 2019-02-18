@@ -29,7 +29,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 	copy(commitHash[:], commitHashSlice)
 
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, err := client.FetchFromCommit(context.TODO(), repoID, Repo.Path, commitHash)
+	ch, uncompressedSize, err := client.FetchFromCommit(context.TODO(), repoID, Repo.Path(), commitHash)
 	if err != nil {
 		return err
 	}

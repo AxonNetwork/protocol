@@ -8,6 +8,7 @@ fi
 
 while [[ "$#" > 0 ]]; do case $1 in
   # -m|--darwin) deploy="$2"; shift;;
+  -g|--libgit) libgit=1;;
   -m|--darwin) darwin=1;;
   -w|--windows) windows=1;;
   -l|--linux) linux=1;;
@@ -20,6 +21,7 @@ echo Running gofmt
 gofmt -s -w .
 
 echo Building:
+[[ -n $libgit  ]] && echo   - libgit2
 [[ -n $darwin  ]] && echo   - darwin
 [[ -n $windows ]] && echo   - windows
 [[ -n $linux   ]] && echo   - linux
@@ -64,7 +66,7 @@ function build_native {
 }
 
 function build_libgit2 {
-    local GIT2GO_PATH = "vendor/github.com/libgit2/git2go"
+    local GIT2GO_PATH="vendor/github.com/libgit2/git2go"
 
     [[ -d $(GIT2GO_PATH) ]] ||
         mkdir -p vendor/github.com/libgit2 &&
@@ -97,6 +99,7 @@ function build_libgit2 {
         cmake --build .
 }
 
+[[ -n $libgit ]] && build_libgit2
 [[ -n $darwin ]] && build_darwin
 [[ -n $linux ]] && build_linux
 [[ -n $windows ]] && build_windows

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-    "github.com/libgit2/git2go"
+	"github.com/libgit2/git2go"
 
 	"github.com/pkg/errors"
 
@@ -22,17 +22,17 @@ func getManifest(r *repo.Repo, commitHash git.Oid) ([]ManifestObject, error) {
 		return nil, err
 	}
 
-    odb, err := r.Odb()
-    if err != nil {
-        return nil, err
-    }
+	odb, err := r.Odb()
+	if err != nil {
+		return nil, err
+	}
 
 	manifest := []ManifestObject{}
 	for hash := range objectHashes {
-        obj, err := odb.Read(&hash)
-        if err != nil {
-            return nil, err
-        }
+		obj, err := odb.Read(&hash)
+		if err != nil {
+			return nil, err
+		}
 
 		// If we don't copy the hash here, they all end up being the same
 		var h git.Oid
@@ -116,10 +116,10 @@ func objectHashesForCommit(r *repo.Repo, commitHash git.Oid, seen map[git.Oid]bo
 			return err
 		}
 
-        parentCount := commit.ParentCount()
+		parentCount := commit.ParentCount()
 		parentHashes := []git.Oid{}
-        for i := uint(0); i < parentCount; i++ {
-            hash := commit.ParentId(i)
+		for i := uint(0); i < parentCount; i++ {
+			hash := commit.ParentId(i)
 			if _, wasSeen := seen[*hash]; !wasSeen {
 				parentHashes = append(parentHashes, *hash)
 			}
@@ -132,28 +132,28 @@ func objectHashesForCommit(r *repo.Repo, commitHash git.Oid, seen map[git.Oid]bo
 			return err
 		}
 
-        var innerErr error
-        err = tree.Walk(func(name string, entry *git.TreeEntry) int {
-            obj, innerErr := r.Lookup(entry.Id)
-            if innerErr != nil {
-                return -1
-            }
+		var innerErr error
+		err = tree.Walk(func(name string, entry *git.TreeEntry) int {
+			obj, innerErr := r.Lookup(entry.Id)
+			if innerErr != nil {
+				return -1
+			}
 
-            switch obj.Type() {
-            case git.ObjectTree, git.ObjectBlob:
-                seen[*entry.Id] = true
-            default:
-                log.Printf("found weird object: %v (%v)\n", entry.Id.String(), obj.Type().String())
-            }
+			switch obj.Type() {
+			case git.ObjectTree, git.ObjectBlob:
+				seen[*entry.Id] = true
+			default:
+				log.Printf("found weird object: %v (%v)\n", entry.Id.String(), obj.Type().String())
+			}
 
-            return 0
-        })
+			return 0
+		})
 
-        if err != nil {
-            return err
-        } else if innerErr != nil {
-            return innerErr
-        }
+		if err != nil {
+			return err
+		} else if innerErr != nil {
+			return innerErr
+		}
 
 		seen[*commit.Id()] = true
 		seen[*commit.TreeId()] = true

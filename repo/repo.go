@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,8 +18,6 @@ import (
 
 type Repo struct {
 	*git.Repository
-
-	Path string
 }
 
 const (
@@ -47,10 +46,7 @@ func Init(path string) (*Repo, error) {
 		return nil, errors.Wrapf(err, "could not initialize repo at path '%v'", path)
 	}
 
-	return &Repo{
-		Repository: gitRepo,
-		Path:       path,
-	}, nil
+	return &Repo{Repository: gitRepo}, nil
 }
 
 func Open(path string) (*Repo, error) {
@@ -61,22 +57,25 @@ func Open(path string) (*Repo, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	return &Repo{
-		Repository: gitRepo,
-		Path:       path,
-	}, nil
+	return &Repo{Repository: gitRepo}, nil
+}
+
+func (r *Repo) Path() string {
+	p := strings.Replace(r.Repository.Path(), "/.git/", "", -1)
+	fmt.Println("PATH PATH PATH", p)
+	return p
 }
 
 func (r *Repo) RepoID() (string, error) {
 	cfg, err := r.Config()
 	if err != nil {
-		return "", errors.Wrapf(err, "could not open repo config at path '%v'", r.Path)
+		return "", errors.Wrapf(err, "could not open repo config at path '%v'", r.Path())
 	}
 	defer cfg.Free()
 
 	repoID, err := cfg.LookupString("conscience.repoid")
 	if err != nil {
-		return "", errors.Wrapf(err, "error looking up conscience.repoid in .git/config (path: %v)", r.Path)
+		return "", errors.Wrapf(err, "error looking up conscience.repoid in .git/config (path: %v)", r.Path())
 	}
 
 	return repoID, nil
@@ -85,13 +84,15 @@ func (r *Repo) RepoID() (string, error) {
 // Returns true if the object is known, false otherwise.
 func (r *Repo) HasObject(objectID []byte) bool {
 	if len(objectID) == CONSCIENCE_HASH_LENGTH {
-		p := filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
+		p := filepath.Join(r.Path(), ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 		_, err := os.Stat(p)
 		return err == nil || !os.IsNotExist(err)
 
 	} else if len(objectID) == GIT_HASH_LENGTH {
 		x, err := r.Lookup(util.OidFromBytes(objectID))
-		x.Free()
+		if err == nil {
+			x.Free()
+		}
 		return err == nil
 	}
 
@@ -102,7 +103,7 @@ func (r *Repo) HasObject(objectID []byte) bool {
 func (r *Repo) OpenObject(objectID []byte) (ObjectReader, error) {
 	if len(objectID) == CONSCIENCE_HASH_LENGTH {
 		// Open a Conscience object
-		p := filepath.Join(r.Path, ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
+		p := filepath.Join(r.Path(), ".git", CONSCIENCE_DATA_SUBDIR, hex.EncodeToString(objectID))
 
 		f, err := os.Open(p)
 		if os.IsNotExist(err) {
@@ -153,7 +154,7 @@ func (r *Repo) OpenObject(objectID []byte) (ObjectReader, error) {
 }
 
 func (r *Repo) OpenFileInWorktree(filename string) (ObjectReader, error) {
-	f, err := os.Open(filepath.Join(r.Path, filename))
+	f, err := os.Open(filepath.Join(r.Path(), filename))
 	if os.IsNotExist(err) {
 		return nil, errors.WithStack(Err404)
 	} else if err != nil {
@@ -233,7 +234,7 @@ func (r *Repo) ResolveCommit(commitID CommitID) (*git.Commit, error) {
 func (r *Repo) SetupConfig(repoID string) error {
 	cfg, err := r.Config()
 	if err != nil {
-		return errors.Wrapf(err, "could not get repo config (repoID: %v, path: %v)", repoID, r.Path)
+		return errors.Wrapf(err, "could not get repo config (repoID: %v, path: %v)", repoID, r.Path())
 	}
 	defer cfg.Free()
 
@@ -297,7 +298,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 
 			remote, err = r.Remotes.CreateWithFetchspec(remoteName, "conscience://"+repoID, "+refs/heads/*:refs/remotes/"+remoteName+"/*")
 			if err != nil {
-				return errors.Wrapf(err, "could not create remote (repoID: %v, path: %v)", repoID, r.Path)
+				return errors.Wrapf(err, "could not create remote (repoID: %v, path: %v)", repoID, r.Path())
 			}
 			remote.Free()
 		}
@@ -309,7 +310,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 func (r *Repo) AddUserToConfig(name string, email string) error {
 	cfg, err := r.Config()
 	if err != nil {
-		return errors.Wrapf(err, "could not get repo config (path: %v)", r.Path)
+		return errors.Wrapf(err, "could not get repo config (path: %v)", r.Path())
 	}
 	defer cfg.Free()
 
@@ -342,7 +343,8 @@ func (r *Repo) PackfileWriter() (PackfileWriter, error) {
 		return nil, err
 	}
 
-	return git.NewIndexer(filepath.Join(r.Path, ".git", "objects", "pack"), odb, func(stats git.TransferProgress) git.ErrorCode {
+	return git.NewIndexer(filepath.Join(r.Path(), ".git", "objects", "pack"), odb, func(stats git.TransferProgress) git.ErrorCode {
+		fmt.Printf("stats = %+v\n", stats)
 		return git.ErrOk
 	})
 }

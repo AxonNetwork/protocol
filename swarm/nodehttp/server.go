@@ -274,7 +274,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 			state.LocalRepos = append(state.LocalRepos, RepoInfo{
 				RepoID: repoID,
-				Path:   r.Path,
+				Path:   r.Path(),
 				Refs:   refs,
 			})
 			return nil

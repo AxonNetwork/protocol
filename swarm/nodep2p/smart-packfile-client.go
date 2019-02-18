@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libgit2/git2go"
 	peer "github.com/libp2p/go-libp2p-peer"
 	"github.com/pkg/errors"
-    "github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -51,7 +51,7 @@ type PackfileData struct {
 var ErrFetchingFromPeer = errors.New("fetching from peer")
 
 func NewSmartPackfileClient(node INode, repoID string, repoPath string, config *config.Config) *SmartPackfileClient {
-    // Intentionally ignore error: when freshly cloning, the repo will not be found, causing an error.
+	// Intentionally ignore error: when freshly cloning, the repo will not be found, causing an error.
 	r, _ := node.RepoAtPathOrID(repoPath, repoID)
 
 	sc := &SmartPackfileClient{

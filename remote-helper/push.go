@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
-    "github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/util"
 )
@@ -28,15 +28,15 @@ func push(srcRefName string, destRefName string) error {
 		return err
 	}
 
-    srcRef, err := Repo.References.Lookup(srcRefName)
-    if err != nil {
-        return err
-    }
+	srcRef, err := Repo.References.Lookup(srcRefName)
+	if err != nil {
+		return err
+	}
 
-    srcRef, err = srcRef.Resolve()
-    if err != nil {
-        return err
-    }
+	srcRef, err = srcRef.Resolve()
+	if err != nil {
+		return err
+	}
 
 	commitHash := srcRef.Target().String()
 

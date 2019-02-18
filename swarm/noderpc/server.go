@@ -249,7 +249,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 
 	err = server.Send(&pb.CloneRepoResponsePacket{
 		Payload: &pb.CloneRepoResponsePacket_Success_{&pb.CloneRepoResponsePacket_Success{
-			Path: r.Path,
+			Path: r.Path(),
 		}},
 	})
 	if err != nil {
@@ -345,7 +345,7 @@ func (s *Server) GetLocalRepos(req *pb.GetLocalReposRequest, server pb.NodeRPC_G
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		err = server.Send(&pb.GetLocalReposResponsePacket{RepoID: repoID, Path: r.Path})
+		err = server.Send(&pb.GetLocalReposResponsePacket{RepoID: repoID, Path: r.Path()})
 		return errors.WithStack(err)
 	})
 }
@@ -517,7 +517,7 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	for commit != nil {
 		commitHash := commit.Id().String()
 
-		files, err := nodegit.GetFilesForCommit(ctx, r.Path, commitHash)
+		files, err := nodegit.GetFilesForCommit(ctx, r.Path(), commitHash)
 		if err != nil {
 			return nil, err
 		}

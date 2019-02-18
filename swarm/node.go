@@ -25,7 +25,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p-protocol"
 	ma "github.com/multiformats/go-multiaddr"
 
-    "github.com/libgit2/git2go"
+	"github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
@@ -205,7 +205,7 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 				continue
 			}
 
-			ch := nodegit.PullRepo(ctx, r.Path)
+			ch := nodegit.PullRepo(ctx, r.Path())
 			for progress := range ch {
 				// don't care about progress on periodic requests
 				if progress.Error != nil {

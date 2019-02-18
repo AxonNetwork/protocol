@@ -42,7 +42,7 @@ require (
 	github.com/jbenet/goprocess v0.0.0-20160826012719-b497e2f366b8 // indirect
 	github.com/kardianos/osext v0.0.0-20170510131534-ae77be60afb1 // indirect
 	github.com/kkdai/bstream v0.0.0-20181106074824-b3251f7901ec // indirect
-	github.com/libgit2/git2go v0.0.0-20190104134018-ecaeb7a21d47
+	github.com/libgit2/git2go v0.0.0-20190215132637-bf1e8a433882
 	github.com/libp2p/go-addr-util v2.0.7+incompatible // indirect
 	github.com/libp2p/go-buffer-pool v0.1.1 // indirect
 	github.com/libp2p/go-conn-security v0.1.15 // indirect
@@ -115,6 +115,4 @@ require (
 	github.com/whyrusleeping/yamux v1.1.2 // indirect
 	golang.org/x/net v0.0.0-20181207154023-610586996380
 	google.golang.org/grpc v1.17.0
-	gopkg.in/libgit2/git2go.v26 v26.0.0-20190104134959-c9f7fd544d39 // indirect
-	gopkg.in/src-d/go-git.v4 v4.8.1
 )
