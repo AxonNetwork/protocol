@@ -551,31 +551,30 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
 }
 
-func (s *Server) GetRefLogs(ctx context.Context, req *pb.GetRefLogsRequest) (*pb.GetRefLogsResponse, error) {
+func (s *Server) GetUpdatedRefEvents(ctx context.Context, req *pb.GetUpdatedRefEventsRequest) (*pb.GetUpdatedRefEventsResponse, error) {
 	repoIDs := []string{req.RepoID}
 	var end *uint64
 	if req.EndBlock > 0 {
 		end = &req.EndBlock
 	}
 
-	reflogs, err := s.node.GetRefLogs(ctx, repoIDs, req.StartBlock, end)
+	evts, err := s.node.GetUpdatedRefEvents(ctx, repoIDs, req.StartBlock, end)
 	if err != nil {
 		return nil, err
 	}
 
-	logResp := make([]*pb.RefLog, len(reflogs))
-	for i, reflog := range reflogs {
-		logResp[i] = &pb.RefLog{
-			Commit:      reflog.Commit,
-			RefHash:     reflog.RefHash,
+	evtResp := make([]*pb.UpdatedRefEvent, len(evts))
+	for i, evt := range evts {
+		evtResp[i] = &pb.UpdatedRefEvent{
+			Commit:      evt.Commit,
 			RepoID:      req.RepoID,
-			TxHash:      reflog.TxHash,
-			Time:        reflog.Time,
-			BlockNumber: reflog.BlockNumber,
+			TxHash:      evt.TxHash,
+			Time:        evt.Time,
+			BlockNumber: evt.BlockNumber,
 		}
 	}
 
-	return &pb.GetRefLogsResponse{RefLogs: logResp}, nil
+	return &pb.GetUpdatedRefEventsResponse{Events: evtResp}, nil
 }
 
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
@@ -810,7 +809,7 @@ func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) erro
 
 		case evt.AddedRepoEvent != nil:
 			err = server.Send(&pb.WatchResponse{
-				Payload: &pb.WatchResponse_AddedRepo_{&pb.WatchResponse_AddedRepo{
+				Payload: &pb.WatchResponse_AddedRepoEvent_{&pb.WatchResponse_AddedRepoEvent{
 					RepoID:   evt.AddedRepoEvent.RepoID,
 					RepoRoot: evt.AddedRepoEvent.RepoRoot,
 				}},
@@ -818,7 +817,7 @@ func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) erro
 
 		case evt.PulledRepoEvent != nil:
 			err = server.Send(&pb.WatchResponse{
-				Payload: &pb.WatchResponse_PulledRepo_{&pb.WatchResponse_PulledRepo{
+				Payload: &pb.WatchResponse_PulledRepoEvent_{&pb.WatchResponse_PulledRepoEvent{
 					RepoID:   evt.PulledRepoEvent.RepoID,
 					RepoRoot: evt.PulledRepoEvent.RepoRoot,
 					NewHEAD:  evt.PulledRepoEvent.NewHEAD,
@@ -827,15 +826,12 @@ func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) erro
 
 		case evt.UpdatedRefEvent != nil:
 			err = server.Send(&pb.WatchResponse{
-				Payload: &pb.WatchResponse_UpdatedRef_{&pb.WatchResponse_UpdatedRef{
-					RefLog: &pb.RefLog{
-						Commit:      evt.UpdatedRefEvent.RefLog.Commit,
-						RefHash:     evt.UpdatedRefEvent.RefLog.RefHash,
-						RepoID:      evt.UpdatedRefEvent.RefLog.RepoID,
-						TxHash:      evt.UpdatedRefEvent.RefLog.TxHash,
-						Time:        evt.UpdatedRefEvent.RefLog.Time,
-						BlockNumber: evt.UpdatedRefEvent.RefLog.BlockNumber,
-					},
+				Payload: &pb.WatchResponse_UpdatedRefEvent_{&pb.WatchResponse_UpdatedRefEvent{
+					Commit:      evt.UpdatedRefEvent.Commit,
+					RepoID:      evt.UpdatedRefEvent.RepoID,
+					TxHash:      evt.UpdatedRefEvent.TxHash,
+					Time:        evt.UpdatedRefEvent.Time,
+					BlockNumber: evt.UpdatedRefEvent.BlockNumber,
 				}},
 			})
 

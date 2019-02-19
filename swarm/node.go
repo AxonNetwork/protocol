@@ -516,12 +516,8 @@ func (n *Node) GetRepoUsers(ctx context.Context, repoID string, userType nodeeth
 	return n.eth.GetRepoUsers(ctx, repoID, userType, pageSize, page)
 }
 
-func (n *Node) WatchRefLogs(ctx context.Context, repoIDs []string, start uint64) *nodeeth.RefLogWatcher {
-	return n.eth.WatchRefLogs(ctx, repoIDs, start)
-}
-
-func (n *Node) GetRefLogs(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]nodeeth.RefLog, error) {
-	return n.eth.GetRefLogs(ctx, repoIDs, start, end)
+func (n *Node) GetUpdatedRefEvents(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]nodeeth.UpdatedRefEvent, error) {
+	return n.eth.GetUpdatedRefEvents(ctx, repoIDs, start, end)
 }
 
 func (n *Node) SignHash(data []byte) ([]byte, error) {
@@ -553,8 +549,8 @@ func (n *Node) Watch(ctx context.Context, settings *WatcherSettings) *Watcher {
 
 	if w.IsWatching(UpdatedRef) {
 		repoIDs := n.repoManager.RepoIDList()
-		rw := n.WatchRefLogs(ctx, repoIDs, settings.UpdatedRefStart)
-		go w.AddRefLogWatcher(rw)
+		rw := n.eth.WatchUpdatedRefEvents(ctx, repoIDs, settings.UpdatedRefStart)
+		go w.AddUpdatedRefEventWatcher(rw)
 	}
 
 	return w

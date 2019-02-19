@@ -11,12 +11,12 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-type MaybeRefLog struct {
-	Log   RefLog
+type MaybeUpdatedRefEvent struct {
+	Event UpdatedRefEvent
 	Error error
 }
 
-type RefLog struct {
+type UpdatedRefEvent struct {
 	Commit      string
 	RefHash     string
 	RepoIDHash  common.Hash
@@ -26,32 +26,31 @@ type RefLog struct {
 	BlockNumber uint64
 }
 
-type RefLogWatcher struct {
-	Ch       chan MaybeRefLog
+type UpdatedRefEventWatcher struct {
+	Ch       chan MaybeUpdatedRefEvent
 	repoIDs  []string
 	repoIDCh chan string
 }
 
-func (rw *RefLogWatcher) AddRepo(repoID string) {
+func (rw *UpdatedRefEventWatcher) AddRepo(repoID string) {
 	rw.repoIDCh <- repoID
 }
 
-func (rw *RefLogWatcher) Close() {
+func (rw *UpdatedRefEventWatcher) Close() {
 	close(rw.Ch)
 	close(rw.repoIDCh)
 }
 
-func (n *Client) WatchRefLogs(ctx context.Context, repoIDs []string, start uint64) *RefLogWatcher {
+func (n *Client) WatchUpdatedRefEvents(ctx context.Context, repoIDs []string, start uint64) *UpdatedRefEventWatcher {
 	cursor := start
 	logsTimer := time.NewTicker(5 * time.Second)
 
-	rw := &RefLogWatcher{
-		Ch:       make(chan MaybeRefLog),
+	rw := &UpdatedRefEventWatcher{
+		Ch:       make(chan MaybeUpdatedRefEvent),
 		repoIDs:  repoIDs,
 		repoIDCh: make(chan string),
 	}
 
-	// get logs
 	go func() {
 		defer rw.Close()
 
@@ -62,17 +61,17 @@ func (n *Client) WatchRefLogs(ctx context.Context, repoIDs []string, start uint6
 		}
 
 		for {
-			logs, err := n.GetRefLogs(ctx, rw.repoIDs, cursor, nil)
+			evts, err := n.GetUpdatedRefEvents(ctx, rw.repoIDs, cursor, nil)
 			if err != nil {
-				rw.Ch <- MaybeRefLog{Error: err}
+				rw.Ch <- MaybeUpdatedRefEvent{Error: err}
 				return
 			}
 
-			for _, reflog := range logs {
-				hashStr := string(reflog.RepoIDHash[:])
-				reflog.RepoID = repoIDByHash[hashStr]
-				rw.Ch <- MaybeRefLog{Log: reflog}
-				cursor = reflog.BlockNumber + 1
+			for _, evt := range evts {
+				hashStr := string(evt.RepoIDHash[:])
+				evt.RepoID = repoIDByHash[hashStr]
+				rw.Ch <- MaybeUpdatedRefEvent{Event: evt}
+				cursor = evt.BlockNumber + 1
 			}
 
 			select {
@@ -90,7 +89,7 @@ func (n *Client) WatchRefLogs(ctx context.Context, repoIDs []string, start uint6
 	return rw
 }
 
-func (n *Client) GetRefLogs(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]RefLog, error) {
+func (n *Client) GetUpdatedRefEvents(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]UpdatedRefEvent, error) {
 	opts := &bind.FilterOpts{
 		Context: ctx,
 		Start:   start,
@@ -100,19 +99,18 @@ func (n *Client) GetRefLogs(ctx context.Context, repoIDs []string, start uint64,
 
 	iter, err := n.protocolContract.ProtocolFilterer.FilterLogUpdateRef(opts, users, repoIDs, refs)
 	if err != nil {
-		return []RefLog{}, err
+		return []UpdatedRefEvent{}, err
 	}
 
-	logs := make([]RefLog, 0)
+	evts := make([]UpdatedRefEvent, 0)
 	for iter.Next() {
 		blockNumber := iter.Event.Raw.BlockNumber
 		block, err := n.ethClient.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
 		if err != nil {
-			return []RefLog{}, err
+			return []UpdatedRefEvent{}, err
 		}
 
-		// logs[iter.Event.CommitHash] = block.Time().Uint64()
-		reflog := RefLog{
+		evt := UpdatedRefEvent{
 			Commit:      iter.Event.CommitHash,
 			RefHash:     hex.EncodeToString(iter.Event.RefName[:]),
 			RepoIDHash:  iter.Event.RepoID,
@@ -121,8 +119,8 @@ func (n *Client) GetRefLogs(ctx context.Context, repoIDs []string, start uint64,
 			BlockNumber: blockNumber,
 		}
 
-		logs = append(logs, reflog)
+		evts = append(evts, evt)
 	}
 
-	return logs, nil
+	return evts, nil
 }

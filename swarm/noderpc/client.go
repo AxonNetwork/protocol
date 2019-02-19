@@ -270,10 +270,10 @@ func (c *Client) SetUserPermissions(ctx context.Context, repoID string, username
 }
 
 type MaybeEvent struct {
-	AddedRepo  *pb.WatchResponse_AddedRepo
-	PulledRepo *pb.WatchResponse_PulledRepo
-	UpdatedRef *pb.WatchResponse_UpdatedRef
-	Error      error
+	AddedRepoEvent  *pb.WatchResponse_AddedRepoEvent
+	PulledRepoEvent *pb.WatchResponse_PulledRepoEvent
+	UpdatedRefEvent *pb.WatchResponse_UpdatedRefEvent
+	Error           error
 }
 
 func (c *Client) Watch(ctx context.Context, settings *swarm.WatcherSettings) (chan MaybeEvent, error) {
@@ -302,21 +302,21 @@ func (c *Client) Watch(ctx context.Context, settings *swarm.WatcherSettings) (ch
 				return
 			}
 
-			addedEvt := evt.GetAddedRepo()
+			addedEvt := evt.GetAddedRepoEvent()
 			if addedEvt != nil {
-				ch <- MaybeEvent{AddedRepo: addedEvt}
+				ch <- MaybeEvent{AddedRepoEvent: addedEvt}
 				continue
 			}
 
-			pulledEvt := evt.GetPulledRepo()
+			pulledEvt := evt.GetPulledRepoEvent()
 			if pulledEvt != nil {
-				ch <- MaybeEvent{PulledRepo: pulledEvt}
+				ch <- MaybeEvent{PulledRepoEvent: pulledEvt}
 				continue
 			}
 
-			refEvt := evt.GetUpdatedRef()
+			refEvt := evt.GetUpdatedRefEvent()
 			if refEvt != nil {
-				ch <- MaybeEvent{UpdatedRef: refEvt}
+				ch <- MaybeEvent{UpdatedRefEvent: refEvt}
 				continue
 			}
 

@@ -25,7 +25,7 @@ type MaybeEvent struct {
 	EventType       EventType
 	AddedRepoEvent  *AddedRepoEvent
 	PulledRepoEvent *PulledRepoEvent
-	UpdatedRefEvent *UpdatedRefEvent
+	UpdatedRefEvent *nodeeth.UpdatedRefEvent
 	Error           error
 }
 
@@ -40,10 +40,6 @@ type PulledRepoEvent struct {
 	NewHEAD  string
 }
 
-type UpdatedRefEvent struct {
-	RefLog nodeeth.RefLog
-}
-
 type WatcherSettings struct {
 	EventTypes      []EventType
 	UpdatedRefStart uint64
@@ -52,7 +48,7 @@ type WatcherSettings struct {
 type Watcher struct {
 	EventTypes []EventType
 	EventCh    chan MaybeEvent
-	refWatcher *nodeeth.RefLogWatcher
+	refWatcher *nodeeth.UpdatedRefEventWatcher
 }
 
 func NewWatcher(ctx context.Context, settings *WatcherSettings) *Watcher {
@@ -84,18 +80,16 @@ func (w *Watcher) Close() {
 	close(w.EventCh)
 }
 
-func (w *Watcher) AddRefLogWatcher(rw *nodeeth.RefLogWatcher) {
+func (w *Watcher) AddUpdatedRefEventWatcher(rw *nodeeth.UpdatedRefEventWatcher) {
 	w.refWatcher = rw
-	for maybeLog := range rw.Ch {
-		if maybeLog.Error != nil {
-			w.EventCh <- MaybeEvent{Error: maybeLog.Error}
+	for maybeEvt := range rw.Ch {
+		if maybeEvt.Error != nil {
+			w.EventCh <- MaybeEvent{Error: maybeEvt.Error}
 			return
 		}
 		w.EventCh <- MaybeEvent{
-			EventType: UpdatedRef,
-			UpdatedRefEvent: &UpdatedRefEvent{
-				RefLog: maybeLog.Log,
-			},
+			EventType:       UpdatedRef,
+			UpdatedRefEvent: &maybeEvt.Event,
 		}
 	}
 }

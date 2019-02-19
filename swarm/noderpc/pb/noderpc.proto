@@ -31,7 +31,7 @@ service NodeRPC {
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
 
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
-  rpc GetRefLogs(GetRefLogsRequest) returns (GetRefLogsResponse) {}
+  rpc GetUpdatedRefEvents(GetUpdatedRefEventsRequest) returns (GetUpdatedRefEventsResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
   rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
@@ -283,23 +283,22 @@ message GetRepoHistoryResponse {
     repeated Commit commits = 1;
 }
 
-message GetRefLogsRequest {
+message GetUpdatedRefEventsRequest {
     string repoID = 1;
     uint64 startBlock = 2;
     uint64 endBlock = 3;
 }
 
-message RefLog {
+message UpdatedRefEvent {
     string commit = 1;
-    string refHash = 2;
-    string repoID = 3;
-    string txHash = 4;
-    uint64 time = 5;
-    uint64 blockNumber = 6;
+    string repoID = 2;
+    string txHash = 3;
+    uint64 time = 4;
+    uint64 blockNumber = 5;
 }
 
-message GetRefLogsResponse {
-    repeated RefLog refLogs = 1;
+message GetUpdatedRefEventsResponse {
+    repeated UpdatedRefEvent events = 1;
 }
 
 message GetRepoFilesRequest {
@@ -394,26 +393,29 @@ message WatchRequest {
 }
 
 message WatchResponse {
-    uint64 eventType = 1;
 
-    message AddedRepo {
+    message AddedRepoEvent {
         string repoID = 1;
         string repoRoot = 2;
     }
 
-    message PulledRepo {
+    message PulledRepoEvent {
         string repoID = 1;
         string repoRoot = 2;
         string newHEAD = 3;
     }
 
-    message UpdatedRef {
-        RefLog refLog = 1;
+    message UpdatedRefEvent {
+        string commit = 1;
+        string repoID = 2;
+        string txHash = 3;
+        uint64 time = 4;
+        uint64 blockNumber = 5;
     }
 
     oneof payload {
-        AddedRepo addedRepo = 2;
-        PulledRepo pulledRepo = 3;
-        UpdatedRef updatedRef = 4;
+        AddedRepoEvent addedRepoEvent = 1;
+        PulledRepoEvent pulledRepoEvent = 2;
+        UpdatedRefEvent updatedRefEvent = 3;
     }
 }
