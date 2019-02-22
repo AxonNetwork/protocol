@@ -5,7 +5,12 @@
     "cpu": 1024,
     "memory": 1024,
     "entryPoint": [],
-    "environment": [{ "name" : "${name}", "value" : "${value}" }],
+    "environment": [
+        { "name": "${name}", "value": "${value}" },
+        { "name": "BUGSNAG_ENABLED", "value": "1" },
+        { "name": "BUGSNAG_API_KEY", "value": "${bugsnag_api_key}" },
+        { "name": "RELEASE_STAGE", "value": "prod" }
+    ],
     "networkMode": "awsvpc",
     "portMappings": [
       {

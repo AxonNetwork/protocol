@@ -2,6 +2,8 @@ resource "aws_ecs_cluster" "main" {
   name = "${var.resource_tag}"
 }
 
+variable BUGSNAG_API_KEY {}
+
 data "template_file" "task_definition" {
   template = "${file("${path.module}/templates/task-definition.json")}"
 
@@ -14,6 +16,9 @@ data "template_file" "task_definition" {
     container_rpc_port  = "${element(split(",", var.container_rpc_port), count.index)}"
     container_http_port = "${element(split(",", var.container_http_port), count.index)}"
     # alb              = "${aws_alb.main.dns_name}"
+
+    bugsnag_api_key     = "${var.BUGSNAG_API_KEY}"
+
     name                = "${var.env_key}"
     value               = "${var.env_value}"
   }

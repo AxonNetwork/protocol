@@ -1,5 +1,12 @@
-# Specify the provider and access details
+
+variable AWS_ACCESS_KEY {}
+variable AWS_SECRET_KEY {}
+variable AWS_REGION {}
+
 provider "aws" {
-  region = "${var.aws_region}"
-  profile = "${var.profile}"
+  access_key = "${var.AWS_ACCESS_KEY}"
+  secret_key = "${var.AWS_SECRET_KEY}"
+  region     = "${var.AWS_REGION}"
 }
+
+

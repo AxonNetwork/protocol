@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/brynbellomy/debugcharts"
@@ -167,6 +169,11 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		Refs   []RefMapping
 	}
 
+	type EnvVar struct {
+		Name  string
+		Value string
+	}
+
 	type State struct {
 		Username             string
 		EthAddress           string
@@ -174,9 +181,11 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		RPCListenAddr        string
 		Addrs                []string
 		Peers                []Peer
+		PeersConnected       int
 		LocalRepos           []RepoInfo
 		ReplicateRepos       []string
 		Logs                 []logger.Entry
+		Env                  []EnvVar
 		GlobalConnStats      struct {
 			TotalIn  string
 			TotalOut string
@@ -216,6 +225,8 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			}
 			state.Peers = append(state.Peers, p)
 		}
+
+		state.PeersConnected = len(s.node.Conns())
 
 		err := s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
@@ -288,6 +299,11 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 		state.Logs = logger.GetLogs()
 
+		for _, x := range os.Environ() {
+			parts := strings.Split(x, "=")
+			state.Env = append(state.Env, EnvVar{parts[0], parts[1]})
+		}
+
 		stats := s.node.GetBandwidthTotals()
 		state.GlobalConnStats.TotalIn = util.HumanizeBytes(float64(stats.TotalIn))
 		state.GlobalConnStats.TotalOut = util.HumanizeBytes(float64(stats.TotalOut))
@@ -345,6 +361,15 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
 
             section.section-peers ul li form {
                 display: inline;
+            }
+
+            section.section-environment ul li {
+                word-break: break-all;
+            }
+
+            section.section-environment ul li .value {
+                color: #9c9c9c;
+                font-size: 0.9em;
             }
 
             .log.error {
@@ -415,7 +440,7 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             </div>
             <br />
 
-            <label>Peers:</label>
+            <label>Peers ({{ .PeersConnected }} connected)</label>
             <ul>
                 {{ range .Peers }}
                     <li>
@@ -488,11 +513,20 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             </ul>
         </section>
 
+        <section class="section-environment">
+            <label>Environment</label>
+            <ul>
+                {{ range .Env }}
+                    <li>{{ .Name }} <span class="equals">=</span> <span class="value">{{ .Value }}</span></li>
+                {{ end }}
+            </ul>
+        </section>
+
         <section class="section-logs">
-            <div>Debug <input type="checkbox" data-level="debug" value="on" checked /></div>
-            <div>Info  <input type="checkbox" data-level="info"  value="on" checked /></div>
-            <div>Warn  <input type="checkbox" data-level="warn"  value="on" checked /></div>
-            <div>Error <input type="checkbox" data-level="error" value="on" checked /></div>
+            <div>Debug <input type="checkbox" data-level="debug"   value="on" checked /></div>
+            <div>Info  <input type="checkbox" data-level="info"    value="on" checked /></div>
+            <div>Warn  <input type="checkbox" data-level="warning" value="on" checked /></div>
+            <div>Error <input type="checkbox" data-level="error"   value="on" checked /></div>
             <label>Logs:</label>
             <ul></ul>
         </section>

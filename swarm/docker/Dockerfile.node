@@ -1,53 +1,28 @@
-FROM golang:1.11
+FROM ubuntu
 
-# Install gx packages prior to doing anything else so that
-# we almost never have to repeat this build step
-# RUN go get -u github.com/whyrusleeping/gx
-# RUN go get -u github.com/whyrusleeping/gx-go
-# COPY package.json /protocol/package.json
-WORKDIR /protocol
-# RUN gx install
+WORKDIR /
 
 # Install dumb-init
-RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64
+# RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64
+COPY dumb-init /usr/local/bin/
 RUN chmod +x /usr/local/bin/dumb-init
 
-# Install regular packages
-# RUN go get github.com/sirupsen/logrus
-# RUN go get github.com/BurntSushi/toml
-# RUN go get github.com/mitchellh/go-homedir
-# RUN go get github.com/pkg/errors
-# RUN go get github.com/ethereum/go-ethereum
-# RUN go get github.com/tyler-smith/go-bip39
-# RUN go get github.com/lunixbochs/struc
-# RUN go get github.com/btcsuite/btcd
-# RUN go get github.com/btcsuite/btcutil
-# RUN go get gopkg.in/src-d/go-git.v4
-# RUN go get github.com/urfave/cli
-# RUN go get github.com/aclements/go-rabin/rabin
-# RUN go get github.com/dustin/go-humanize
-# RUN go get github.com/golang/protobuf/proto
-# RUN go get golang.org/x/net/context
-# RUN go get google.golang.org/grpc
-# RUN go get github.com/brynbellomy/debugcharts
-# RUN go get github.com/Shopify/logrus-bugsnag
-# RUN go get github.com/bugsnag/bugsnag-go
+# Copy in the node binary
+COPY conscience-node /usr/local/bin/
 
-# Build all of the binaries with the Makefile
-COPY . /protocol
-WORKDIR /protocol
-RUN go mod download
-RUN ./make.sh -n
-RUN cp ./build/native/* /usr/local/bin
+# # Build the node binary
+# COPY . /protocol
+# WORKDIR /protocol
+# RUN go mod download
+# RUN ./make.sh --libgit -n
+# RUN cp ./build/native/conscience-node /usr/local/bin
+
 RUN ln -s /mnt/.consciencerc $HOME/.consciencerc
 
 # Expose ports
 EXPOSE 1337
 EXPOSE 1338
 EXPOSE 8081
-
-# Copy config files
-# COPY swarm/docker/consciencerc /mnt/.consciencerc
 
 ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
 CMD ["/usr/local/bin/conscience-node"]
