@@ -64,8 +64,14 @@ func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, err
 
 	defaultPath := filepath.Join(rm.config.Node.ReplicationRoot, repoID)
 
-	r, err := repo.EnsureExists(defaultPath)
-	if err != nil {
+	r, err := repo.Open(defaultPath)
+	if errors.Cause(err) == repo.Err404 {
+		r, err = repo.Init(&repo.InitOptions{RepoID: repoID, RepoRoot: defaultPath})
+		if err != nil {
+			return nil, err
+		}
+
+	} else if err != nil {
 		return nil, err
 	}
 

@@ -65,25 +65,28 @@ function build_native {
     # cd -
 }
 
-function build_libgit2 {
+function checkout_libgit2 {
     local GIT2GO_PATH="vendor/github.com/libgit2/git2go"
 
     [[ -d $(GIT2GO_PATH) ]] ||
         mkdir -p vendor/github.com/libgit2 &&
-        cd vendor/github.com/libgit2 &&
+        pushd vendor/github.com/libgit2 &&
         git clone https://github.com/Conscience/git2go &&
-        cd git2go &&
+        pushd git2go &&
         git checkout 81a759a2593aeb28b7bb07439da9796489bfe3bb &&
         # git remote add lhchavez https://github.com/lhchavez/git2go &&
         # git fetch --all &&
         # git cherry-pick 122ccfadea1e219c819adf1e62534f0b869d82a3 &&
         touch go.mod &&
         git submodule update --init &&
+        popd && popd
+}
 
-        cd vendor/libgit2 &&
+function build_libgit2 {
+        pushd vendor/github.com/libgit2/git2go/vendor/libgit2 &&
         mkdir -p install/lib &&
         mkdir -p build &&
-        cd build &&
+        pushd build &&
 
         cmake -DTHREADSAFE=ON \
           -DBUILD_CLAR=OFF \
@@ -96,7 +99,8 @@ function build_libgit2 {
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
           -DCMAKE_INSTALL_PREFIX=../install \
           .. && \
-        cmake --build .
+        cmake --build . &&
+        popd && popd
 }
 
 [[ -n $libgit ]] && build_libgit2

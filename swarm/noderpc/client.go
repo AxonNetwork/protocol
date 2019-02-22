@@ -2,6 +2,7 @@ package noderpc
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/pkg/errors"
@@ -191,12 +192,16 @@ func (c *Client) GetAllRemoteRefs(ctx context.Context, repoID string) (map[strin
 	refMap := make(map[string]wire.Ref)
 
 	for {
+		fmt.Println("~~~~~ rpcclient.GetAllRemoteRefs page:", page, "numRefs:", numRefs)
+
 		var refs map[string]wire.Ref
 		refs, numRefs, err = c.GetRemoteRefs(ctx, repoID, REF_PAGE_SIZE, page)
 		if err != nil {
+			fmt.Println("~~~~~ rpcclient.GetAllRemoteRefs error:", err)
 			return nil, errors.WithStack(err)
 		}
 
+		fmt.Println("~~~~~ rpcclient.GetAllRemoteRefs refs:", refs)
 		for _, ref := range refs {
 			refMap[ref.RefName] = ref
 		}

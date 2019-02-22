@@ -19,9 +19,8 @@ require (
 	github.com/coreos/go-semver v0.2.0 // indirect
 	github.com/deckarep/golang-set v1.7.1 // indirect
 	github.com/dustin/go-humanize v1.0.0
-	github.com/ethereum/go-ethereum v1.8.19
+	github.com/ethereum/go-ethereum v1.8.23
 	github.com/fd/go-nat v1.0.0 // indirect
-	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gofrs/uuid v3.1.0+incompatible // indirect
 	github.com/gogo/protobuf v1.1.1 // indirect
 	github.com/golang/lint v0.0.0-20180702182130-06c8688daad7 // indirect
@@ -113,6 +112,7 @@ require (
 	github.com/whyrusleeping/mafmt v1.2.8 // indirect
 	github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7 // indirect
 	github.com/whyrusleeping/yamux v1.1.2 // indirect
+	golang.org/x/crypto v0.0.0-20190219172222-a4c6cb3142f2 // indirect
 	golang.org/x/net v0.0.0-20181207154023-610586996380
 	google.golang.org/grpc v1.17.0
 )

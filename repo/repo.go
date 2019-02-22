@@ -3,11 +3,11 @@ package repo
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
@@ -30,27 +30,38 @@ var (
 	Err404 = errors.New("not found")
 )
 
-func EnsureExists(path string) (*Repo, error) {
-	r, err := Open(path)
-	if err == nil {
-		return r, nil
-	} else if errors.Cause(err) != Err404 {
+type InitOptions struct {
+	RepoID    string
+	RepoRoot  string
+	UserName  string
+	UserEmail string
+}
+
+func Init(opts *InitOptions) (*Repo, error) {
+	cRepo, err := git.InitRepository(opts.RepoRoot, false)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not initialize repo at path '%v'", opts.RepoRoot)
+	}
+
+	r := &Repo{Repository: cRepo}
+
+	err = r.SetupConfig(opts.RepoID)
+	if err != nil {
 		return nil, err
 	}
-	return Init(path)
-}
 
-func Init(path string) (*Repo, error) {
-	gitRepo, err := git.InitRepository(path, false)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not initialize repo at path '%v'", path)
+	if opts.UserName != "" {
+		err = r.AddUserToConfig(opts.UserName, opts.UserEmail)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return &Repo{Repository: gitRepo}, nil
+	return r, nil
 }
 
-func Open(path string) (*Repo, error) {
-	gitRepo, err := git.OpenRepository(path)
+func Open(repoRoot string) (*Repo, error) {
+	gitRepo, err := git.OpenRepository(repoRoot)
 	if err != nil && strings.Contains(err.Error(), "failed to resolve path") {
 		return nil, errors.WithStack(Err404)
 	} else if err != nil {
@@ -62,7 +73,6 @@ func Open(path string) (*Repo, error) {
 
 func (r *Repo) Path() string {
 	p := strings.Replace(r.Repository.Path(), "/.git/", "", -1)
-	fmt.Println("PATH PATH PATH", p)
 	return p
 }
 
@@ -330,21 +340,111 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 	return nil
 }
 
+func (r *Repo) ConscienceRemote() (*git.Remote, error) {
+	remoteNames, err := r.Remotes.List()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	for i := range remoteNames {
+		remote, err := r.Remotes.Lookup(remoteNames[i])
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
+		url := remote.Url()
+		if url[0:len("conscience://")] == "conscience://" {
+			return remote, nil
+		}
+	}
+	return nil, errors.Wrapf(Err404, "could not find conscience:// remote")
+}
+
+type CommitOptions struct {
+	Pathspecs []string
+	Message   string
+}
+
+func (r *Repo) CommitCurrentWorkdir(opts *CommitOptions) (*git.Oid, error) {
+	cfg, err := r.Config()
+	if err != nil {
+		return nil, err
+	}
+
+	userName, err := cfg.LookupString("user.name")
+	if err != nil {
+		return nil, err
+	}
+
+	userEmail, err := cfg.LookupString("user.email")
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		author    = &git.Signature{Name: userName, Email: userEmail, When: time.Now()}
+		committer = &git.Signature{Name: userName, Email: userEmail, When: time.Now()}
+	)
+
+	idx, err := r.Index()
+	if err != nil {
+		return nil, err
+	}
+
+	err = idx.AddAll(opts.Pathspecs, git.IndexAddDefault, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	err = idx.Write()
+	if err != nil {
+		return nil, err
+	}
+
+	treeOid, err := idx.WriteTree()
+	if err != nil {
+		return nil, err
+	}
+
+	tree, err := r.LookupTree(treeOid)
+	if err != nil {
+		return nil, err
+	}
+
+	headRef, err := r.Head()
+	if err != nil {
+		return nil, err
+	}
+
+	headRef, err = headRef.Resolve()
+	if err != nil {
+		return nil, err
+	}
+
+	headCommit, err := r.LookupCommit(headRef.Target())
+	if err != nil {
+		return nil, err
+	}
+
+	return r.CreateCommit("HEAD", author, committer, opts.Message, tree, headCommit)
+}
+
 type PackfileWriter interface {
 	io.Writer
-	Commit() (*git.Oid, error)
+	Commit() error
 	Free()
 }
 
-// @@TODO: try implementing https://github.com/libgit2/git2go/pull/416
 func (r *Repo) PackfileWriter() (PackfileWriter, error) {
 	odb, err := r.Odb()
 	if err != nil {
 		return nil, err
 	}
 
-	return git.NewIndexer(filepath.Join(r.Path(), ".git", "objects", "pack"), odb, func(stats git.TransferProgress) git.ErrorCode {
-		fmt.Printf("stats = %+v\n", stats)
+	// return git.NewIndexer(filepath.Join(r.Path(), ".git", "objects", "pack"), odb, func(stats git.TransferProgress) git.ErrorCode {
+	// 	return git.ErrOk
+	// })
+	return odb.NewWritePack(func(stats git.TransferProgress) git.ErrorCode {
 		return git.ErrOk
 	})
 }
@@ -631,9 +731,11 @@ func pipeDiff(diff *git.Diff) io.Reader {
 
 			patchStr, err := patch.String()
 			if err != nil {
+				patch.Free()
 				err = errors.WithStack(err)
 				return
 			}
+			patch.Free()
 
 			_, err = pw.Write([]byte(patchStr))
 			if err != nil {

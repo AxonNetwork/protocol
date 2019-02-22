@@ -6,7 +6,6 @@ import (
 	netp2p "github.com/libp2p/go-libp2p-net"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/nodegit"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -61,55 +60,81 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 	log.Debugf("[replication server] repoID: %v", req.RepoID)
 
 	// Ensure that the repo has been whitelisted for replication.
-	whitelisted := false
-	cfg := s.node.GetConfig()
-	for _, repo := range cfg.Node.ReplicateRepos {
-		if repo == req.RepoID {
-			whitelisted = true
-			break
+	{
+		whitelisted := false
+		cfg := s.node.GetConfig()
+		for _, repo := range cfg.Node.ReplicateRepos {
+			if repo == req.RepoID {
+				whitelisted = true
+				break
+			}
+		}
+
+		if !whitelisted {
+			err = WriteStructPacket(stream, &Progress{ErrorMsg: "not a whitelisted repo"})
+			if err != nil {
+				log.Errorf("[replication server] error: %v", err)
+			}
+			return
 		}
 	}
 
-	if !whitelisted {
-		err = WriteStructPacket(stream, &ReplicationProgress{Error: "not a whitelisted repo"})
+	// Perform the fetch
+	{
+		r := s.node.Repo(req.RepoID)
+		if r == nil {
+			log.Errorf("[replication server] don't have this repo locally")
+			return
+		}
+
+		// @@TODO: give context a timeout and make it configurable
+		_, err := FetchConscienceRemote(context.TODO(), &FetchOptions{
+			Repo: r,
+			ProgressCb: func(current, total uint64) error {
+				err := WriteStructPacket(stream, &Progress{Current: current, Total: total})
+				if err != nil {
+					log.Errorf("[replication server] error: %v", err)
+					return err
+				}
+				return nil
+			},
+		})
 		if err != nil {
-			log.Errorf("[replication server] error: %v", err)
-		}
-		return
-	}
-
-	repo := s.node.Repo(req.RepoID)
-	if repo == nil {
-		log.Errorf("[replication server] don't have this repo locally")
-		return
-	}
-
-	// @@TODO: give context a timeout and make it configurable
-	ctx := context.Background()
-	ch := nodegit.PullRepo(ctx, repo.Path())
-
-	for progress := range ch {
-		if progress.Error != nil {
-			log.Errorf("[replication server] error: %v", progress.Error)
-
-			err = WriteStructPacket(stream, &ReplicationProgress{Error: progress.Error.Error()})
+			log.Errorf("[replication server] error fetching conscience:// remote for repo %v: %v", req.RepoID, err)
+			err = WriteStructPacket(stream, &Progress{ErrorMsg: err.Error()})
 			if err != nil {
 				log.Errorf("[replication server] error: %v", err)
 				return
 			}
 			return
 		}
-		err = WriteStructPacket(stream, &ReplicationProgress{
-			Fetched: progress.Fetched,
-			ToFetch: progress.ToFetch,
-		})
-		if err != nil {
-			log.Errorf("[replication server] error: %v", err)
-			return
-		}
 	}
 
-	err = WriteStructPacket(stream, &ReplicationProgress{Done: true})
+	// ctx := context.TODO()
+	// ch := repo.Pull(ctx)
+
+	// for progress := range ch {
+	// 	if progress.Error != nil {
+	// 		log.Errorf("[replication server] error: %v", progress.Error)
+
+	// 		err = WriteStructPacket(stream, &ReplicationProgress{Error: progress.Error.Error()})
+	// 		if err != nil {
+	// 			log.Errorf("[replication server] error: %v", err)
+	// 			return
+	// 		}
+	// 		return
+	// 	}
+	// 	err = WriteStructPacket(stream, &ReplicationProgress{
+	// 		Fetched: progress.Fetched,
+	// 		ToFetch: progress.ToFetch,
+	// 	})
+	// 	if err != nil {
+	// 		log.Errorf("[replication server] error: %v", err)
+	// 		return
+	// 	}
+	// }
+
+	err = WriteStructPacket(stream, &Progress{Done: true})
 	if err != nil {
 		log.Errorf("[replication server] error: %v", err)
 		return

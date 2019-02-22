@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -17,7 +16,7 @@ import (
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
-	"github.com/Conscience/protocol/swarm/nodegit"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/util"
 )
@@ -98,13 +97,16 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 	if tx != nil {
 		log.Printf("[rpc] create repo tx sent: %s", tx.Hash().Hex())
+
 		txResult := <-tx.Await(ctx)
 		if txResult.Err != nil {
 			return nil, errors.WithStack(txResult.Err)
 		}
+
 		log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
 	}
 
+	// Ping other nodes in the swarm to ask them to replicate this repo
 	err = s.node.RequestBecomeReplicator(ctx, req.RepoID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -118,23 +120,20 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 
 	// Open or create the git repo
 	r, err := repo.Open(path)
-	if err != nil {
-		r, err = repo.Init(path)
+	if errors.Cause(err) == repo.Err404 {
+		r, err = repo.Init(&repo.InitOptions{
+			RepoID:    req.RepoID,
+			RepoRoot:  path,
+			UserName:  req.Name,
+			UserEmail: req.Email,
+		})
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
+	} else if err != nil {
+		return nil, errors.WithStack(err)
 	}
 	defer r.Free()
-
-	// Setup the Conscience plugins, etc.
-	err = r.SetupConfig(req.RepoID)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	err = r.AddUserToConfig(req.Name, req.Email)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
 
 	// Have the node track the local repo
 	_, err = s.node.RepoManager().TrackRepo(path, true)
@@ -145,11 +144,16 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	// if local HEAD exists, push to contract
 	_, err = r.Head()
 	if err == nil {
-		err = util.ExecAndScanStdout(ctx, []string{"git", "push", "origin", "master"}, req.Path, func(line string) error {
-			return nil
+		err = nodep2p.Push(ctx, &nodep2p.PushOptions{
+			Node:       s.node,
+			Repo:       r,
+			BranchName: "master", // @@TODO: don't hard code this
+			ProgressCb: func(percent int) {
+				// @@TODO: stream progress over RPC
+			},
 		})
 		if err != nil {
-			return nil, errors.WithStack(err)
+			return nil, err
 		}
 	}
 
@@ -157,27 +161,27 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 }
 
 func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoRequest) (*pb.CheckpointRepoResponse, error) {
-	err := util.ExecAndScanStdout(ctx, []string{"git", "add", "."}, req.Path, func(line string) error {
-		log.Debugln("[checkpoint]  -", line)
-		return nil
+	r := s.node.RepoManager().RepoAtPath(req.Path)
+	if r == nil {
+		return nil, errors.WithStack(repo.Err404)
+	}
+
+	_, err := r.CommitCurrentWorkdir(&repo.CommitOptions{
+		Pathspecs: []string{"."},
+		Message:   req.Message,
 	})
 	if err != nil {
 		log.Errorln("[checkpoint]  - error:", err)
 		return nil, errors.WithStack(err)
 	}
 
-	err = util.ExecAndScanStdout(ctx, []string{"git", "commit", "-m", req.Message}, req.Path, func(line string) error {
-		log.Debugln("[checkpoint]  -", line)
-		return nil
-	})
-	if err != nil {
-		log.Errorln("[checkpoint]  - error:", err)
-		return nil, errors.WithStack(err)
-	}
-
-	err = util.ExecAndScanStdout(ctx, []string{"git", "push", "origin", "master"}, req.Path, func(line string) error {
-		log.Debugln("[checkpoint]  -", line)
-		return nil
+	err = nodep2p.Push(ctx, &nodep2p.PushOptions{
+		Node:       s.node,
+		Repo:       r,
+		BranchName: "master", // @@TODO: don't hard code this
+		ProgressCb: func(percent int) {
+			// @@TODO: stream progress over RPC
+		},
 	})
 	if err != nil {
 		log.Errorln("[checkpoint]  - error:", err)
@@ -188,20 +192,26 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 }
 
 func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoServer) error {
-	// @@TODO: give context a timeout and make it configurable
-	ch := nodegit.PullRepo(context.TODO(), req.Path)
+	r := s.node.RepoManager().RepoAtPath(req.Path)
+	if r == nil {
+		return errors.Errorf("repo at path '%v' not found", req.Path)
+	}
 
-	for progress := range ch {
-		if progress.Error != nil {
-			return errors.WithStack(progress.Error)
-		}
-		err := server.Send(&pb.PullRepoResponsePacket{
-			ToFetch: progress.ToFetch,
-			Fetched: progress.Fetched,
-		})
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	// @@TODO: don't hardcode origin/master
+	err := nodep2p.Pull(context.TODO(), &nodep2p.PullOptions{
+		Remote: "origin",
+		Branch: "master",
+		ProgressCb: func(done, total uint64) error {
+
+			return server.Send(&pb.PullRepoResponsePacket{
+				ToFetch: int64(done),
+				Fetched: int64(total),
+			})
+
+		},
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -212,37 +222,23 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 		repoRoot = s.node.Config.Node.ReplicationRoot
 	}
 
-	ch := nodegit.CloneRepo(context.TODO(), repoRoot, req.RepoID)
+	r, err := nodep2p.Clone(context.TODO(), &nodep2p.CloneOptions{
+		RepoID:    req.RepoID,
+		RepoRoot:  repoRoot,
+		Bare:      false, // @@TODO
+		UserName:  req.Name,
+		UserEmail: req.Email,
+		ProgressCb: func(done, total uint64) error {
 
-	for progress := range ch {
-		if progress.Error != nil {
-			return errors.WithStack(progress.Error)
-		}
+			return server.Send(&pb.CloneRepoResponsePacket{
+				Payload: &pb.CloneRepoResponsePacket_Progress_{&pb.CloneRepoResponsePacket_Progress{
+					Fetched: int64(done),
+					ToFetch: int64(total),
+				}},
+			})
 
-		err := server.Send(&pb.CloneRepoResponsePacket{
-			Payload: &pb.CloneRepoResponsePacket_Progress_{&pb.CloneRepoResponsePacket_Progress{
-				ToFetch: progress.ToFetch,
-				Fetched: progress.Fetched,
-			}},
-		})
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	}
-
-	repoFolder := req.RepoID
-	if strings.Contains(repoFolder, "/") {
-		parts := strings.Split(repoFolder, "/")
-		repoFolder = parts[len(parts)-1]
-	}
-
-	r, err := repo.Open(filepath.Join(repoRoot, repoFolder))
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	defer r.Free()
-
-	err = r.AddUserToConfig(req.Name, req.Email)
+		},
+	})
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -404,6 +400,7 @@ func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) 
 func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest) (*pb.GetRemoteRefsResponse, error) {
 	refMap, total, err := s.node.GetRemoteRefs(ctx, req.RepoID, req.PageSize, req.Page)
 	if err != nil {
+		log.Errorln("[rpc server] error fetching remote refs:", err)
 		return nil, err
 	}
 
@@ -497,43 +494,56 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return nil, err
 	}
 
-	// if HEAD does not exist, return empty commit list
-	head, err := r.Head()
-	if err != nil {
-		return &pb.GetRepoHistoryResponse{Commits: []*pb.Commit{}}, nil
-	}
-
 	logs, err := s.node.GetRefLogs(ctx, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
 
-	commit, err := r.LookupCommit(head.Target())
+	const branchName = "master" // @@TODO: add this field to the RPC request
+
+	branch, err := r.LookupBranch(branchName, git.BranchLocal)
 	if err != nil {
 		return nil, err
 	}
 
-	commits := []*pb.Commit{}
-	for commit != nil {
+	walker, err := r.Walk()
+	if err != nil {
+		return nil, err
+	}
+
+	walker.Sorting(git.SortTopological | git.SortTime | git.SortReverse)
+
+	err = walker.Push(branch.Target())
+	if err != nil {
+		return nil, err
+	}
+
+	var innerErr error
+	var commits []*pb.Commit
+	err = walker.Iterate(func(commit *git.Commit) bool {
 		commitHash := commit.Id().String()
-
-		files, err := nodegit.GetFilesForCommit(ctx, r.Path(), commitHash)
-		if err != nil {
-			return nil, err
-		}
-
 		author := commit.Author()
+
+		// files, innerErr := nodep2p.GetFilesForCommit(ctx, r.Path(), commitHash)
+		// if innerErr != nil {
+		// 	commit.Free()
+		// 	return false
+		// }
 
 		commits = append(commits, &pb.Commit{
 			CommitHash: commitHash,
 			Author:     author.Name + " <" + author.Email + ">", // @@TODO: break this up into .Name and .Email fields
 			Message:    commit.Message(),
 			Timestamp:  uint64(author.When.Unix()),
-			Files:      files,
+			Files:      nil, //files,
 			Verified:   logs[commitHash],
 		})
-
-		commit = commit.Parent(0) // @@TODO: hard-coding '0' probably isn't going to work
+		return true
+	})
+	if err != nil {
+		return nil, err
+	} else if innerErr != nil {
+		return nil, innerErr
 	}
 
 	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
@@ -694,18 +704,15 @@ func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObject
 func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer) error {
 	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
 	if err != nil {
-		log.Warnln("11111")
 		return err
 	}
 
 	if len(req.CommitHash) != 20 && req.CommitRef == "" {
-		log.Warnln("22222")
 		return errors.New("need commitHash or commitRef")
 	}
 
 	diffReader, err := r.GetDiff(context.TODO(), repo.CommitID{Hash: util.OidFromBytes(req.CommitHash), Ref: req.CommitRef})
 	if err != nil {
-		log.Warnln("33333")
 		return err
 	}
 
@@ -717,20 +724,17 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 		} else if err == io.ErrUnexpectedEOF {
 			data = data[:n]
 		} else if err != nil {
-			log.Warnln("44444")
 			return err
 		}
 
 		err = server.Send(&pb.GetDiffResponse{Data: data})
 		if err != nil {
-			log.Warnln("55555")
 			return errors.WithStack(err)
 		}
 	}
 
 	err = server.Send(&pb.GetDiffResponse{End: true})
 	if err != nil {
-		log.Warnln("66666")
 		return errors.WithStack(err)
 	}
 	return nil

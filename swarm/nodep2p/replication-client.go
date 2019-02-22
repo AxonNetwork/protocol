@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bugsnag/bugsnag-go/errors"
 	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
 	. "github.com/Conscience/protocol/swarm/wire"
@@ -56,8 +56,8 @@ type MaybeReplProgress struct {
 }
 
 type MaybePeerProgress struct {
-	Fetched int64
-	ToFetch int64
+	Current uint64
+	Total   uint64
 	Error   error
 	Done    bool
 }
@@ -81,7 +81,7 @@ func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Mayb
 
 	chProviders := n.FindProvidersAsync(ctxTimeout, c, 8)
 
-	peerChs := make(map[peer.ID](chan MaybePeerProgress))
+	peerChs := make(map[peer.ID]chan MaybePeerProgress)
 	for provider := range chProviders {
 		if provider.ID == n.ID() {
 			continue
@@ -120,18 +120,26 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 	}
 
 	for {
-		resp := ReplicationProgress{}
+		select {
+		case <-ctx.Done():
+			peerCh <- MaybePeerProgress{Error: ctx.Err()}
+			return
+		default:
+		}
+
+		resp := Progress{}
 		err = ReadStructPacket(stream, &resp)
 		if err != nil {
 			return
 		}
-		if resp.Error != "" {
-			err = errors.Errorf(resp.Error)
+
+		if resp.ErrorMsg != "" {
+			err = errors.New(resp.ErrorMsg)
 		}
 
 		peerCh <- MaybePeerProgress{
-			Fetched: resp.Fetched,
-			ToFetch: resp.ToFetch,
+			Current: resp.Current,
+			Total:   resp.Total,
 			Done:    resp.Done,
 			Error:   err,
 		}
@@ -178,8 +186,8 @@ func combinePeerChs(peerChs map[peer.ID]chan MaybePeerProgress, progressCh chan 
 					return
 				}
 				percent := 0
-				if progress.ToFetch > 0 {
-					percent = int(100 * progress.Fetched / progress.ToFetch)
+				if progress.Total > 0 {
+					percent = int(100 * progress.Current / progress.Total)
 				}
 				chPercent <- percent
 			}

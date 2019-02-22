@@ -23,6 +23,7 @@ import (
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/logger"
 	"github.com/Conscience/protocol/swarm/nodehttp"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/noderpc"
 )
 
@@ -309,6 +310,33 @@ var replCommands = map[string]struct {
 			}
 
 			log.Printf("set username tx resolved: %v", tx.Hash().Hex())
+			return nil
+		},
+	},
+
+	"clone": {
+		"clone a repo",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			repoID := args[0]
+			repoRoot := args[1]
+
+			_, err := nodep2p.Clone(context.TODO(), &nodep2p.CloneOptions{
+				RepoID:    repoID,
+				RepoRoot:  repoRoot,
+				Bare:      false,
+				UserName:  "bryn",
+				UserEmail: "bryn@hi.com",
+				ProgressCb: func(done, total uint64) error {
+					log.Warnln("progress", done, total)
+					return nil
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			log.Infoln("done.")
+
 			return nil
 		},
 	},

@@ -31,8 +31,8 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
-	"github.com/Conscience/protocol/swarm/nodegit"
 	"github.com/Conscience/protocol/swarm/nodep2p"
+	"github.com/Conscience/protocol/swarm/nodep2p/gittransport"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
@@ -104,6 +104,11 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		bandwidthCounter: bandwidthCounter,
 	}
 
+	err = gittransport.Register(n)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not register conscience:// git transport")
+	}
+
 	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
 	go n.periodicallyRequestContent(ctx)  // Start a goroutine for pulling content from repos we are replicating
 
@@ -118,7 +123,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		for _, peeraddr := range cfg.Node.BootstrapPeers {
 			err = n.AddPeer(ctx, peeraddr)
 			if err != nil {
-				log.Errorf("[node] could not reach boostrap peer %v", peeraddr)
+				log.Errorf("[node] could not reach boostrap peer %v: %v", peeraddr, err)
 			}
 		}
 	}()
@@ -205,12 +210,9 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 				continue
 			}
 
-			ch := nodegit.PullRepo(ctx, r.Path())
-			for progress := range ch {
-				// don't care about progress on periodic requests
-				if progress.Error != nil {
-					log.Errorf("[content request] error pulling repo (%v): %v", repoID, progress.Error)
-				}
+			_, err = nodep2p.FetchConscienceRemote(context.TODO(), &nodep2p.FetchOptions{Repo: r})
+			if err != nil {
+				log.Errorf("[content request] error fetching conscience://%v remote: %v", repoID, err)
 			}
 		}
 	}
@@ -246,7 +248,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 				return err
 			}
 
-			err = n.announceRepo(ctx, repoID)
+			err = n.AnnounceRepo(ctx, repoID)
 			if err != nil {
 				return err
 			}
@@ -269,7 +271,7 @@ func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 		return errors.Errorf("repo '%v' not found", repoID)
 	}
 
-	err := n.announceRepo(ctx, repoID)
+	err := n.AnnounceRepo(ctx, repoID)
 	if err != nil {
 		return err
 	}
@@ -278,7 +280,7 @@ func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
 }
 
 // Announce to the swarm that this Node can provide objects from the given repository.
-func (n *Node) announceRepo(ctx context.Context, repoID string) error {
+func (n *Node) AnnounceRepo(ctx context.Context, repoID string) error {
 	c, err := util.CidForString(repoID)
 	if err != nil {
 		return err
@@ -465,6 +467,37 @@ func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
 
 func (n *Node) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]Ref, uint64, error) {
 	return n.eth.GetRefs(ctx, repoID, pageSize, page)
+}
+
+func (n *Node) ForEachRemoteRef(ctx context.Context, repoID string, fn func(Ref) (bool, error)) error {
+	var page uint64
+	var scanned uint64
+	var total uint64
+	var err error
+	var refmap map[string]Ref
+
+	for {
+		refmap, total, err = n.GetRemoteRefs(ctx, repoID, 10, page)
+		if err != nil {
+			return err
+		}
+
+		for _, ref := range refmap {
+			proceed, err := fn(ref)
+			if err != nil {
+				return err
+			} else if !proceed {
+				return nil
+			}
+			scanned++
+		}
+
+		if scanned >= total {
+			break
+		}
+		page++
+	}
+	return nil
 }
 
 func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*nodeeth.Transaction, error) {
