@@ -6,9 +6,6 @@ import (
 	"os"
 	"time"
 
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
-
 	"github.com/Conscience/protocol/repo"
 	. "github.com/Conscience/protocol/swarm/wire"
 )

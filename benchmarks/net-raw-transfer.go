@@ -1,18 +1,30 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"time"
 )
 
-const PAYLOAD_SIZE = 1024 * 1024 * 1024
+var megabytes = flag.Int("mb", 10, "megabytes to transfer")
+var shouldWrite = flag.Bool("write", false, "write instead of read")
+
+// const PAYLOAD_SIZE = 1024 * 1024 * 1024
 
 func main() {
+	flag.Parse()
+
 	var server bool
-	if len(os.Args) == 1 {
+	if len(flag.Args()) == 0 {
 		server = true
+	}
+
+	var operation func(net.Conn) = read
+	if *shouldWrite {
+		operation = write
 	}
 
 	if server {
@@ -29,40 +41,47 @@ func main() {
 				fmt.Println("[server] connection error:", err)
 				continue
 			}
-			go handleConnection(conn)
+			fmt.Printf("client connected: %v\n", conn.RemoteAddr())
+
+			stopwatch(func() { operation(conn) })
 		}
 
 	} else {
-		conn, err := net.Dial("tcp4", os.Args[1])
+		conn, err := net.Dial("tcp4", flag.Args()[0])
 		if err != nil {
 			panic(err)
 		}
 		defer conn.Close()
+		fmt.Println("connected")
 
-		f, err := os.Open("/dev/urandom")
-		if err != nil {
-			panic(err)
-		}
-		defer f.Close()
-
-		r := io.LimitReader(f, PAYLOAD_SIZE)
-
-		n, err := io.Copy(conn, r)
-		if err != nil && err != io.EOF {
-			panic(err)
-		} else if err == io.EOF {
-		}
-		fmt.Printf("[client] sent %v bytes\n", n)
-		fmt.Println("[client] done")
+		stopwatch(func() { operation(conn) })
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func write(conn net.Conn) {
 	defer conn.Close()
 
-	fmt.Printf("[server] client connected: %v\n", conn.RemoteAddr())
+	f, err := os.Open("/dev/urandom")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
 
-	data := make([]byte, PAYLOAD_SIZE)
+	r := io.LimitReader(f, int64((*megabytes)*1024*1024))
+
+	n, err := io.Copy(conn, r)
+	if err != nil && err != io.EOF {
+		panic(err)
+	} else if err == io.EOF {
+	}
+	fmt.Printf("sent %v bytes\n", n)
+	fmt.Println("done")
+}
+
+func read(conn net.Conn) {
+	defer conn.Close()
+
+	data := make([]byte, (*megabytes)*1024*1024)
 	var total int
 	for {
 		n, err := io.ReadFull(conn, data)
@@ -78,4 +97,11 @@ func handleConnection(conn net.Conn) {
 	}
 
 	fmt.Printf("[server] read %v bytes\n", total)
+}
+
+func stopwatch(fn func()) {
+	start := time.Now()
+	fn()
+	duration := time.Now().Sub(start)
+	fmt.Println("took", duration.Seconds(), "seconds")
 }
