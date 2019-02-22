@@ -24,10 +24,14 @@ yum update
 yum update -y ecs-init
 
 # Use this command if you want to support EBS as well as EFS
-#docker plugin install --alias cloudstor:aws --grantall-permissions docker4x/cloudstor:18.03.0-ce-aws1 CLOUD_PLATFORM=AWS EFS_ID_REGULAR=<YOUR_EFS_ID> EFS_ID_MAXIO=<YOUR_MAXIO_EFS_ID> AWS_REGION=<REGION_NAME EFS_SUPPORTED=1 DEBUG=1
+# docker plugin install --alias cloudstor:aws --grantall-permissions docker4x/cloudstor:18.03.0-ce-aws1 CLOUD_PLATFORM=AWS EFS_ID_REGULAR=<YOUR_EFS_ID> EFS_ID_MAXIO=<YOUR_MAXIO_EFS_ID> AWS_REGION=<REGION_NAME EFS_SUPPORTED=1 DEBUG=1
 
 # Use this command if you only want to support EBS
-docker plugin install --alias cloudstor:aws --grant-all-permissions docker4x/cloudstor:18.03.0-ce-aws1 CLOUD_PLATFORM=AWS AWS_REGION=${aws_region} EFS_SUPPORTED=0 DEBUG=1
+# docker plugin install --alias cloudstor:aws --grant-all-permissions docker4x/cloudstor:18.03.0-ce-aws1 CLOUD_PLATFORM=AWS AWS_REGION=${aws_region} EFS_SUPPORTED=0 DEBUG=1
+
+# Use this command if you're trying to use EBS along with the new `t3` class of instances, which Cloudstor currently doesn't support.
+# (see https://github.com/docker/for-aws/issues/157)
+docker plugin install rexray/ebs REXRAY_PREEMPT=true EBS_REGION=${aws_region} --grant-all-permissions
 
 mkdir /dev/mqueue
 

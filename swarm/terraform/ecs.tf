@@ -32,24 +32,18 @@ resource "aws_ecs_task_definition" "td" {
 
   volume {
     name = "ebs"
-    # host_path = "/mnt/ebs/${element(split(",", var.container_name), count.index)}-{{.Service.Name}}-{{.Task.Slot}}-vol"
 
     docker_volume_configuration {
       scope = "shared"
       autoprovision = true
-      driver = "cloudstor:aws"
+      # driver = "cloudstor:aws"
+      driver = "rexray/ebs"
 
       driver_opts {
         size = "10"
         backing = "relocatable"
         ebstype = "gp2"
       }
-      # "driverOpts": {
-      # "key": "value"
-      # },
-      # "labels": {
-      # "key": "value"
-      # }
     }
   }
 

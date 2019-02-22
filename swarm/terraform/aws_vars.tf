@@ -32,7 +32,7 @@ variable "profile" {
 }
 
 variable "instance_type" {
-  default     = "t2.medium"
+  default     = "t3.medium"
   description = "AWS EC2 instance type behind this ECS cluster"
 }
 

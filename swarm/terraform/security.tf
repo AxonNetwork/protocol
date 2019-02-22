@@ -78,6 +78,15 @@ resource "aws_security_group" "ec2_sg" {
     self      = true
   }
 
+  ingress {
+    protocol  = "tcp"
+    from_port = 9991
+    to_port   = 9991
+    cidr_blocks = [
+      "0.0.0.0/0",
+    ]
+  }
+
   # ingress {
   #   protocol  = "tcp"
   #   from_port = 1337
