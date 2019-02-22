@@ -13,3 +13,9 @@ eth/truffle.js
 *.swp
 .consciencerc
 .envrc
+
+# binaries
+swarm/cmd/cmd
+benchmarks/net-raw-transfer
+benchmarks/p2p-raw-transfer
+benchmarks/create-manifest
