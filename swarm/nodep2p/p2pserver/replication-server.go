@@ -1,4 +1,4 @@
-package nodep2p
+package p2pserver
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	netp2p "github.com/libp2p/go-libp2p-net"
 
 	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -88,7 +89,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		}
 
 		// @@TODO: give context a timeout and make it configurable
-		_, err := FetchConscienceRemote(context.TODO(), &FetchOptions{
+		_, err := nodep2p.FetchConscienceRemote(context.TODO(), &nodep2p.FetchOptions{
 			Repo: r,
 			ProgressCb: func(current, total uint64) error {
 				err := WriteStructPacket(stream, &Progress{Current: current, Total: total})
@@ -109,30 +110,6 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 			return
 		}
 	}
-
-	// ctx := context.TODO()
-	// ch := repo.Pull(ctx)
-
-	// for progress := range ch {
-	// 	if progress.Error != nil {
-	// 		log.Errorf("[replication server] error: %v", progress.Error)
-
-	// 		err = WriteStructPacket(stream, &ReplicationProgress{Error: progress.Error.Error()})
-	// 		if err != nil {
-	// 			log.Errorf("[replication server] error: %v", err)
-	// 			return
-	// 		}
-	// 		return
-	// 	}
-	// 	err = WriteStructPacket(stream, &ReplicationProgress{
-	// 		Fetched: progress.Fetched,
-	// 		ToFetch: progress.ToFetch,
-	// 	})
-	// 	if err != nil {
-	// 		log.Errorf("[replication server] error: %v", err)
-	// 		return
-	// 	}
-	// }
 
 	err = WriteStructPacket(stream, &Progress{Done: true})
 	if err != nil {

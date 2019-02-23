@@ -56,27 +56,29 @@ func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name 
 type MaybeFetchFromCommitPacket struct {
 	PackfileHeader *pb.FetchFromCommitResponse_PackfileHeader
 	PackfileData   *pb.FetchFromCommitResponse_PackfileData
+	Chunk          *pb.FetchFromCommitResponse_Chunk
 	Error          error
 }
 
-func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit git.Oid) (chan MaybeFetchFromCommitPacket, int64, error) {
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit git.Oid, checkoutType wire.CheckoutType) (chan MaybeFetchFromCommitPacket, int64, int64, error) {
 	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
-		RepoID: repoID,
-		Path:   path,
-		Commit: commit[:],
+		RepoID:       repoID,
+		Path:         path,
+		Commit:       commit[:],
+		CheckoutType: uint64(checkoutType),
 	})
 	if err != nil {
-		return nil, 0, errors.WithStack(err)
+		return nil, 0, 0, errors.WithStack(err)
 	}
 
 	pkt, err := fetchFromCommitClient.Recv()
 	if err != nil {
-		return nil, 0, errors.WithStack(err)
+		return nil, 0, 0, errors.WithStack(err)
 	}
 
 	header := pkt.GetHeader()
 	if header == nil {
-		return nil, 0, errors.New("[rpc client] FetchFromCommit: first response packet was not a Header")
+		return nil, 0, 0, errors.New("[rpc client] FetchFromCommit: first response packet was not a Header")
 	}
 
 	ch := make(chan MaybeFetchFromCommitPacket)
@@ -103,12 +105,52 @@ func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string
 				continue
 			}
 
+			chunkPkt := x.GetChunk()
+			if chunkPkt != nil {
+				ch <- MaybeFetchFromCommitPacket{Chunk: chunkPkt}
+				continue
+			}
+
 			ch <- MaybeFetchFromCommitPacket{Error: errors.New("[rpc client] expected PackfileData or PackfileHeader packet, got Header packet")}
 			return
 		}
 	}()
 
-	return ch, header.UncompressedSize, nil
+	return ch, header.UncompressedSize, header.TotalChunks, nil
+}
+
+type MaybeFetchChunksResponse struct {
+	Chunk *pb.FetchChunksResponse
+	Error error
+}
+
+func (c *Client) FetchChunks(ctx context.Context, repoID string, path string, chunks [][]byte) (<-chan MaybeFetchChunksResponse, error) {
+	fetchChunksClient, err := c.client.FetchChunks(ctx, &pb.FetchChunksRequest{
+		RepoID: repoID,
+		Path:   path,
+		Chunks: chunks,
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	ch := make(chan MaybeFetchChunksResponse)
+	go func() {
+		defer close(ch)
+		for {
+			pkt, err := fetchChunksClient.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				ch <- MaybeFetchChunksResponse{Error: errors.WithStack(err)}
+				return
+			}
+
+			ch <- MaybeFetchChunksResponse{Chunk: pkt}
+		}
+	}()
+
+	return ch, nil
 }
 
 func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {

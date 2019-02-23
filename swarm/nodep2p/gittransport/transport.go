@@ -3,8 +3,8 @@ package gittransport
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/libgit2/git2go"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodep2p"
+	"github.com/Conscience/protocol/swarm/nodep2p/p2pclient"
 	"github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -25,7 +25,7 @@ type ConscienceTransport struct {
 }
 
 type INode interface {
-	FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64)
+	FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType wire.CheckoutType) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64, int64)
 	ForEachRemoteRef(ctx context.Context, repoID string, fn func(wire.Ref) (bool, error)) error
 }
 
@@ -125,7 +125,7 @@ func (t *ConscienceTransport) fetchFromCommit(repoID string, r *repo.Repo, commi
 	}
 
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize := t.node.FetchFromCommit(context.TODO(), repoID, r.Path(), *commitHash)
+	ch, uncompressedSize, totalChunks := t.node.FetchFromCommit(context.TODO(), repoID, r.Path(), *commitHash, wire.Working)
 	if err != nil {
 		return err
 	}
@@ -139,18 +139,21 @@ func (t *ConscienceTransport) fetchFromCommit(repoID string, r *repo.Repo, commi
 		written          int64
 	}
 
-	packfiles := make(map[string]*PackfileDownload)
-	var written int64
+	var (
+		packfiles     = make(map[string]*PackfileDownload)
+		chunks        = make(map[string]*os.File)
+		written       int64
+		chunksWritten int64
+	)
 
 	for pkt := range ch {
-		var packfileID string
 
 		switch {
 		case pkt.Error != nil:
 			return pkt.Error
 
 		case pkt.PackfileHeader != nil:
-			packfileID = hex.EncodeToString(pkt.PackfileHeader.PackfileID)
+			packfileID := hex.EncodeToString(pkt.PackfileHeader.PackfileID)
 
 			if _, exists := packfiles[packfileID]; !exists {
 				pw, err := r.PackfileWriter()
@@ -168,7 +171,7 @@ func (t *ConscienceTransport) fetchFromCommit(repoID string, r *repo.Repo, commi
 			}
 
 		case pkt.PackfileData != nil:
-			packfileID = hex.EncodeToString(pkt.PackfileData.PackfileID)
+			packfileID := hex.EncodeToString(pkt.PackfileData.PackfileID)
 
 			if pkt.PackfileData.End {
 				err := packfiles[packfileID].Commit()
@@ -196,68 +199,54 @@ func (t *ConscienceTransport) fetchFromCommit(repoID string, r *repo.Repo, commi
 				written += int64(n)
 			}
 
+		case pkt.Chunk != nil:
+			objectID := hex.EncodeToString(pkt.Chunk.ObjectID)
+
+			if pkt.Chunk.End {
+				err = chunks[objectID].Close()
+				if err != nil {
+					return errors.WithStack(err)
+				}
+
+				chunksWritten++
+				chunks[objectID] = nil
+
+			} else {
+				f := chunks[objectID]
+				if f == nil {
+					dataDir := filepath.Join(r.Path(), ".git", repo.CONSCIENCE_DATA_SUBDIR)
+					err := os.MkdirAll(dataDir, 0777)
+					if err != nil {
+						return errors.WithStack(err)
+					}
+
+					f, err = os.Create(filepath.Join(dataDir, objectID))
+					if err != nil {
+						return errors.WithStack(err)
+					}
+					chunks[objectID] = f
+				}
+
+				n, err := f.Write(pkt.Chunk.Data)
+				if err != nil {
+					f.Close()
+					return errors.WithStack(err)
+				} else if n != len(pkt.Chunk.Data) {
+					f.Close()
+					return errors.New("git transport: did not fully write chunk")
+				}
+
+				written += int64(n)
+			}
+
 		default:
 			log.Errorln("bad packet")
 		}
 
-		progressCb(git.TransferProgress{TotalObjects: uint(uncompressedSize), ReceivedObjects: uint(written), ReceivedBytes: uint(written)})
+		log.Infoln("@@TODO: gittransport totalChunks => totalChunkBytes", totalChunks)
 
-		// packfile := packfiles[packfileID]
-		// progressWriter.update(packfileID, packfile.written, packfile.uncompressedSize, written, uncompressedSize)
+		progressCb(git.TransferProgress{TotalObjects: uint(uncompressedSize), ReceivedObjects: uint(written), ReceivedBytes: uint(written)})
 	}
-	fmt.Fprint(os.Stderr, "\n")
 
 	return nil
 }
-
-// type progressWriter struct {
-// 	singleLineWriter *util.SingleLineWriter
-// 	multiLineWriter  *util.MultiLineWriter
-// 	lines            map[string]int
-// }
-
-// func newProgressWriter() *progressWriter {
-// 	return &progressWriter{
-// 		singleLineWriter: util.NewSingleLineWriter(os.Stderr),
-// 		multiLineWriter:  util.NewMultiLineWriter(os.Stderr),
-// 		lines:            map[string]int{},
-// 	}
-// }
-
-// func humanize(x int64) string {
-// 	return util.HumanizeBytes(float64(x))
-// }
-
-// func (pw *progressWriter) update(packfileID string, packfileWritten, packfileTotal int64, written, total int64) {
-// 	// if env.MachineOutputEnabled {
-// 	//  pw.singleLineWriter.Printf("Progress: %d/%d ", written, total)
-// 	// } else {
-// 	pw.multiLineWriter.Printf(0, "Total:      %v %v/%v = %.02f%%", getProgressBar(written, total), humanize(written), humanize(total), 100*(float64(written)/float64(total)))
-// 	if packfileWritten == packfileTotal {
-// 		pw.multiLineWriter.Printf(pw.lines[packfileID], "pack %v (%v) Done.", packfileID[:6], humanize(packfileTotal))
-// 	} else {
-// 		pw.multiLineWriter.Printf(pw.lines[packfileID], "pack %v %v %v/%v = %.02f%%", packfileID[:6], getProgressBar(packfileWritten, packfileTotal), humanize(packfileWritten), humanize(packfileTotal), 100*(float64(packfileWritten)/float64(packfileTotal)))
-// 	}
-// 	// }
-// }
-
-// func (pw *progressWriter) addDownload(packfileID string) {
-// 	pw.lines[packfileID] = len(pw.lines) + 2
-// }
-
-// func getProgressBar(done, total int64) string {
-// 	const barWidth = 39
-
-// 	percent := float64(done) / float64(total)
-// 	numDashes := int(math.Round(barWidth * percent))
-// 	numSpaces := int(math.Round(barWidth * (1 - percent)))
-
-// 	if numDashes+numSpaces > barWidth {
-// 		numSpaces--
-// 	}
-
-// 	dashes := strings.Repeat("=", numDashes)
-// 	spaces := strings.Repeat(" ", numSpaces)
-
-// 	return "[" + dashes + ">" + spaces + "]"
-// }

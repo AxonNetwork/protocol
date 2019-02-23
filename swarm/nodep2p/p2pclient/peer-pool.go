@@ -1,11 +1,14 @@
-package nodep2p
+package p2pclient
 
 import (
 	"context"
 
 	peer "github.com/libp2p/go-libp2p-peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
+	protocol "github.com/libp2p/go-libp2p-protocol"
 
+	"github.com/Conscience/protocol/log"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -17,7 +20,7 @@ type peerPool struct {
 	cancel      func()
 }
 
-func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns uint) (*peerPool, error) {
+func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint, protocol protocol.ID) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -36,6 +39,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	// When a message is sent on the `needNewPeer` channel, this goroutine attempts to take a peer
 	// from the `chProviders` channel, open a PeerConnection to it, and add it to the pool.
 	go func() {
+		defer close(p.peers)
 		for {
 			select {
 			case <-p.needNewPeer:
@@ -65,8 +69,20 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				// 	continue
 				// }
 
+				log.Infof("[peer pool] opening new peer connection")
 				peerConn = NewPeerConnection(node, peerID, repoID)
-				break
+				if protocol != nodep2p.NULL_PROTO {
+					err = peerConn.OpenStream(p.ctx, protocol)
+					if err != nil {
+						log.Debugf("[peer pool] error opening stream: ", err)
+					} else {
+						// if err then move onto the next peer
+						break
+					}
+				} else {
+					break
+				}
+
 			}
 
 			// p.peerList[peerConn.peerID] = peerConn
@@ -98,7 +114,12 @@ func (p *peerPool) Close() error {
 
 	p.needNewPeer = nil
 	p.chProviders = nil
-	p.peers = nil
+	go func() {
+		for x := range p.peers {
+			x.Close()
+		}
+		p.peers = nil
+	}()
 
 	return nil
 }
@@ -117,6 +138,8 @@ func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
 		// if _, exists := p.peerList[conn.peerID]; exists {
 		// 	delete(p.peerList, conn.peerID)
 		// }
+
+		conn.Close()
 
 		select {
 		case p.needNewPeer <- struct{}{}:

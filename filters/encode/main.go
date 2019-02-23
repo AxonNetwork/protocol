@@ -12,11 +12,23 @@ import (
 	"github.com/aclements/go-rabin/rabin"
 )
 
+const KB = 1024
+const MB = KB * KB
+const THRESHOLD = 8 * MB // 100kB
+const WINDOW_SIZE, MIN, AVG, MAX = KB, MB, 2 * MB, 4 * MB
+
 func main() {
-	const WINDOW_SIZE, MIN, AVG, MAX = 64, 512, 2048, 4096
+
+	if len(os.Args) < 2 || !shouldEncode(os.Args[1]) {
+		_, err := io.Copy(os.Stdout, os.Stdin)
+		check(err)
+		return
+	}
 
 	cwd, err := os.Getwd()
 	check(err)
+
+	os.Stdout.Write([]byte("CONSCIENCE_ENCODED\n"))
 
 	copy := new(bytes.Buffer)
 	reader := io.TeeReader(os.Stdin, copy)
@@ -49,6 +61,33 @@ func main() {
 
 		os.Stdout.Write([]byte(hexHash + "\n"))
 	}
+}
+
+func shouldEncode(filename string) bool {
+	return getFileSize(filename) >= THRESHOLD
+}
+
+// func shouldEncode(filename string) bool {
+// 	TO_ENCODE := map[string]bool{
+// 		".png": true,
+// 	}
+// 	ext := filepath.Ext(filename)
+// 	should, ok := TO_ENCODE[ext]
+// 	return should && ok
+// }
+
+func getFileSize(filename string) int64 {
+	cwd, err := os.Getwd()
+	check(err)
+
+	p := filepath.Join(cwd, filename)
+	f, err := os.Open(p)
+	check(err)
+	defer f.Close()
+
+	s, err := f.Stat()
+	check(err)
+	return s.Size()
 }
 
 func fileExists(path string) bool {

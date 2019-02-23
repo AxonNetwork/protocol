@@ -26,3 +26,8 @@ type INode interface {
 	GetConfig() config.Config
 	SetReplicationPolicy(repoID string, shouldReplicate bool) error
 }
+
+type MaybeReplProgress struct {
+	Percent int
+	Error   error
+}

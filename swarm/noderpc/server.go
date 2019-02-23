@@ -18,6 +18,7 @@ import (
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
+	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -257,11 +258,12 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize := s.node.FetchFromCommit(context.TODO(), req.RepoID, req.Path, *util.OidFromBytes(req.Commit))
+	ch, uncompressedSize, totalChunks := s.node.FetchFromCommit(context.TODO(), req.RepoID, req.Path, *util.OidFromBytes(req.Commit), wire.CheckoutType(req.CheckoutType))
 
 	err := server.Send(&pb.FetchFromCommitResponse{
 		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
 			UncompressedSize: uncompressedSize,
+			TotalChunks:      totalChunks,
 		}},
 	})
 	if err != nil {
@@ -295,8 +297,38 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 					End:        pkt.PackfileData.End,
 				}},
 			})
+
+		case pkt.Chunk != nil:
+			err = server.Send(&pb.FetchFromCommitResponse{
+				Payload: &pb.FetchFromCommitResponse_Chunk_{&pb.FetchFromCommitResponse_Chunk{
+					ObjectID: pkt.Chunk.ObjectID,
+					Data:     pkt.Chunk.Data,
+					End:      pkt.Chunk.End,
+				}},
+			})
+
 		}
 
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
+
+func (s *Server) FetchChunks(req *pb.FetchChunksRequest, server pb.NodeRPC_FetchChunksServer) error {
+	ch := s.node.FetchChunks(context.TODO(), req.RepoID, req.Path, req.Chunks)
+
+	for pkt := range ch {
+		if pkt.Error != nil {
+			return errors.WithStack(pkt.Error)
+		}
+
+		err := server.Send(&pb.FetchChunksResponse{
+			ObjectID: pkt.Chunk.ObjectID,
+			Data:     pkt.Chunk.Data,
+			End:      pkt.Chunk.End,
+		})
 		if err != nil {
 			return errors.WithStack(err)
 		}

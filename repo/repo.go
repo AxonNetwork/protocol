@@ -258,7 +258,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 
 	cleanFilter, err := cfg.LookupString("filter.conscience.clean")
 	if err != nil || cleanFilter != "conscience_encode" {
-		err = cfg.SetString("filter.conscience.clean", "conscience_encode")
+		err = cfg.SetString("filter.conscience.clean", "conscience_encode %f")
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -266,7 +266,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 
 	smudgeFilter, err := cfg.LookupString("filter.conscience.smudge")
 	if err != nil || smudgeFilter != "conscience_encode" {
-		err = cfg.SetString("filter.conscience.smudge", "conscience_decode")
+		err = cfg.SetString("filter.conscience.smudge", "conscience_decode %f")
 		if err != nil {
 			return errors.WithStack(err)
 		}
