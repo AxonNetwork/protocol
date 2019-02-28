@@ -500,8 +500,14 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 	}
 
 	from := repo.ZeroHash
+	toDecode := ""
 	if len(req.LastCommitFetched) > 0 {
-		hex, err := hex.DecodeString(req.LastCommitFetched)
+		toDecode = req.LastCommitFetched
+	} else if len(req.FromCommit) > 0 {
+		toDecode = req.FromCommit
+	}
+	if len(toDecode) > 0 {
+		hex, err := hex.DecodeString(toDecode)
 		if err != nil {
 			return nil, err
 		}
@@ -530,25 +536,37 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 			continue
 		}
 
-		files, err := nodegit.GetFilesForCommit(ctx, r.Path, commitHash)
-		if err != nil {
-			return nil, err
+		if req.OnlyHashes {
+			commits = append(commits, &pb.Commit{
+				CommitHash: commitHash,
+			})
+		} else {
+			files, err := nodegit.GetFilesForCommit(ctx, r.Path, commitHash)
+			if err != nil {
+				return nil, err
+			}
+
+			commits = append(commits, &pb.Commit{
+				CommitHash: commitHash,
+				Author:     commit.Author.String(),
+				Message:    commit.Message,
+				Files:      files,
+				Timestamp:  uint64(commit.Author.When.Unix()),
+			})
 		}
 
-		commits = append(commits, &pb.Commit{
-			CommitHash: commitHash,
-			Author:     commit.Author.String(),
-			Message:    commit.Message,
-			Files:      files,
-			Timestamp:  uint64(commit.Author.When.Unix()),
-		})
-
-		if len(commits) >= int(req.PageSize) || commitHash == req.ToCommit {
+		fullPage := req.PageSize > 0 && len(commits) >= int(req.PageSize)
+		if fullPage || commitHash == req.ToCommit {
 			break
 		}
 	}
+	_, err = cIter.Next()
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	isEnd := err == io.EOF
 
-	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
+	return &pb.GetRepoHistoryResponse{Commits: commits, IsEnd: isEnd}, nil
 }
 
 func (s *Server) GetUpdatedRefEvents(ctx context.Context, req *pb.GetUpdatedRefEventsRequest) (*pb.GetUpdatedRefEventsResponse, error) {

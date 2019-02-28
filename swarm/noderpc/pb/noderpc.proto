@@ -264,11 +264,18 @@ message SetUserPermissionsRequest {
 message SetUserPermissionsResponse {}
 
 message GetRepoHistoryRequest {
+    // need one or the other
     string repoID = 1;
     string path = 2;
+
+    // need one or the other
+    // if neither, defaults to HEAD
     string lastCommitFetched = 3;
-    string toCommit = 4;
-    uint64 pageSize = 5;
+    string fromCommit = 4;
+
+    string toCommit = 5;
+    uint64 pageSize = 6;
+    bool onlyHashes = 7;
 }
 
 message Commit {
@@ -281,6 +288,7 @@ message Commit {
 
 message GetRepoHistoryResponse {
     repeated Commit commits = 1;
+    bool isEnd = 2;
 }
 
 message GetUpdatedRefEventsRequest {
@@ -419,3 +427,4 @@ message WatchResponse {
         UpdatedRefEvent updatedRefEvent = 3;
     }
 }
+ 
