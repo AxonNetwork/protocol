@@ -2,20 +2,20 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
+
+	"github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/repo"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
-	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
-	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
 func main() {
@@ -34,7 +34,7 @@ func main() {
 	chunkObjects := []ManifestObject{}
 	var totalSize int64
 
-	stream := getManifestStream(r, head.Hash(), Full)
+	stream := getManifestStream(r, *head.Target(), CheckoutTypeFull)
 	for {
 		obj := ManifestObject{}
 		err = ReadStructPacket(stream, &obj)
@@ -60,152 +60,165 @@ func main() {
 	fmt.Println("chunkObjects =", len(chunkObjects))
 	fmt.Println("total size =", util.HumanizeBytes(float64(totalSize)))
 	fmt.Println("total time =", total)
+	runtime.KeepAlive(r)
 }
 
-func getManifestStream(r *repo.Repo, commitHash gitplumbing.Hash, checkoutType CheckoutType) io.Reader {
-	seenObj := make(map[gitplumbing.Hash]bool)
+func getManifestStream(r *repo.Repo, commitHash git.Oid, checkoutType CheckoutType) io.Reader {
+	seenObj := make(map[git.Oid]bool)
 	seenChunks := make(map[string]bool)
-	stack := []gitplumbing.Hash{commitHash}
+	stack := []git.Oid{commitHash}
 
 	rPipe, wPipe := io.Pipe()
 
 	go func() {
-		defer wPipe.Close()
-		for len(stack) > 0 {
+		var err error
+		defer func() { wPipe.CloseWithError(err) }()
 
+		odb, err := r.Odb()
+		if err != nil {
+			panic(err)
+		}
+
+		for len(stack) > 0 {
 			if seenObj[stack[0]] {
 				stack = stack[1:]
 				continue
 			}
 
-			commit, err := r.CommitObject(stack[0])
+			commit, err := r.LookupCommit(&stack[0])
 			if err != nil {
-				wPipe.CloseWithError(err)
 				return
 			}
 
-			parentHashes := []gitplumbing.Hash{}
-			for _, h := range commit.ParentHashes {
-				if _, wasSeen := seenObj[h]; !wasSeen {
-					parentHashes = append(parentHashes, h)
+			parentCount := commit.ParentCount()
+			parentHashes := []git.Oid{}
+			for i := uint(0); i < parentCount; i++ {
+				hash := commit.ParentId(i)
+				if _, wasSeen := seenObj[*hash]; !wasSeen {
+					parentHashes = append(parentHashes, *hash)
 				}
 			}
 
 			stack = append(stack[1:], parentHashes...)
 
-			// Walk the tree for this commit
-			tree, err := r.TreeObject(commit.TreeHash)
+			tree, err := commit.Tree()
 			if err != nil {
-				wPipe.CloseWithError(err)
 				return
 			}
 
-			walker := gitobject.NewTreeWalker(tree, true, seenObj)
-
-			for {
-				_, entry, err := walker.Next()
-				if err == io.EOF {
-					walker.Close()
-					break
-				} else if err != nil {
-					walker.Close()
-					wPipe.CloseWithError(err)
-					return
-				}
-
-				obj, err := r.Object(gitplumbing.AnyObject, entry.Hash)
-				if err != nil {
-					log.Printf("[err] error on r.Object: %v\n", err)
-					continue
+			var obj *git.Object
+			var innerErr error
+			err = tree.Walk(func(name string, entry *git.TreeEntry) int {
+				obj, innerErr = r.Lookup(entry.Id)
+				if innerErr != nil {
+					return -1
 				}
 
 				switch obj.Type() {
-				case gitplumbing.TreeObject:
-				case gitplumbing.BlobObject:
-					err = writeGitHashToStream(r, entry.Hash, seenObj, wPipe)
-					if err != nil {
-						wPipe.CloseWithError(err)
-						return
+				case git.ObjectTree, git.ObjectBlob:
+					innerErr = writeGitOid(wPipe, r, odb, *entry.Id, seenObj)
+					if innerErr != nil {
+						return -1
 					}
-
 				default:
-					log.Printf("found weird object: %v (%v)\n", entry.Hash.String(), obj.Type())
+					log.Printf("found weird object: %v (%v)\n", entry.Id.String(), obj.Type().String())
+					return 0
 				}
 
-				// full checkout or if this is a blob object for the first commit
-				if checkoutType == Full || (checkoutType == Working && commitHash == commit.Hash) {
-					if obj.Type() == gitplumbing.BlobObject {
-						err = writeChunksForHash(r, entry.Hash, seenChunks, wPipe)
-						if err != nil {
-							wPipe.CloseWithError(err)
-							return
-						}
-					}
-				}
-			}
+				// Only write large file chunk hashes to the stream if:
+				// 1. this is a full checkout, or...
+				// 2. this is a working checkout and we're on the first (i.e. checked out) commit
+				// @@TODO: can we assume that the requested commit is the one that will be checked out?
+				if obj.Type() == git.ObjectBlob &&
+					(checkoutType == CheckoutTypeFull || (checkoutType == CheckoutTypeWorking && commitHash == *commit.Id())) {
 
-			err = writeGitHashToStream(r, commit.Hash, seenObj, wPipe)
-			if err != nil {
-				wPipe.CloseWithError(err)
+					// innerErr = writeChunkIDsIfChunked(r, odb, *entry.Id, seenChunks, wPipe)
+					// if innerErr != nil {
+					// 	return -1
+					// }
+				}
+
+				return 0
+			})
+			if innerErr != nil {
+				err = innerErr
+				return
+			} else if err != nil {
 				return
 			}
 
-			err = writeGitHashToStream(r, commit.TreeHash, seenObj, wPipe)
+			err = writeGitOid(wPipe, r, odb, *commit.Id(), seenObj)
 			if err != nil {
-				wPipe.CloseWithError(err)
+				return
+			}
+
+			err = writeGitOid(wPipe, r, odb, *commit.TreeId(), seenObj)
+			if err != nil {
 				return
 			}
 		}
-		WriteStructPacket(wPipe, &ManifestObject{End: true})
 	}()
 
 	return rPipe
 }
 
-func writeGitHashToStream(r *repo.Repo, hash gitplumbing.Hash, seenObj map[gitplumbing.Hash]bool, stream io.Writer) error {
-	if seenObj[hash] == true {
+func writeGitOid(stream io.Writer, r *repo.Repo, odb *git.Odb, oid git.Oid, seenObj map[git.Oid]bool) error {
+	if seenObj[oid] == true {
 		return nil
 	}
-	seenObj[hash] = true
+	seenObj[oid] = true
 
-	size, err := r.Storer.EncodedObjectSize(hash)
+	odb, err := r.Odb()
+	if err != nil {
+		return err
+	}
+
+	size, _, err := odb.ReadHeader(&oid)
 	if err != nil {
 		return err
 	}
 
 	object := ManifestObject{
 		End:              false,
-		Hash:             hash[:],
-		UncompressedSize: size,
+		Hash:             oid[:],
+		UncompressedSize: int64(size),
 	}
 
 	return WriteStructPacket(stream, &object)
 }
 
-func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[string]bool, stream io.Writer) error {
-	obj, err := r.Storer.EncodedObject(gitplumbing.BlobObject, hash)
+func writeChunkIDsIfChunked(r *repo.Repo, oid git.Oid, seenChunks map[string]bool, stream io.Writer) error {
+	odb, err := r.Odb()
 	if err != nil {
 		return err
 	}
 
-	reader, err := obj.Reader()
+	odbObj, err := odb.Read(&oid)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+
+	reader, err := odb.NewReadStream(&oid)
+	if err != nil {
+		return err
+	}
 
 	br := bufio.NewReader(reader)
 
-	line, _, err := br.ReadLine()
+	header, err := br.Peek(18)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
 		return nil
 	} else if err != nil {
 		return err
-	}
-
-	if bytes.Compare(line, []byte("CONSCIENCE_ENCODED")) != 0 {
+	} else if string(header) != "CONSCIENCE_ENCODED" {
 		// not a chunked file
 		return nil
+	}
+
+	// Discard the first line, it's just the header
+	_, _, err = br.ReadLine()
+	if err != nil {
+		return err
 	}
 
 	for {
@@ -218,12 +231,12 @@ func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[stri
 
 		seenChunks[string(line)] = true
 
-		hex, err := hex.DecodeString(string(line))
+		chunkID, err := hex.DecodeString(string(line))
 		if err != nil {
 			return err
 		}
 
-		p := filepath.Join(r.Path, ".git", repo.CONSCIENCE_DATA_SUBDIR, string(line))
+		p := filepath.Join(r.Path(), ".git", repo.CONSCIENCE_DATA_SUBDIR, string(line))
 		stat, err := os.Stat(p)
 		if err != nil {
 			return err
@@ -231,7 +244,7 @@ func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[stri
 
 		object := ManifestObject{
 			End:              false,
-			Hash:             hex,
+			Hash:             chunkID,
 			UncompressedSize: stat.Size(),
 		}
 
@@ -240,6 +253,8 @@ func writeChunksForHash(r *repo.Repo, hash gitplumbing.Hash, seenChunks map[stri
 			return err
 		}
 	}
+
+	runtime.KeepAlive(odbObj)
 
 	return nil
 }
