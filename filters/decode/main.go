@@ -17,33 +17,22 @@ import (
 	"github.com/pkg/errors"
 )
 
-func main() {
-	r := bufio.NewReader(os.Stdin)
+var (
+	GIT_DIR  = os.Getenv("GIT_DIR")
+	RepoRoot = filepath.Dir(GIT_DIR)
+	DataRoot = filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR)
 
-	// check first line to determine if the file is chunked
-	header, err := r.Peek(18)
-	if err != nil && err != io.EOF {
-		die(err)
-	}
-	if bytes.Compare(header, []byte("CONSCIENCE_ENCODED")) != 0 {
-		_, err = io.Copy(os.Stdout, r)
+	repository = func() *repo.Repo {
+		r, err := repo.Open(RepoRoot)
 		if err != nil {
-			die(err)
+			panic(err)
 		}
-		return
-	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		die(err)
-	}
+		return r
+	}()
+)
 
-	// ignore the first header line
-	_, _, err = r.ReadLine()
-	if err != nil {
-		die(err)
-	}
-
+func main() {
 	chunks := make([]string, 0)
 	toFetch := make([][]byte, 0)
 
@@ -55,7 +44,7 @@ func main() {
 			die(err)
 		}
 
-		p := filepath.Join(cwd, ".git", repo.CONSCIENCE_DATA_SUBDIR, string(line))
+		p := filepath.Join(DataDir, string(line))
 		chunks = append(chunks, p)
 		_, err = os.Stat(p)
 		if os.IsNotExist(err) {
@@ -97,15 +86,7 @@ func copyFileToStdout(filename string) error {
 }
 
 func fetchChunks(chunks [][]byte) error {
-	GIT_DIR := os.Getenv("GIT_DIR")
-	repoPath := filepath.Dir(GIT_DIR)
-
-	r, err := repo.Open(repoPath)
-	if err != nil {
-		return err
-	}
-
-	repoID, err := r.RepoID()
+	repoID, err := repository.RepoID()
 	if err != nil {
 		return err
 	}
@@ -121,13 +102,12 @@ func fetchChunks(chunks [][]byte) error {
 	}
 	defer client.Close()
 
-	ch, err := client.FetchChunks(context.TODO(), repoID, repoPath, chunks)
+	ch, err := client.FetchChunks(context.TODO(), repoID, RepoRoot, chunks)
 	if err != nil {
 		return err
 	}
 
-	dataDir := filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR)
-	err = os.MkdirAll(dataDir, 0777)
+	err = os.MkdirAll(DataDir, 0777)
 	if err != nil {
 		return err
 	}
@@ -154,16 +134,8 @@ func fetchChunks(chunks [][]byte) error {
 			f := chunkWriters[objectID]
 
 			if f == nil {
-				dataDir := filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR)
-				err := os.MkdirAll(dataDir, 0777)
+				f, err = os.Create(filepath.Join(DataDir, objectID))
 				if err != nil {
-					return errors.WithStack(err)
-				}
-
-				objectPath := filepath.Join(dataDir, objectID)
-				f, err = os.Create(objectPath)
-				if err != nil {
-					f.Close()
 					return errors.WithStack(err)
 				}
 				chunkWriters[objectID] = f
@@ -171,10 +143,8 @@ func fetchChunks(chunks [][]byte) error {
 
 			n, err := f.Write(pkt.Chunk.Data)
 			if err != nil {
-				f.Close()
 				return errors.WithStack(err)
 			} else if n != len(pkt.Chunk.Data) {
-				f.Close()
 				return errors.New("remote helper: did not fully write chunk")
 			}
 

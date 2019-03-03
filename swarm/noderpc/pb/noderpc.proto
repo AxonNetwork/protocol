@@ -39,6 +39,8 @@ service NodeRPC {
 
   rpc GetObject(GetObjectRequest) returns (stream GetObjectResponse) {}
   rpc GetDiff(GetDiffRequest) returns (stream GetDiffResponse) {}
+
+  rpc SetFileChunking(SetFileChunkingRequest) returns (SetFileChunkingResponse) {}
 }
 
 message SetUsernameRequest {
@@ -319,6 +321,7 @@ message File {
     string unstagedStatus = 6;
     string stagedStatus = 7;
     bool mergeConflict = 8;
+    bool isChunked = 9;
 }
 
 message GetRepoFilesResponse {
@@ -385,3 +388,15 @@ message GetDiffResponse {
     bytes data = 1;
     bool end = 2;
 }
+
+message SetFileChunkingRequest {
+    string repoID = 1;
+    string repoRoot = 2;
+
+    string filename = 3;
+    bool enabled = 4;
+}
+
+message SetFileChunkingResponse {}
+
+

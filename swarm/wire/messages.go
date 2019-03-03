@@ -13,58 +13,45 @@ type GetPackfileRequest struct {
 	ObjectIDs    []byte
 }
 
-type GetPackfileResponse struct {
+type GetPackfileResponseHeader struct {
 	ErrUnauthorized bool
 	ObjectIDsLen    int `struc:"sizeof=ObjectIDs"`
 	ObjectIDs       []byte
 }
 
 type GetPackfileResponsePacket struct {
-	End    bool
-	Length int
-}
-
-type PackfileStreamChunk struct {
-	End     bool
 	DataLen int `struc:"sizeof=Data"`
 	Data    []byte
-}
-
-type HandshakeType int
-
-const (
-	None        HandshakeType = 0
-	ChunkStream HandshakeType = 1
-)
-
-type HandshakeRequest struct {
-	RepoIDLen     int `struc:"sizeof=RepoID"`
-	RepoID        string
-	SignatureLen  int `struc:"sizeof=Signature"`
-	Signature     []byte
-	HandShakeType HandshakeType
-}
-
-type HandshakeResponse struct {
-	ErrUnauthorized bool
+	End     bool
 }
 
 type GetChunkRequest struct {
-	ChunkIDLen int `struc:"sizeof=ChunkID"`
-	ChunkID    []byte
+	RepoIDLen    int `struc:"sizeof=RepoID"`
+	RepoID       string
+	SignatureLen int `struc:"sizeof=Signature"`
+	Signature    []byte
+	ChunkIDLen   int `struc:"sizeof=ChunkID"`
+	ChunkID      []byte
 }
 
-type GetChunkResponse struct {
+type GetChunkResponseHeader struct {
+	ErrUnauthorized   bool
 	ErrObjectNotFound bool
 	Length            int64
+}
+
+type GetChunkResponsePacket struct {
+	DataLen int `struc:"sizeof=Data"`
+	Data    []byte
+	End     bool
 }
 
 type CheckoutType int
 
 const (
-	Sparse  CheckoutType = 0
-	Working CheckoutType = 1
-	Full    CheckoutType = 2
+	CheckoutTypeSparse  CheckoutType = 0
+	CheckoutTypeWorking CheckoutType = 1
+	CheckoutTypeFull    CheckoutType = 2
 )
 
 type GetManifestRequest struct {

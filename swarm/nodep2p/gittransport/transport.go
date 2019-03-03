@@ -125,7 +125,7 @@ func (t *ConscienceTransport) fetchFromCommit(repoID string, r *repo.Repo, commi
 	}
 
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, totalChunks := t.node.FetchFromCommit(context.TODO(), repoID, r.Path(), *commitHash, wire.Working)
+	ch, uncompressedSize, totalChunks := t.node.FetchFromCommit(context.TODO(), repoID, r.Path(), *commitHash, wire.CheckoutTypeWorking)
 	if err != nil {
 		return err
 	}

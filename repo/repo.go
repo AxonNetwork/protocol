@@ -1,14 +1,18 @@
 package repo
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/git-lfs/git-lfs/git/gitattr"
+	"github.com/git-lfs/wildmatch"
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
 
@@ -141,20 +145,29 @@ func (r *Repo) OpenObject(objectID []byte) (ObjectReader, error) {
 			return nil, errors.WithStack(err)
 		}
 
-		stream, err := odb.NewReadStream(util.OidFromBytes(objectID))
+		odbObj, err := odb.Read(util.OidFromBytes(objectID))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 
+		if odbObj.Len() > 100*1024*1024 {
+			repoID, _ := r.RepoID() // Intentionally ignoring error.  This is just to augment the existing error information.
+			err := errors.Errorf("got request to open object over 100mb: %v %0x", repoID, objectID)
+			log.Errorln(err)
+			return nil, err
+		}
+
 		or := &objectReader{
-			Reader: stream,
+			Reader: bytes.NewReader(odbObj.Data()),
 			Closer: FuncCloser(func() error {
-				stream.Close()
-				stream.Free()
+				// We have to manually .Free() the OdbObject (or, alternatively, call runtime.KeepAlive
+				// on it) because otherwise the byte slice we obtain from .Data() will be deallocated
+				// by the Go GC.
+				odbObj.Free()
 				return nil
 			}),
-			objectType: stream.Type,
-			objectLen:  stream.Size,
+			objectType: odbObj.Type(),
+			objectLen:  odbObj.Len(),
 		}
 		return or, nil
 
@@ -481,6 +494,12 @@ func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
 		}
 
 		files[i] = mapStatusEntry(entry)
+
+		attr, err := r.GetAttribute(git.AttributeCheckNoSystem, files[i].Filename, "filter")
+		if err != nil {
+			return nil, err
+		}
+		files[i].IsChunked = string(attr) == "conscience"
 	}
 	return files, nil
 }
@@ -575,6 +594,11 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 	}
 	defer tree.Free()
 
+	odb, err := r.Odb()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	files := []File{}
 	err = tree.Walk(func(name string, entry *git.TreeEntry) int {
 		select {
@@ -587,12 +611,17 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 			return 0
 		}
 
-		blob, err := r.LookupBlob(entry.Id)
+		// Grab the file's filter attribute (if any) so that we can determine if it's chunked or not
+		filterAttrValue, _, _, _, err := r.getAttributeFileWithAttributeInTree(entry.Name, "filter", tree)
 		if err != nil {
-			log.Errorln("error looking up blob:", err)
-			return 0
+			log.Errorln("error looking up file's filter attribute:", err)
 		}
-		defer blob.Free()
+
+		// Fetch the file's size
+		size, _, err := odb.ReadHeader(entry.Id)
+		if err != nil {
+			log.Errorln("error looking up file's size:", err)
+		}
 
 		files = append(files, File{
 			Filename: entry.Name,
@@ -601,8 +630,9 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 				Unstaged: ' ',
 				Staged:   ' ',
 			},
-			Size:     uint64(blob.Size()),
-			Modified: 0,
+			Size:      size,
+			Modified:  0,
+			IsChunked: string(filterAttrValue) == "conscience",
 		})
 
 		return 0
@@ -746,4 +776,198 @@ func pipeDiff(diff *git.Diff) io.Reader {
 	}()
 
 	return pr
+}
+
+func (r *Repo) FileIsChunked(filename string, commitID *git.Oid) (bool, error) {
+	commit, err := r.LookupCommit(commitID)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+
+	filterName, _, _, _, err := r.getAttributeFileWithAttributeInTree(filename, "filter", tree)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+
+	return filterName == "conscience", nil
+}
+
+func (r *Repo) SetFileChunking(filename string, shouldEnable bool) error {
+	attrValue, lineIndex, attrIndex, attrFile, err := r.getAttributeFileWithAttribute(filename, "filter")
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	isEnabled := string(attrValue) == "conscience"
+
+	if shouldEnable && !isEnabled {
+		// create a .gitattributes file at the root if it doesn't exist
+		if attrFile == nil {
+			attrFile = &AttrFile{Path: filepath.Join(r.Path(), ".gitattributes")}
+		}
+
+		if lineIndex > -1 {
+			if attrIndex > -1 {
+				// change the existing attribute on the existing line
+				attrFile.lines[lineIndex].Attrs[attrIndex].V = "conscience"
+			} else {
+				// add a new attribute to the existing line
+				attrFile.lines[lineIndex].Attrs = append(attrFile.lines[lineIndex].Attrs, &gitattr.Attr{K: "filter", V: "conscience"})
+			}
+		} else {
+			// append a new line referring to this file
+			attrFile.lines = append(attrFile.lines, createAttrLine(filename, "filter", "conscience"))
+		}
+
+		// write the .gitattributes file
+		return attrFile.write()
+
+	} else if !shouldEnable && isEnabled {
+		// remove the attribute
+		attrFile.lines[lineIndex].Attrs = append(attrFile.lines[lineIndex].Attrs[:attrIndex], attrFile.lines[lineIndex].Attrs[attrIndex+1:]...)
+
+		// write the .gitattributes file
+		return attrFile.write()
+	}
+
+	return nil
+}
+
+type AttrFile struct {
+	Path  string
+	lines []*gitattr.Line
+}
+
+func (af *AttrFile) write() error {
+	f, err := os.Create(af.Path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	for _, line := range af.lines {
+		if len(line.Attrs) == 0 {
+			// skip lines with no attributes
+			continue
+		}
+
+		var attrs []string
+		for _, attr := range line.Attrs {
+			if attr.Unspecified {
+				attrs = append(attrs, "!"+attr.K)
+			} else {
+				attrs = append(attrs, attr.K+"="+attr.V)
+			}
+		}
+		f.WriteString(fmt.Sprintf("%s %s\n", line.Pattern, strings.Join(attrs, " ")))
+	}
+	return nil
+}
+
+func createAttrLine(pattern, key, value string) *gitattr.Line {
+	return &gitattr.Line{
+		Pattern: wildmatch.NewWildmatch(pattern),
+		Attrs: []*gitattr.Attr{
+			{K: key, V: value},
+		},
+	}
+}
+
+func (r *Repo) getAttributeFileWithAttribute(filename, attrName string) (attrValue string, lineIndex int, attrIndex int, attrFile *AttrFile, err error) {
+	dir, _ := filepath.Split(filename)
+	pathParts := strings.Split(dir, string(filepath.Separator))
+	pathParts = append([]string{"."}, pathParts[:len(pathParts)-1]...)
+
+	repoRoot := r.Path()
+	for i := len(pathParts); i > 0; i-- {
+		currentDir := filepath.Join(pathParts[:i]...)
+		attrFilePath := filepath.Join(currentDir, ".gitattributes")
+
+		lines, err := parseGitAttributes(repoRoot, attrFilePath)
+		if err != nil {
+			continue
+		}
+
+		for lineIndex, line := range lines {
+			relPath, err := filepath.Rel(currentDir, filename)
+			if err != nil {
+				log.Errorln(err)
+				continue
+			}
+
+			if line.Pattern != nil && line.Pattern.Match(relPath) {
+				for attrIndex, attr := range line.Attrs {
+					if attr.K == attrName {
+						return attr.V, lineIndex, attrIndex, &AttrFile{Path: filepath.Join(r.Path(), attrFilePath), lines: lines}, nil
+					}
+				}
+			}
+		}
+	}
+	return "", 0, 0, nil, nil
+}
+
+func parseGitAttributes(repoRoot, path string) ([]*gitattr.Line, error) {
+	f, err := os.Open(filepath.Join(repoRoot, path))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	x, _, err := gitattr.ParseLines(f)
+	return x, err
+}
+
+func (r *Repo) getAttributeFileWithAttributeInTree(filename, attrName string, tree *git.Tree) (attrValue string, lineIndex int, attrIndex int, attrFile *AttrFile, err error) {
+	dir, _ := filepath.Split(filename)
+	pathParts := strings.Split(dir, string(filepath.Separator))
+	pathParts = append([]string{"."}, pathParts[:len(pathParts)-1]...)
+
+	odb, err := r.Odb()
+	if err != nil {
+		return "", 0, 0, nil, err
+	}
+
+	repoRoot := r.Path()
+	for i := len(pathParts); i > 0; i-- {
+		currentDir := filepath.Join(pathParts[:i]...)
+		attrFilePath := filepath.Join(currentDir, ".gitattributes")
+
+		attrEntry, err := tree.EntryByPath(attrFilePath)
+		if err != nil {
+			continue
+		}
+
+		obj, err := odb.Read(attrEntry.Id)
+		if err != nil {
+			continue
+		}
+		defer obj.Free()
+
+		lines, _, err := gitattr.ParseLines(bytes.NewReader(obj.Data()))
+		if err != nil {
+			continue
+		}
+
+		for lineIndex, line := range lines {
+			relPath, err := filepath.Rel(currentDir, filename)
+			if err != nil {
+				continue
+			}
+
+			if line.Pattern != nil && line.Pattern.Match(relPath) {
+				for attrIndex, attr := range line.Attrs {
+					if attr.K == attrName {
+						return attr.V, lineIndex, attrIndex, &AttrFile{Path: filepath.Join(repoRoot, attrFilePath), lines: lines}, nil
+					}
+				}
+			}
+		}
+	}
+	return "", 0, 0, nil, nil
 }

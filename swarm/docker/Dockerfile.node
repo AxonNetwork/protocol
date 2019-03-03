@@ -2,6 +2,12 @@ FROM ubuntu
 
 WORKDIR /
 
+# keep certs up to date so that we can communicate with external services
+RUN apt update \
+        && apt upgrade -y \
+        && apt install -y ca-certificates \
+        && update-ca-certificates
+
 # Install dumb-init
 # RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64
 COPY dumb-init /usr/local/bin/

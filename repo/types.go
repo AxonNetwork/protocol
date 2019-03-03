@@ -1,6 +1,7 @@
 package repo
 
 import (
+	// "crypto/sha256"
 	"io"
 
 	"github.com/libgit2/git2go"
@@ -13,6 +14,10 @@ type CommitID struct {
 	Ref  string
 }
 
+// const ChunkIDLen = sha256.Size
+
+// type ChunkID [ChunkIDLen]byte
+
 type File struct {
 	Filename string
 	Hash     git.Oid
@@ -20,6 +25,7 @@ type File struct {
 	Modified uint32
 	Status   Status
 	// Mode     os.FileMode
+	IsChunked bool
 }
 
 type Status struct {

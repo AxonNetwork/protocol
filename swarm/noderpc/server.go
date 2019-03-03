@@ -200,8 +200,8 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 
 	// @@TODO: don't hardcode origin/master
 	err := nodep2p.Pull(context.TODO(), &nodep2p.PullOptions{
-		Remote: "origin",
-		Branch: "master",
+		RemoteName: "origin",
+		BranchName: "master",
 		ProgressCb: func(done, total uint64) error {
 
 			return server.Send(&pb.PullRepoResponsePacket{
@@ -602,6 +602,7 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 			Modified:       fileList[i].Modified,
 			UnstagedStatus: string(fileList[i].Status.Unstaged),
 			StagedStatus:   string(fileList[i].Status.Staged),
+			IsChunked:      fileList[i].IsChunked,
 		}
 	}
 
@@ -770,4 +771,18 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 		return errors.WithStack(err)
 	}
 	return nil
+}
+
+func (s *Server) SetFileChunking(ctx context.Context, req *pb.SetFileChunkingRequest) (*pb.SetFileChunkingResponse, error) {
+	r, err := s.node.RepoAtPathOrID(req.RepoRoot, req.RepoID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.SetFileChunking(req.Filename, req.Enabled)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.SetFileChunkingResponse{}, nil
 }

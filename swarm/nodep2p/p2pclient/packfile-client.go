@@ -3,19 +3,19 @@ package p2pclient
 import (
 	"context"
 	"crypto/sha256"
-	"io"
 	"sync"
 	"time"
 
+	netp2p "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/swarm/nodep2p"
-	. "github.com/Conscience/protocol/swarm/wire"
+	"github.com/Conscience/protocol/swarm/wire"
 )
 
-func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []ManifestObject) <-chan MaybeFetchFromCommitPacket {
+func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []wire.ManifestObject) <-chan MaybeFetchFromCommitPacket {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 	wg := &sync.WaitGroup{}
 
@@ -40,7 +40,7 @@ func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []Manif
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, nodep2p.NULL_PROTO)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, nodep2p.PACKFILE_PROTO, true)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
@@ -51,8 +51,11 @@ func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []Manif
 		batchTimeout := 3 * time.Second
 
 		for batch := range aggregateWork(ctx, jobQueue, batchSize, batchTimeout) {
-			conn := pool.GetConn()
-			if conn == nil {
+			conn, err := pool.GetConn()
+			if err != nil {
+				log.Errorln("[packfile client] error obtaining peer connection:", err)
+				return
+			} else if conn == nil {
 				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
 				return
 			}
@@ -157,7 +160,37 @@ func (sc *SmartClient) returnJobsToQueue(ctx context.Context, jobs []job, jobQue
 	}
 }
 
-func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *PeerConnection, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
+func (sc *SmartClient) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([][]byte, netp2p.Stream, error) {
+	sig, err := sc.node.SignHash([]byte(sc.repoID))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Write the request packet to the stream
+	err = wire.WriteStructPacket(conn, &wire.GetPackfileRequest{
+		RepoID:    sc.repoID,
+		Signature: sig,
+		ObjectIDs: wire.FlattenObjectIDs(objectIDs),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Debugf("[packfile client] sent packfile request: %v (%v objects)", sc.repoID, len(objectIDs))
+
+	resp := wire.GetPackfileResponseHeader{}
+	err = wire.ReadStructPacket(conn, &resp)
+	if err != nil {
+		return nil, nil, err
+	} else if resp.ErrUnauthorized {
+		return nil, nil, errors.Wrapf(wire.ErrUnauthorized, "%v", sc.repoID)
+	} else if len(resp.ObjectIDs) == 0 {
+		return nil, nil, errors.Wrapf(wire.ErrObjectNotFound, "%v", sc.repoID)
+	}
+	log.Debugf("[packfile client] got packfile response header: %v objects", len(wire.UnflattenObjectIDs(resp.ObjectIDs)))
+	return wire.UnflattenObjectIDs(resp.ObjectIDs), conn, nil
+}
+
+func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
 	desiredObjectIDs := make([][]byte, len(batch))
@@ -167,13 +200,14 @@ func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *PeerConnection, 
 		jobMap[string(batch[i].objectID)] = batch[i]
 	}
 
-	availableObjectIDs, packfileStream, err := conn.RequestPackfile(ctx, desiredObjectIDs)
+	availableObjectIDs, packfileStream, err := sc.packfileHandshake(conn, desiredObjectIDs)
 	if err != nil {
 		err = errors.Wrapf(ErrFetchingFromPeer, "tried requesting packfile from peer %v: %v", conn.peerID, err)
 		log.Errorf("[packfile client]", err)
 		go sc.returnJobsToQueue(ctx, batch, jobQueue)
 		return err
 	}
+	// @@TODO: wrap this in a Closer that just reads to the end of the stream, or negotiates an early termination or something
 	defer packfileStream.Close()
 
 	// Determine which objects the peer can't send us and re-add those to the job queue.
@@ -206,27 +240,21 @@ func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *PeerConnection, 
 	}
 
 	for {
-		packet := &GetPackfileResponsePacket{}
-		err = ReadStructPacket(packfileStream, &packet)
+		var packet wire.GetPackfileResponsePacket
+		err = wire.ReadStructPacket(packfileStream, &packet)
 		if err != nil {
+			log.Errorln("[packfile client] error reading GetPackfileResponsePacket:", err)
 			break
-		}
-		if packet.End {
+		} else if packet.End {
+			log.Debugln("[packfile client] got packet.End")
 			break
 		}
 
-		data := make([]byte, packet.Length)
-		n, err := io.ReadFull(packfileStream, data)
-		if err != nil {
-			break
-		} else if n != packet.Length {
-			break
-		}
-
+		log.Debugln("[packfile client] got packet", packet.DataLen, packet.End)
 		chOut <- MaybeFetchFromCommitPacket{
 			PackfileData: &PackfileData{
 				PackfileID: packfileTempID,
-				Data:       data,
+				Data:       packet.Data,
 			},
 		}
 	}
@@ -246,6 +274,7 @@ func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *PeerConnection, 
 			End:        true,
 		},
 	}
+	log.Debugln("[packfile client] done")
 
 	for i := 0; i < len(availableObjectIDs); i++ {
 		wg.Done()

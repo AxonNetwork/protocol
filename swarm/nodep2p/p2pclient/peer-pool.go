@@ -2,7 +2,9 @@ package p2pclient
 
 import (
 	"context"
+	"time"
 
+	netp2p "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 	protocol "github.com/libp2p/go-libp2p-protocol"
@@ -13,14 +15,24 @@ import (
 )
 
 type peerPool struct {
-	peers       chan *PeerConnection
-	chProviders <-chan peerstore.PeerInfo
-	needNewPeer chan struct{}
-	ctx         context.Context
-	cancel      func()
+	protocol  protocol.ID
+	keepalive bool
+	node      nodep2p.INode
+
+	chPeers       chan *peerConn
+	chNeedNewPeer chan struct{}
+	chProviders   <-chan peerstore.PeerInfo
+	ctx           context.Context
+	cancel        func()
 }
 
-func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint, protocol protocol.ID) (*peerPool, error) {
+type peerConn struct {
+	peerID peer.ID
+	repoID string
+	netp2p.Stream
+}
+
+func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurrentConns uint, protocol protocol.ID, keepalive bool) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -29,25 +41,28 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 	ctxInner, cancel := context.WithCancel(ctx)
 
 	p := &peerPool{
-		peers:       make(chan *PeerConnection, concurrentConns),
-		chProviders: node.FindProvidersAsync(ctxInner, cid, 999),
-		needNewPeer: make(chan struct{}),
-		ctx:         ctxInner,
-		cancel:      cancel,
+		keepalive:     keepalive,
+		node:          node,
+		protocol:      protocol,
+		chPeers:       make(chan *peerConn, concurrentConns),
+		chNeedNewPeer: make(chan struct{}),
+		chProviders:   node.FindProvidersAsync(ctxInner, cid, 999),
+		ctx:           ctxInner,
+		cancel:        cancel,
 	}
 
 	// When a message is sent on the `needNewPeer` channel, this goroutine attempts to take a peer
-	// from the `chProviders` channel, open a PeerConnection to it, and add it to the pool.
+	// from the `chProviders` channel, open a peerConn to it, and add it to the pool.
 	go func() {
-		defer close(p.peers)
+		defer close(p.chPeers)
 		for {
 			select {
-			case <-p.needNewPeer:
+			case <-p.chNeedNewPeer:
 			case <-p.ctx.Done():
 				return
 			}
 
-			var peerConn *PeerConnection
+			var conn *peerConn
 			for {
 				var peerID peer.ID
 				select {
@@ -69,26 +84,19 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 				// 	continue
 				// }
 
-				log.Infof("[peer pool] opening new peer connection")
-				peerConn = NewPeerConnection(node, peerID, repoID)
-				if protocol != nodep2p.NULL_PROTO {
-					err = peerConn.OpenStream(p.ctx, protocol)
-					if err != nil {
-						log.Debugf("[peer pool] error opening stream: ", err)
-					} else {
-						// if err then move onto the next peer
-						break
-					}
-				} else {
-					break
+				log.Infof("[peer pool] found peer")
+				conn = &peerConn{
+					peerID: peerID,
+					repoID: repoID,
+					Stream: nil,
 				}
-
+				break
 			}
 
-			// p.peerList[peerConn.peerID] = peerConn
+			// p.peerList[conn.peerID] = conn
 
 			select {
-			case p.peers <- peerConn:
+			case p.chPeers <- conn:
 			case <-p.ctx.Done():
 				return
 			}
@@ -101,7 +109,7 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 			select {
 			case <-p.ctx.Done():
 				return
-			case p.needNewPeer <- struct{}{}:
+			case p.chNeedNewPeer <- struct{}{}:
 			}
 		}
 	}()
@@ -112,43 +120,65 @@ func newPeerPool(ctx context.Context, node nodep2p.INode, repoID string, concurr
 func (p *peerPool) Close() error {
 	p.cancel()
 
-	p.needNewPeer = nil
+	p.chNeedNewPeer = nil
 	p.chProviders = nil
 	go func() {
-		for x := range p.peers {
+		for x := range p.chPeers {
 			x.Close()
 		}
-		p.peers = nil
+		p.chPeers = nil
 	}()
 
 	return nil
 }
 
-func (p *peerPool) GetConn() *PeerConnection {
+func (p *peerPool) GetConn() (*peerConn, error) {
 	select {
-	case x := <-p.peers:
-		return x
+	case conn := <-p.chPeers:
+
+		if conn.Stream == nil {
+			log.Debugf("[peer pool] peerConn.Stream is nil, opening new connection (proto: %v)", p.protocol)
+
+			// @@TODO: make context timeout configurable
+			ctx, cancel := context.WithTimeout(p.ctx, 15*time.Second)
+			defer cancel()
+
+			stream, err := p.node.NewStream(ctx, conn.peerID, p.protocol)
+			if err != nil {
+				return nil, err
+			}
+			log.Debugln("[peer pool] peerConn.Stream successfully opened")
+			conn.Stream = stream
+		}
+		return conn, nil
+
 	case <-p.ctx.Done():
-		return nil
+		return nil, p.ctx.Err()
 	}
 }
 
-func (p *peerPool) ReturnConn(conn *PeerConnection, strike bool) {
+func (p *peerPool) ReturnConn(conn *peerConn, strike bool) {
 	if strike {
 		// if _, exists := p.peerList[conn.peerID]; exists {
 		// 	delete(p.peerList, conn.peerID)
 		// }
 
 		conn.Close()
+		conn.Stream = nil
 
 		select {
-		case p.needNewPeer <- struct{}{}:
+		case p.chNeedNewPeer <- struct{}{}:
 		case <-p.ctx.Done():
 		}
 
 	} else {
+		if !p.keepalive {
+			conn.Close()
+			conn.Stream = nil
+		}
+
 		select {
-		case p.peers <- conn:
+		case p.chPeers <- conn:
 		case <-p.ctx.Done():
 		}
 	}

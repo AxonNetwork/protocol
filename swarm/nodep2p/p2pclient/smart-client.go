@@ -91,9 +91,7 @@ func (sc *SmartClient) FetchFromCommit(ctx context.Context, commitID git.Oid, ch
 			if packet.Error != nil {
 				chOut <- MaybeFetchFromCommitPacket{Error: err}
 			} else {
-				chOut <- MaybeFetchFromCommitPacket{
-					Chunk: packet.Chunk,
-				}
+				chOut <- MaybeFetchFromCommitPacket{Chunk: packet.Chunk}
 			}
 		}
 	}()

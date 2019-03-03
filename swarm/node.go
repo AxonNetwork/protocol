@@ -117,7 +117,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	ns := p2pserver.NewServer(n)
 	n.host.SetStreamHandler(nodep2p.MANIFEST_PROTO, ns.HandleManifestRequest)
 	n.host.SetStreamHandler(nodep2p.PACKFILE_PROTO, ns.HandlePackfileStreamRequest)
-	n.host.SetStreamHandler(nodep2p.CHUNK_PROTO, ns.HandleChunkHandshakeRequest)
+	n.host.SetStreamHandler(nodep2p.CHUNK_PROTO, ns.HandleChunkStreamRequest)
 	n.host.SetStreamHandler(nodep2p.REPLICATION_PROTO, ns.HandleReplicationRequest)
 	n.host.SetStreamHandler(nodep2p.BECOME_REPLICATOR_PROTO, ns.HandleBecomeReplicatorRequest)
 
