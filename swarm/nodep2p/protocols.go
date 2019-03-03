@@ -5,7 +5,6 @@ import (
 )
 
 const (
-	NULL_PROTO              protocol.ID = ""
 	MANIFEST_PROTO          protocol.ID = "/conscience/manifest/1.0.0"
 	OBJECT_PROTO            protocol.ID = "/conscience/object/1.1.0"
 	PACKFILE_PROTO          protocol.ID = "/conscience/packfile/1.0.0"

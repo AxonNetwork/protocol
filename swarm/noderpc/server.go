@@ -27,6 +27,9 @@ type Server struct {
 	server *grpc.Server
 }
 
+// @@TODO: make configurable
+const OBJ_CHUNK_SIZE = 512 * 1024 // 512kb
+
 func NewServer(node *swarm.Node) *Server {
 	return &Server{node: node}
 }
@@ -636,9 +639,6 @@ func (s *Server) SetUserPermissions(ctx context.Context, req *pb.SetUserPermissi
 	}
 	return &pb.SetUserPermissionsResponse{}, nil
 }
-
-// @@TODO: make configurable
-const OBJ_CHUNK_SIZE = 512 * 1024 // 512kb
 
 func (s *Server) GetObject(req *pb.GetObjectRequest, server pb.NodeRPC_GetObjectServer) error {
 	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)

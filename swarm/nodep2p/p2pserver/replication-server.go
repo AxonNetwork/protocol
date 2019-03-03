@@ -58,7 +58,6 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		log.Errorf("[replication server] error: %v", err)
 		return
 	}
-	log.Debugf("[replication server] repoID: %v", req.RepoID)
 
 	// Ensure that the repo has been whitelisted for replication.
 	{

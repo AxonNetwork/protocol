@@ -83,20 +83,14 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 			// each object type, add most recent objects first.
 			go func() {
 				var err error
-				defer func() {
-					log.Errorf("[packfile server] packfile encoder: exiting with error: %v", err)
-					wPipe.CloseWithError(err)
-				}()
+				defer func() { wPipe.CloseWithError(err) }()
 
-				log.Debugf("[packfile server] packfile encoder 11111: creating Packbuilder")
 				packbuilder, err := r.NewPackbuilder()
 				if err != nil {
 					log.Errorln("[packfile server] error instantiating packbuilder:", err)
 					return
 				}
-				log.Debugf("[packfile server] packfile encoder 22222: created Packbuilder")
 
-				log.Debugf("[packfile server] packfile encoder 33333: %v availableObjectIDs", len(availableObjectIDs))
 				for i := range availableObjectIDs {
 					oid := util.OidFromBytes(availableObjectIDs[i])
 
@@ -106,32 +100,26 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 						return
 					}
 				}
-				log.Debugf("[packfile server] packfile encoder 44444: finished inserting oids.  writing packfile...")
 
 				err = packbuilder.Write(wPipe)
 				if err != nil {
 					log.Errorln("[packfile server] error writing packfile to stream:", err)
 					return
 				}
-				log.Debugf("[packfile server] packfile encoder 55555: done writing packfile")
 			}()
 
 			var totalWritten int
 			for {
-				log.Debugf("[packfile server] packfile: reading from encoder...")
 				data := make([]byte, nodep2p.OBJ_CHUNK_SIZE)
 				n, err := io.ReadFull(rPipe, data)
 				if err == io.EOF {
-					log.Debugf("[packfile server] packfile: EOF, done encoding")
 					break
 				} else if err == io.ErrUnexpectedEOF {
-					log.Debugf("[packfile server] packfile: unexpected EOF (n = %v)", n)
 					data = data[:n]
 				} else if err != nil {
 					log.Errorf("[packfile server] error reading packfile: %+v", err)
 					return
 				}
-				log.Debugf("[packfile server] packfile: encoded %v bytes", n)
 
 				err = wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{Data: data})
 				if err != nil {
@@ -139,10 +127,8 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 					return
 				}
 				totalWritten += n
-				log.Debugln("[packfile server] packfile: bytes written:", totalWritten)
 			}
 
-			log.Debugln("[packfile server] packfile: done writing")
 			err = wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{End: true})
 			if err != nil {
 				log.Errorf("[packfile server] %+v", errors.WithStack(err))

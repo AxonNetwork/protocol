@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -194,8 +195,7 @@ func (n *Node) Close() error {
 }
 
 func (n *Node) periodicallyRequestContent(ctx context.Context) {
-	c := time.Tick(time.Duration(n.Config.Node.ContentRequestInterval))
-	for range c {
+	for {
 		select {
 		case <-ctx.Done():
 			return
@@ -209,22 +209,28 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 
 			r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
 			if err != nil {
-				log.Errorf("[content request] error ensuring repo exists (%v): %v", repoID, err)
+				log.Warnf("[content request] error ensuring repo exists (%v): %v", repoID, err)
 				continue
 			}
 
-			_, err = nodep2p.FetchConscienceRemote(context.TODO(), &nodep2p.FetchOptions{Repo: r})
+			updatedRemotes, err := nodep2p.FetchConscienceRemote(context.TODO(), &nodep2p.FetchOptions{Repo: r})
 			if err != nil {
-				log.Errorf("[content request] error fetching conscience://%v remote: %v", repoID, err)
+				log.Warnf("[content request] error fetching conscience://%v remote: %v", repoID, err)
+				continue
+			}
+
+			if len(updatedRemotes) > 0 {
+				log.Debugf("[content request] fetched %v with updated remotes %v", strings.Join(updatedRemotes, " "))
 			}
 		}
+
+		time.Sleep(time.Duration(n.Config.Node.ContentRequestInterval))
 	}
 }
 
 // Periodically announces our repos and objects to the network.
 func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
-	c := time.Tick(time.Duration(n.Config.Node.ContentAnnounceInterval))
-	for range c {
+	for {
 		select {
 		case <-ctx.Done():
 			return
@@ -239,7 +245,7 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 
 			err := n.announceRepoReplicator(ctx, repoID)
 			if err != nil {
-				log.Errorf("[content announce] %+v", err)
+				log.Warnf("[content announce] %+v", err)
 				continue
 			}
 		}
@@ -259,8 +265,10 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 			return nil
 		})
 		if err != nil {
-			log.Errorf("[content announce] %+v", err)
+			log.Warnf("[content announce] %+v", err)
 		}
+
+		time.Sleep(time.Duration(n.Config.Node.ContentAnnounceInterval))
 	}
 }
 
