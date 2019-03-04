@@ -75,7 +75,7 @@ function checkout_libgit2 {
         pushd vendor/github.com/libgit2 &&
         git clone https://github.com/Conscience/git2go &&
         pushd git2go &&
-        git checkout f522924e75476de6dabb9c1bd8a5b22847959e24 &&
+        git checkout 11852da4957d34a27bb516ed527d2a6a9bdfef7b &&
         # git remote add lhchavez https://github.com/lhchavez/git2go &&
         # git fetch --all &&
         # git cherry-pick 122ccfadea1e219c819adf1e62534f0b869d82a3 &&
