@@ -10,6 +10,7 @@ import (
 
 	"github.com/libgit2/git2go"
 
+	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
@@ -313,4 +314,63 @@ func (c *Client) SignMessage(ctx context.Context, message []byte) ([]byte, error
 func (c *Client) SetUserPermissions(ctx context.Context, repoID string, username string, perms nodeeth.UserPermissions) error {
 	_, err := c.client.SetUserPermissions(ctx, &pb.SetUserPermissionsRequest{RepoID: repoID, Username: username, Puller: perms.Puller, Pusher: perms.Pusher, Admin: perms.Admin})
 	return errors.WithStack(err)
+}
+
+type MaybeEvent struct {
+	AddedRepoEvent  *pb.WatchResponse_AddedRepoEvent
+	PulledRepoEvent *pb.WatchResponse_PulledRepoEvent
+	UpdatedRefEvent *pb.WatchResponse_UpdatedRefEvent
+	Error           error
+}
+
+func (c *Client) Watch(ctx context.Context, settings *swarm.WatcherSettings) (chan MaybeEvent, error) {
+	eventTypes := make([]uint64, 0)
+	for _, t := range settings.EventTypes {
+		eventTypes = append(eventTypes, uint64(t))
+	}
+
+	watchClient, err := c.client.Watch(ctx, &pb.WatchRequest{
+		EventTypes:      eventTypes,
+		UpdatedRefStart: settings.UpdatedRefStart,
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	ch := make(chan MaybeEvent)
+	go func() {
+		defer close(ch)
+		for {
+			evt, err := watchClient.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				ch <- MaybeEvent{Error: errors.WithStack(err)}
+				return
+			}
+
+			addedEvt := evt.GetAddedRepoEvent()
+			if addedEvt != nil {
+				ch <- MaybeEvent{AddedRepoEvent: addedEvt}
+				continue
+			}
+
+			pulledEvt := evt.GetPulledRepoEvent()
+			if pulledEvt != nil {
+				ch <- MaybeEvent{PulledRepoEvent: pulledEvt}
+				continue
+			}
+
+			refEvt := evt.GetUpdatedRefEvent()
+			if refEvt != nil {
+				ch <- MaybeEvent{UpdatedRefEvent: refEvt}
+				continue
+			}
+
+			ch <- MaybeEvent{Error: errors.New("[rpc client] unexpected event")}
+			return
+		}
+	}()
+
+	return ch, nil
 }

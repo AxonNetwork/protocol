@@ -971,3 +971,68 @@ func (r *Repo) getAttributeFileWithAttributeInTree(filename, attrName string, tr
 	}
 	return "", 0, 0, nil, nil
 }
+
+func (r *Repo) FilesChangedByCommit(ctx context.Context, commitID *git.Oid) ([]File, error) {
+	newCommit, err := r.LookupCommit(commitID)
+	if err != nil {
+		return nil, err
+	}
+
+	if newCommit.ParentCount() == 0 {
+		return r.filesChangedByCommit_noParent(ctx, newCommit)
+	} else {
+		return r.filesChangedByCommit_hasParent(ctx, newCommit)
+	}
+}
+
+func (r *Repo) filesChangedByCommit_hasParent(ctx context.Context, newCommit *git.Commit) ([]File, error) {
+	oldCommit := newCommit.Parent(0)
+
+	newTree, err := newCommit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	oldTree, err := oldCommit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	diffOpts, err := git.DefaultDiffOptions()
+	if err != nil {
+		return nil, err
+	}
+
+	// @@TODO: figure out the cheapest diff we can run and still get filenames back.  This is my
+	// first attempt at that.
+	diffOpts.Flags |= git.DiffMinimal
+
+	diff, err := r.DiffTreeToTree(oldTree, newTree, &diffOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []File
+
+	callback := func(delta git.DiffDelta, x float64) (git.DiffForEachHunkCallback, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		files = append(files, File{Filename: delta.NewFile.Path})
+		return nil, nil
+	}
+
+	err = diff.ForEach(callback, git.DiffDetailFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+func (r *Repo) filesChangedByCommit_noParent(ctx context.Context, commit *git.Commit) ([]File, error) {
+	return r.listFilesCommit(ctx, CommitID{Hash: commit.Id()})
+}

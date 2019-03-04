@@ -45,6 +45,7 @@ type Node struct {
 	dht         *dht.IpfsDHT
 	eth         *nodeeth.Client
 	repoManager *RepoManager
+	watchers    []*Watcher
 	Config      config.Config
 	Shutdown    chan struct{}
 
@@ -102,6 +103,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		dht:              d,
 		eth:              eth,
 		repoManager:      NewRepoManager(cfg),
+		watchers:         make([]*Watcher, 0),
 		Config:           *cfg,
 		Shutdown:         make(chan struct{}),
 		bandwidthCounter: bandwidthCounter,
@@ -403,8 +405,33 @@ func (n *Node) RepoManager() *RepoManager {
 func (n *Node) Repo(repoID string) *repo.Repo {
 	return n.repoManager.Repo(repoID)
 }
+
+func (n *Node) RepoAtPath(path string) *repo.Repo {
+	return n.repoManager.RepoAtPath(path)
+}
+
 func (n *Node) RepoAtPathOrID(path string, repoID string) (*repo.Repo, error) {
 	return n.repoManager.RepoAtPathOrID(path, repoID)
+}
+
+func (n *Node) TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error) {
+	r, err := n.repoManager.TrackRepo(repoPath, forceReload)
+	if err != nil {
+		return nil, err
+	}
+	repoID, err := r.RepoID()
+	if err != nil {
+		return nil, err
+	}
+	event := MaybeEvent{
+		EventType: AddedRepo,
+		AddedRepoEvent: &AddedRepoEvent{
+			RepoRoot: repoPath,
+			RepoID:   repoID,
+		},
+	}
+	n.NotifyWatchers(event)
+	return n.repoManager.TrackRepo(repoPath, forceReload)
 }
 
 func (n *Node) ID() peer.ID {
@@ -532,8 +559,8 @@ func (n *Node) GetRepoUsers(ctx context.Context, repoID string, userType nodeeth
 	return n.eth.GetRepoUsers(ctx, repoID, userType, pageSize, page)
 }
 
-func (n *Node) GetRefLogs(ctx context.Context, repoID string) (map[string]uint64, error) {
-	return n.eth.GetRefLogs(ctx, repoID)
+func (n *Node) GetUpdatedRefEvents(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]nodeeth.UpdatedRefEvent, error) {
+	return n.eth.GetUpdatedRefEvents(ctx, repoIDs, start, end)
 }
 
 func (n *Node) SignHash(data []byte) ([]byte, error) {
@@ -542,6 +569,10 @@ func (n *Node) SignHash(data []byte) ([]byte, error) {
 
 func (n *Node) SetUserPermissions(ctx context.Context, repoID string, username string, perms nodeeth.UserPermissions) (*nodeeth.Transaction, error) {
 	return n.eth.SetUserPermissions(ctx, repoID, username, perms)
+}
+
+func (n *Node) CurrentBlock(ctx context.Context) (uint64, error) {
+	return n.eth.CurrentBlock(ctx)
 }
 
 func (n *Node) GetBandwidthForPeer(p peer.ID) metrics.Stats {
@@ -554,4 +585,24 @@ func (n *Node) GetBandwidthForProtocol(proto protocol.ID) metrics.Stats {
 
 func (n *Node) GetBandwidthTotals() metrics.Stats {
 	return n.bandwidthCounter.GetBandwidthTotals()
+}
+
+func (n *Node) Watch(ctx context.Context, settings *WatcherSettings) *Watcher {
+	w := NewWatcher(ctx, settings)
+
+	if w.IsWatching(UpdatedRef) {
+		repoIDs := n.repoManager.RepoIDList()
+		rw := n.eth.WatchUpdatedRefEvents(ctx, repoIDs, settings.UpdatedRefStart)
+		go w.AddUpdatedRefEventWatcher(rw)
+	}
+
+	return w
+}
+
+func (n *Node) NotifyWatchers(event MaybeEvent) {
+	for _, w := range n.watchers {
+		if w.IsWatching(event.EventType) {
+			go w.Notify(event)
+		}
+	}
 }

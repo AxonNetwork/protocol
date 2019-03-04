@@ -33,6 +33,7 @@ service NodeRPC {
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
 
   rpc GetRepoHistory(GetRepoHistoryRequest) returns (GetRepoHistoryResponse) {}
+  rpc GetUpdatedRefEvents(GetUpdatedRefEventsRequest) returns (GetUpdatedRefEventsResponse) {}
   rpc GetRepoFiles(GetRepoFilesRequest) returns (GetRepoFilesResponse) {}
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse) {}
   rpc EthAddress(EthAddressRequest) returns (EthAddressResponse) {}
@@ -41,6 +42,7 @@ service NodeRPC {
   rpc GetDiff(GetDiffRequest) returns (stream GetDiffResponse) {}
 
   rpc SetFileChunking(SetFileChunkingRequest) returns (SetFileChunkingResponse) {}
+  rpc Watch(WatchRequest) returns (stream WatchResponse) {}
 }
 
 message SetUsernameRequest {
@@ -286,22 +288,48 @@ message SetUserPermissionsRequest {
 message SetUserPermissionsResponse {}
 
 message GetRepoHistoryRequest {
+    // need one or the other
     string repoID = 1;
     string path = 2;
-    uint64 page = 3;
+
+    // need one or the other
+    // if neither, defaults to HEAD
+    bytes fromCommitHash = 3;
+    string fromCommitRef = 4;
+    uint64 pageSize = 5;
+
+    bool onlyHashes = 6;
 }
 
 message Commit {
     string commitHash = 1;
     string author = 2;
     string message = 3;
-    uint64 timestamp = 4;
-    repeated string files = 5;
-    uint64 verified = 6;
+    repeated string files = 4;
+    uint64 timestamp = 5;
 }
 
 message GetRepoHistoryResponse {
     repeated Commit commits = 1;
+    bool isEnd = 2;
+}
+
+message GetUpdatedRefEventsRequest {
+    string repoID = 1;
+    uint64 startBlock = 2;
+    uint64 endBlock = 3;
+}
+
+message UpdatedRefEvent {
+    string commit = 1;
+    string repoID = 2;
+    string txHash = 3;
+    uint64 time = 4;
+    uint64 blockNumber = 5;
+}
+
+message GetUpdatedRefEventsResponse {
+    repeated UpdatedRefEvent events = 1;
 }
 
 message GetRepoFilesRequest {
@@ -399,4 +427,37 @@ message SetFileChunkingRequest {
 
 message SetFileChunkingResponse {}
 
+message WatchRequest {
+    repeated uint64 eventTypes = 1;
+
+    uint64 updatedRefStart = 2;
+}
+
+message WatchResponse {
+
+    message AddedRepoEvent {
+        string repoID = 1;
+        string repoRoot = 2;
+    }
+
+    message PulledRepoEvent {
+        string repoID = 1;
+        string repoRoot = 2;
+        string newHEAD = 3;
+    }
+
+    message UpdatedRefEvent {
+        string commit = 1;
+        string repoID = 2;
+        string txHash = 3;
+        uint64 time = 4;
+        uint64 blockNumber = 5;
+    }
+
+    oneof payload {
+        AddedRepoEvent addedRepoEvent = 1;
+        PulledRepoEvent pulledRepoEvent = 2;
+        UpdatedRefEvent updatedRefEvent = 3;
+    }
+}
 

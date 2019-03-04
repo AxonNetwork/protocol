@@ -524,19 +524,32 @@ func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRP
 }
 
 func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryRequest) (*pb.GetRepoHistoryResponse, error) {
+	if req.PageSize == 0 {
+		req.PageSize = 10
+	}
+
 	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
 
-	logs, err := s.node.GetRefLogs(ctx, req.RepoID)
-	if err != nil {
-		return nil, err
+	var fromCommit *git.Oid
+	if len(req.FromCommitHash) > 0 || len(req.FromCommitRef) > 0 {
+		oid, err := r.ResolveCommitHash(repo.CommitID{Hash: util.OidFromBytes(req.FromCommitHash), Ref: req.FromCommitRef})
+		if err != nil {
+			return nil, err
+		}
+		fromCommit = &oid
+
+	} else {
+		const branchName = "master" // @@TODO: add this field to the RPC request
+
+		branch, err := r.LookupBranch(branchName, git.BranchLocal)
+		if err != nil {
+			return nil, err
+		}
+		fromCommit = branch.Target()
 	}
-
-	const branchName = "master" // @@TODO: add this field to the RPC request
-
-	branch, err := r.LookupBranch(branchName, git.BranchLocal)
 	if err != nil {
 		return nil, err
 	}
@@ -546,42 +559,90 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		return nil, err
 	}
 
-	walker.Sorting(git.SortTopological | git.SortTime | git.SortReverse)
+	walker.Sorting(git.SortTopological | git.SortTime /*| git.SortReverse*/)
 
-	err = walker.Push(branch.Target())
-	if err != nil {
-		return nil, err
+	// When we're at the end of the range (at the beginning of the history), and we specify a `~N`
+	// revspec that exceeds the number of commits available, libgit2 returns an error.  We deal with
+	// this by simply looping with smaller and smaller values of N until we figure out how many
+	// commits we have left.  @@TODO: this is probably inefficient (although maybe not, given that
+	// revwalkers are heavily cached).
+	numCommits := req.PageSize
+	for {
+		err = walker.PushRange(fmt.Sprintf("%s~%d..%s", fromCommit.String(), numCommits, fromCommit.String()))
+		if err == nil {
+			break
+		}
+		numCommits--
 	}
 
 	var innerErr error
 	var commits []*pb.Commit
 	err = walker.Iterate(func(commit *git.Commit) bool {
 		commitHash := commit.Id().String()
-		author := commit.Author()
 
-		// files, innerErr := nodep2p.GetFilesForCommit(ctx, r.Path(), commitHash)
-		// if innerErr != nil {
-		// 	commit.Free()
-		// 	return false
-		// }
+		if req.OnlyHashes {
+			commits = append(commits, &pb.Commit{
+				CommitHash: commitHash,
+			})
 
-		commits = append(commits, &pb.Commit{
-			CommitHash: commitHash,
-			Author:     author.Name + " <" + author.Email + ">", // @@TODO: break this up into .Name and .Email fields
-			Message:    commit.Message(),
-			Timestamp:  uint64(author.When.Unix()),
-			Files:      nil, //files,
-			Verified:   logs[commitHash],
-		})
+		} else {
+			files, err := r.FilesChangedByCommit(ctx, commit.Id())
+			if err != nil {
+				innerErr = err
+				return false
+			}
+
+			filenames := make([]string, len(files))
+			for i := range files {
+				filenames[i] = files[i].Filename
+			}
+
+			author := commit.Author()
+
+			commits = append(commits, &pb.Commit{
+				CommitHash: commitHash,
+				Author:     author.Name + " <" + author.Email + ">", // @@TODO: break this up into .Name and .Email fields
+				Message:    commit.Message(),
+				Timestamp:  uint64(author.When.Unix()),
+				Files:      filenames,
+			})
+		}
+
+		if len(commits) >= int(req.PageSize) {
+			return false
+		}
 		return true
 	})
-	if err != nil {
-		return nil, err
-	} else if innerErr != nil {
-		return nil, innerErr
+
+	isEnd := numCommits < req.PageSize
+
+	return &pb.GetRepoHistoryResponse{Commits: commits, IsEnd: isEnd}, nil
+}
+
+func (s *Server) GetUpdatedRefEvents(ctx context.Context, req *pb.GetUpdatedRefEventsRequest) (*pb.GetUpdatedRefEventsResponse, error) {
+	repoIDs := []string{req.RepoID}
+	var end *uint64
+	if req.EndBlock > 0 {
+		end = &req.EndBlock
 	}
 
-	return &pb.GetRepoHistoryResponse{Commits: commits}, nil
+	evts, err := s.node.GetUpdatedRefEvents(ctx, repoIDs, req.StartBlock, end)
+	if err != nil {
+		return nil, err
+	}
+
+	evtResp := make([]*pb.UpdatedRefEvent, len(evts))
+	for i, evt := range evts {
+		evtResp[i] = &pb.UpdatedRefEvent{
+			Commit:      evt.Commit,
+			RepoID:      req.RepoID,
+			TxHash:      evt.TxHash,
+			Time:        evt.Time,
+			BlockNumber: evt.BlockNumber,
+		}
+	}
+
+	return &pb.GetUpdatedRefEventsResponse{Events: evtResp}, nil
 }
 
 func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) (*pb.GetRepoFilesResponse, error) {
@@ -785,4 +846,69 @@ func (s *Server) SetFileChunking(ctx context.Context, req *pb.SetFileChunkingReq
 	}
 
 	return &pb.SetFileChunkingResponse{}, nil
+}
+
+func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) error {
+	eventTypes := make([]swarm.EventType, 0)
+	for _, t := range req.EventTypes {
+		eventTypes = append(eventTypes, swarm.EventType(t))
+	}
+
+	settings := &swarm.WatcherSettings{
+		EventTypes:      eventTypes,
+		UpdatedRefStart: req.UpdatedRefStart,
+	}
+
+	ctx := context.Background()
+	watcher := s.node.Watch(ctx, settings)
+
+	for evt := range watcher.EventCh {
+		select {
+		case <-server.Context().Done():
+			return errors.WithStack(server.Context().Err())
+		default:
+		}
+
+		var err error
+
+		switch {
+		case evt.Error != nil:
+			return errors.WithStack(evt.Error)
+
+		case evt.AddedRepoEvent != nil:
+			err = server.Send(&pb.WatchResponse{
+				Payload: &pb.WatchResponse_AddedRepoEvent_{&pb.WatchResponse_AddedRepoEvent{
+					RepoID:   evt.AddedRepoEvent.RepoID,
+					RepoRoot: evt.AddedRepoEvent.RepoRoot,
+				}},
+			})
+
+		case evt.PulledRepoEvent != nil:
+			err = server.Send(&pb.WatchResponse{
+				Payload: &pb.WatchResponse_PulledRepoEvent_{&pb.WatchResponse_PulledRepoEvent{
+					RepoID:   evt.PulledRepoEvent.RepoID,
+					RepoRoot: evt.PulledRepoEvent.RepoRoot,
+					NewHEAD:  evt.PulledRepoEvent.NewHEAD,
+				}},
+			})
+
+		case evt.UpdatedRefEvent != nil:
+			err = server.Send(&pb.WatchResponse{
+				Payload: &pb.WatchResponse_UpdatedRefEvent_{&pb.WatchResponse_UpdatedRefEvent{
+					Commit:      evt.UpdatedRefEvent.Commit,
+					RepoID:      evt.UpdatedRefEvent.RepoID,
+					TxHash:      evt.UpdatedRefEvent.TxHash,
+					Time:        evt.UpdatedRefEvent.Time,
+					BlockNumber: evt.UpdatedRefEvent.BlockNumber,
+				}},
+			})
+
+		}
+
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	return nil
 }
