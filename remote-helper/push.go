@@ -7,9 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/libgit2/git2go"
-	"github.com/pkg/errors"
-
 	"github.com/Conscience/protocol/util"
 )
 
@@ -55,7 +52,7 @@ func push(srcRefName string, destRefName string) error {
 
 	progressWriter := util.NewSingleLineWriter(os.Stderr)
 
-	ch := client.RequestReplication(context.Background(), repoID)
+	ch := client.RequestReplication(context.TODO(), repoID)
 	for progress := range ch {
 		if progress.Error != nil {
 			log.Printf("Could not find replicator for repo")
