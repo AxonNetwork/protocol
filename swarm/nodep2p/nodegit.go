@@ -192,19 +192,6 @@ func FetchConscienceRemote(ctx context.Context, opts *FetchOptions) ([]string, e
 	return updatedRefs, nil
 }
 
-func GetFetchRefspecs(remote *git.Remote) []*git.Refspec {
-	refspecs := []*git.Refspec{}
-
-	n := remote.RefspecCount()
-	for i := uint(0); i < n; i++ {
-		refspec := remote.GetRefspec(i)
-		if refspec.Direction() == git.ConnectDirectionFetch {
-			refspecs = append(refspecs, refspec)
-		}
-	}
-	return refspecs
-}
-
 type PullOptions struct {
 	Repo       *repo.Repo
 	RemoteName string

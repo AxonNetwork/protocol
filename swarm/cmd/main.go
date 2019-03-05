@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +30,11 @@ import (
 )
 
 func main() {
+	// pprof server for profiling
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	log.SetField("App", "conscience-node")
 	log.SetField("ReleaseStage", env.ReleaseStage)
 	log.SetField("AppVersion", env.AppVersion)

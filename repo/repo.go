@@ -501,7 +501,7 @@ func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
 			return nil, err
 		}
 
-		files[i] = mapStatusEntry(entry)
+		files[i] = mapStatusEntry(entry, r.Path())
 
 		attr, err := r.GetAttribute(git.AttributeCheckNoSystem, files[i].Filename, "filter")
 		if err != nil {
@@ -514,7 +514,7 @@ func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
 
 // Simplifies the interpretation of 'status' for a UI that primarily needs to display information
 // about files in the worktree
-func mapStatusEntry(entry git.StatusEntry) File {
+func mapStatusEntry(entry git.StatusEntry, repoRoot string) File {
 	// Notes:
 	// - IndexToWorkdir.NewFile.Oid is ~always~ empty, presumably because by definition it means "file that isn't in the object DB yet."
 
@@ -579,7 +579,8 @@ func mapStatusEntry(entry git.StatusEntry) File {
 	// if (entry.Status & git.StatusIgnored) > 0 {
 	// }
 
-	stat, err := os.Stat(file.Filename)
+	p := filepath.Join(repoRoot, file.Filename)
+	stat, err := os.Stat(p)
 	if err == nil {
 		file.Size = uint64(stat.Size())
 		file.Modified = uint32(stat.ModTime().Unix())
