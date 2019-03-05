@@ -550,46 +550,23 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		}
 		fromCommit = branch.Target()
 	}
+
+	commit, err := r.LookupCommit(fromCommit)
 	if err != nil {
 		return nil, err
 	}
 
-	walker, err := r.Walk()
-	if err != nil {
-		return nil, err
-	}
-
-	walker.Sorting(git.SortTopological | git.SortTime /*| git.SortReverse*/)
-
-	// When we're at the end of the range (at the beginning of the history), and we specify a `~N`
-	// revspec that exceeds the number of commits available, libgit2 returns an error.  We deal with
-	// this by simply looping with smaller and smaller values of N until we figure out how many
-	// commits we have left.  @@TODO: this is probably inefficient (although maybe not, given that
-	// revwalkers are heavily cached).
-	numCommits := req.PageSize
-	for {
-		err = walker.PushRange(fmt.Sprintf("%s~%d..%s", fromCommit.String(), numCommits, fromCommit.String()))
-		if err == nil {
-			break
-		}
-		numCommits--
-	}
-
-	var innerErr error
 	var commits []*pb.Commit
-	err = walker.Iterate(func(commit *git.Commit) bool {
-		commitHash := commit.Id().String()
-
+	for {
 		if req.OnlyHashes {
 			commits = append(commits, &pb.Commit{
-				CommitHash: commitHash,
+				CommitHash: commit.Id().String(),
 			})
 
 		} else {
 			files, err := r.FilesChangedByCommit(ctx, commit.Id())
 			if err != nil {
-				innerErr = err
-				return false
+				return nil, err
 			}
 
 			filenames := make([]string, len(files))
@@ -600,7 +577,7 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 			author := commit.Author()
 
 			commits = append(commits, &pb.Commit{
-				CommitHash: commitHash,
+				CommitHash: commit.Id().String(),
 				Author:     author.Name + " <" + author.Email + ">", // @@TODO: break this up into .Name and .Email fields
 				Message:    commit.Message(),
 				Timestamp:  uint64(author.When.Unix()),
@@ -609,12 +586,14 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		}
 
 		if len(commits) >= int(req.PageSize) {
-			return false
+			break
 		}
-		return true
-	})
+		if commit.ParentCount() > 0 {
+			commit = commit.Parent(0)
+		}
+	}
 
-	isEnd := numCommits < req.PageSize
+	isEnd := commit.ParentCount() == 0
 
 	return &pb.GetRepoHistoryResponse{Commits: commits, IsEnd: isEnd}, nil
 }

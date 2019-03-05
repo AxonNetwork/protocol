@@ -196,7 +196,7 @@ func (rm *RepoManager) RepoAtPathOrID(path string, repoID string) (*repo.Repo, e
 
 func (rm *RepoManager) RepoIDList() []string {
 	repoIDs := make([]string, 0)
-	for repoID, _ := range rm.repos {
+	for repoID := range rm.repos {
 		repoIDs = append(repoIDs, repoID)
 	}
 	return repoIDs
