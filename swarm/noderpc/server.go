@@ -587,10 +587,10 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 
 		if len(commits) >= int(req.PageSize) {
 			break
+		} else if commit.ParentCount() == 0 {
+			break
 		}
-		if commit.ParentCount() > 0 {
-			commit = commit.Parent(0)
-		}
+		commit = commit.Parent(0)
 	}
 
 	isEnd := commit.ParentCount() == 0
