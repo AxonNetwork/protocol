@@ -29,6 +29,8 @@ type NodeConfig struct {
 	RPCListenNetwork        string
 	RPCListenHost           string
 	HTTPListenAddr          string
+	HTTPUsername            string
+	HTTPPassword            string
 	EthereumHost            string
 	ProtocolContract        string
 	EthereumBIP39Seed       string
@@ -57,6 +59,8 @@ var DefaultConfig = Config{
 		RPCListenNetwork:        "tcp",
 		RPCListenHost:           "0.0.0.0:1338",
 		HTTPListenAddr:          ":8081",
+		HTTPUsername:            "admin",
+		HTTPPassword:            "password",
 		EthereumHost:            "http://geth.conscience.network:80",
 		ProtocolContract:        "0x0501fc316bc5e138763c90f07dcb67a9a3b1e95d",
 		EthereumBIP39Seed:       "",

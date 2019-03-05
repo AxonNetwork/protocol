@@ -41,7 +41,11 @@ func New(node *swarm.Node) *Server {
 	router.Handle("/debug/vars", expvar.Handler())
 	debugcharts.RegisterHandlers(router)
 
-	s.server = &http.Server{Addr: node.Config.Node.HTTPListenAddr, Handler: router}
+	username := node.Config.Node.HTTPUsername
+	password := node.Config.Node.HTTPPassword
+	handler := BasicAuth(username, password, router)
+
+	s.server = &http.Server{Addr: node.Config.Node.HTTPListenAddr, Handler: handler}
 
 	return s
 }
