@@ -220,23 +220,31 @@ func (r *Repo) OpenFileAtCommit(filename string, commitID CommitID) (ObjectReade
 
 func (r *Repo) ResolveCommitHash(commitID CommitID) (git.Oid, error) {
 	if commitID.Ref != "" {
-		ref, err := r.References.Lookup(commitID.Ref)
+		// @@TODO: figure out if there are references that'll fail to resolve because we're using
+		// Revparse instead of References.Lookup
+		// ref, err := r.References.Lookup(commitID.Ref)
+		// if err != nil {
+		// 	return git.Oid{}, err
+		// }
+		// defer ref.Free()
+
+		// ref, err = ref.Resolve()
+		// if err != nil {
+		// 	return git.Oid{}, err
+		// }
+		// defer ref.Free()
+
+		// oid := ref.Target()
+		// if oid == nil {
+		// 	return git.Oid{}, errors.Errorf("could not resolve commit ref '%s' to a revision", commitID.Ref)
+		// }
+		// return *oid, nil
+
+		obj, err := r.RevparseSingle(commitID.Ref)
 		if err != nil {
 			return git.Oid{}, err
 		}
-		defer ref.Free()
-
-		ref, err = ref.Resolve()
-		if err != nil {
-			return git.Oid{}, err
-		}
-		defer ref.Free()
-
-		oid := ref.Target()
-		if oid == nil {
-			return git.Oid{}, errors.Errorf("could not resolve commit ref '%s' to a revision", commitID.Ref)
-		}
-		return *oid, nil
+		return *obj.Id(), nil
 
 	} else if commitID.Hash != nil && !commitID.Hash.IsZero() {
 		return *commitID.Hash, nil
