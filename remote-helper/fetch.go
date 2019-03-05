@@ -31,7 +31,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 	copy(commitHash[:], commitHashSlice)
 
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, totalChunks, err := client.FetchFromCommit(context.TODO(), repoID, Repo.Path(), commitHash, wire.Working)
+	ch, uncompressedSize, totalChunks, err := client.FetchFromCommit(context.TODO(), repoID, Repo.Path(), commitHash, wire.CheckoutTypeWorking)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 			packfileID = hex.EncodeToString(pkt.PackfileData.PackfileID)
 
 			if pkt.PackfileData.End {
-				_, err = packfiles[packfileID].Commit()
+				err := packfiles[packfileID].Commit()
 				if err != nil {
 					packfiles[packfileID].Free()
 					return errors.WithStack(err)
@@ -92,15 +92,13 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 				written += packfiles[packfileID].uncompressedSize // add the uncompressed byte count
 
 				packfiles[packfileID].written = packfiles[packfileID].uncompressedSize // we can assume we have the full packfile now, so update `written` to reflect its uncompressed size
-				packfiles[packfileID].WriteCloser = nil                                // don't need the io.WriteCloser any longer, let it dealloc
+				packfiles[packfileID].PackfileWriter = nil                             // don't need the PackfileWriter any longer, let it dealloc
 
 			} else {
 				n, err := packfiles[packfileID].Write(pkt.PackfileData.Data)
 				if err != nil {
-					packfiles[packfileID].Close()
 					return errors.WithStack(err)
 				} else if n != len(pkt.PackfileData.Data) {
-					packfiles[packfileID].Close()
 					return errors.New("remote helper: did not fully write packet")
 				}
 
@@ -110,13 +108,14 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 
 		case pkt.Chunk != nil:
 			objectID := hex.EncodeToString(pkt.Chunk.ObjectID)
+
 			if pkt.Chunk.End {
 				err = chunks[objectID].Close()
 				if err != nil {
 					return errors.WithStack(err)
 				}
 
-				chunksWritten += 1
+				chunksWritten++
 				chunks[objectID] = nil
 
 			} else {
@@ -128,10 +127,8 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 						return errors.WithStack(err)
 					}
 
-					objectPath := filepath.Join(dataDir, objectID)
-					f, err = os.Create(objectPath)
+					f, err = os.Create(filepath.Join(dataDir, objectID))
 					if err != nil {
-						f.Close()
 						return errors.WithStack(err)
 					}
 					chunks[objectID] = f
