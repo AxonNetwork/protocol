@@ -124,7 +124,9 @@ func (p *peerPool) Close() error {
 	p.chProviders = nil
 	go func() {
 		for x := range p.chPeers {
-			x.Close()
+			if x.Stream != nil {
+				x.Stream.Close()
+			}
 		}
 		p.chPeers = nil
 	}()
@@ -158,6 +160,7 @@ func (p *peerPool) GetConn() (*peerConn, error) {
 }
 
 func (p *peerPool) ReturnConn(conn *peerConn, strike bool) {
+	log.Println("Return Conn: ", conn)
 	if strike {
 		// if _, exists := p.peerList[conn.peerID]; exists {
 		// 	delete(p.peerList, conn.peerID)

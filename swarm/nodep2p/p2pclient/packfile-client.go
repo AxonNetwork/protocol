@@ -60,7 +60,7 @@ func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []wire.
 				return
 			}
 
-			go func(batch []job) {
+			go func(conn *peerConn, batch []job) {
 				err := sc.fetchPackfile(ctx, conn, batch, chOut, jobQueue, wg)
 				if err != nil {
 					log.Errorln("[packfile client] fetchObject:", err)
@@ -73,7 +73,7 @@ func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []wire.
 				} else {
 					pool.ReturnConn(conn, false)
 				}
-			}(batch)
+			}(conn, batch)
 		}
 	}()
 
