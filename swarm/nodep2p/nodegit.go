@@ -83,7 +83,7 @@ type PushOptions struct {
 	ProgressCb func(percent int)
 }
 
-func Push(ctx context.Context, opts *PushOptions) error {
+func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	r := opts.Repo
 	node := opts.Node
 
@@ -94,22 +94,22 @@ func Push(ctx context.Context, opts *PushOptions) error {
 
 	repoID, err := r.RepoID()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = node.AnnounceRepo(ctx1, repoID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	branch, err := r.LookupBranch(opts.BranchName, git.BranchLocal)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	srcRef, err := branch.Reference.Resolve()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	commitOid := srcRef.Target()
@@ -120,14 +120,14 @@ func Push(ctx context.Context, opts *PushOptions) error {
 
 	tx, err := node.UpdateRef(ctx2, repoID, branch.Reference.Name(), commitOid.String())
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	txResult := <-tx.Await(ctx)
 	if txResult.Err != nil {
-		return txResult.Err
+		return "", txResult.Err
 	} else if txResult.Receipt.Status == 0 {
-		return errors.New("transaction failed")
+		return "", errors.New("transaction failed")
 	}
 
 	// @@TODO: make context timeout configurable
@@ -137,12 +137,12 @@ func Push(ctx context.Context, opts *PushOptions) error {
 	ch := node.RequestReplication(ctx3, repoID)
 	for progress := range ch {
 		if progress.Error != nil {
-			return progress.Error
+			return "", progress.Error
 		}
 		opts.ProgressCb(progress.Percent)
 	}
 
-	return nil
+	return commitOid.String(), nil
 }
 
 type FetchOptions struct {
@@ -199,24 +199,24 @@ type PullOptions struct {
 	ProgressCb func(done, total uint64) error
 }
 
-func Pull(ctx context.Context, opts *PullOptions) (err error) {
+func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 	r := opts.Repo
 
 	// 1. stash worktree
 	{
 		cfg, err := r.Config()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		name, err := cfg.LookupString("user.name")
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		email, err := cfg.LookupString("user.email")
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		sig := &git.Signature{
@@ -231,7 +231,7 @@ func Pull(ctx context.Context, opts *PullOptions) (err error) {
 		if err != nil && strings.Contains(err.Error(), "there is nothing to stash") {
 			// no-op
 		} else if err != nil {
-			return err
+			return nil, err
 		} else {
 			didStash = true
 		}
@@ -264,15 +264,20 @@ func Pull(ctx context.Context, opts *PullOptions) (err error) {
 	}
 
 	// 2. fetch
+	var updatedRefs []string
 	{
 		remote, err := r.Remotes.Lookup(opts.RemoteName)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		var innerErr error
 		err = remote.Fetch([]string{}, &git.FetchOptions{
 			RemoteCallbacks: git.RemoteCallbacks{
+				UpdateTipsCallback: func(refname string, a *git.Oid, b *git.Oid) git.ErrorCode {
+					updatedRefs = append(updatedRefs, refname)
+					return git.ErrOk
+				},
 				TransferProgressCallback: func(stats git.TransferProgress) git.ErrorCode {
 					select {
 					case <-ctx.Done():
@@ -290,71 +295,76 @@ func Pull(ctx context.Context, opts *PullOptions) (err error) {
 			},
 		}, "")
 		if innerErr != nil {
-			return innerErr
+			return nil, innerErr
 		} else if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	// 3. merge
 	{
 		if r.State() != git.RepositoryStateNone {
-			return errors.Errorf("repository in unexpected state prior to merge: %v", r.State())
+			return nil, errors.Errorf("repository in unexpected state prior to merge: %v", r.State())
 		}
 
 		branch, err := r.LookupBranch(opts.RemoteName+"/"+opts.BranchName, git.BranchRemote)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		mergeHead, err := r.AnnotatedCommitFromRef(branch.Reference)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		incomingHeads := []*git.AnnotatedCommit{mergeHead}
 		analysis, preference, err := r.MergeAnalysis(incomingHeads)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if analysis&git.MergeAnalysisUpToDate > 0 {
 			// Already up to date.
 
-			return nil
+			return updatedRefs, nil
 
 		} else if analysis&git.MergeAnalysisUnborn > 0 ||
 			(analysis&git.MergeAnalysisFastForward > 0 && preference&git.MergePreferenceNoFastForward == 0) {
 			// Fast-forward merge.
 
 			unborn := analysis&git.MergeAnalysisUnborn > 0
-			return doFastForward(r, branch.Target(), unborn)
+			err = doFastForward(r, branch.Target(), unborn)
+			if err != nil {
+				return nil, err
+			} else {
+				return updatedRefs, nil
+			}
 
 		} else if analysis&git.MergeAnalysisNormal > 0 {
 			// Regular merge.
 
 			mergeOpts, err := git.DefaultMergeOptions()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			mergeOpts.TreeFlags = git.MergeTreeFindRenames
 
 			err = r.Merge(incomingHeads, &mergeOpts, &git.CheckoutOpts{Strategy: git.CheckoutForce | git.CheckoutAllowConflicts})
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 
 		index, err := r.Index()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if index.HasConflicts() == false {
 
 		}
 	}
-	return nil
+	return updatedRefs, nil
 }
 
 // func createMergeCommit(r *repo.Repo, index *git.Index, mergeOpts *git.MergeOpts) error {

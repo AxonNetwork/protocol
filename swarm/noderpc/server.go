@@ -148,7 +148,7 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	// if local HEAD exists, push to contract
 	_, err = r.Head()
 	if err == nil {
-		err = nodep2p.Push(ctx, &nodep2p.PushOptions{
+		_, err = s.node.Push(ctx, &nodep2p.PushOptions{
 			Node:       s.node,
 			Repo:       r,
 			BranchName: "master", // @@TODO: don't hard code this
@@ -179,7 +179,7 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 		return nil, errors.WithStack(err)
 	}
 
-	err = nodep2p.Push(ctx, &nodep2p.PushOptions{
+	_, err = s.node.Push(ctx, &nodep2p.PushOptions{
 		Node:       s.node,
 		Repo:       r,
 		BranchName: "master", // @@TODO: don't hard code this
@@ -202,7 +202,8 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 	}
 
 	// @@TODO: don't hardcode origin/master
-	err := nodep2p.Pull(context.TODO(), &nodep2p.PullOptions{
+	_, err := s.node.Pull(context.TODO(), &nodep2p.PullOptions{
+		Repo:       r,
 		RemoteName: "origin",
 		BranchName: "master",
 		ProgressCb: func(done, total uint64) error {
@@ -226,7 +227,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 		repoRoot = s.node.Config.Node.ReplicationRoot
 	}
 
-	r, err := nodep2p.Clone(context.TODO(), &nodep2p.CloneOptions{
+	r, err := s.node.Clone(context.TODO(), &nodep2p.CloneOptions{
 		RepoID:    req.RepoID,
 		RepoRoot:  repoRoot,
 		Bare:      false, // @@TODO
@@ -787,6 +788,12 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 	diffReader, err := r.GetDiff(context.TODO(), repo.CommitID{Hash: util.OidFromBytes(req.CommitHash), Ref: req.CommitRef})
 	if err != nil {
 		return err
+	} else if diffReader == nil {
+		err = server.Send(&pb.GetDiffResponse{End: true})
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		return nil
 	}
 
 	if diffReader == nil {
@@ -873,9 +880,19 @@ func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) erro
 		case evt.PulledRepoEvent != nil:
 			err = server.Send(&pb.WatchResponse{
 				Payload: &pb.WatchResponse_PulledRepoEvent_{&pb.WatchResponse_PulledRepoEvent{
-					RepoID:   evt.PulledRepoEvent.RepoID,
-					RepoRoot: evt.PulledRepoEvent.RepoRoot,
-					NewHEAD:  evt.PulledRepoEvent.NewHEAD,
+					RepoID:      evt.PulledRepoEvent.RepoID,
+					RepoRoot:    evt.PulledRepoEvent.RepoRoot,
+					UpdatedRefs: evt.PulledRepoEvent.UpdatedRefs,
+				}},
+			})
+
+		case evt.PushedRepoEvent != nil:
+			err = server.Send(&pb.WatchResponse{
+				Payload: &pb.WatchResponse_PushedRepoEvent_{&pb.WatchResponse_PushedRepoEvent{
+					RepoID:     evt.PushedRepoEvent.RepoID,
+					RepoRoot:   evt.PushedRepoEvent.RepoRoot,
+					BranchName: evt.PushedRepoEvent.BranchName,
+					Commit:     evt.PushedRepoEvent.Commit,
 				}},
 			})
 

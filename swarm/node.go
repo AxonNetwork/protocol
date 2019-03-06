@@ -365,6 +365,77 @@ func (n *Node) RemovePeer(peerID peer.ID) error {
 	return nil
 }
 
+func (n *Node) Clone(ctx context.Context, opts *nodep2p.CloneOptions) (*repo.Repo, error) {
+	return nodep2p.Clone(ctx, opts)
+}
+
+func (n *Node) Push(ctx context.Context, opts *nodep2p.PushOptions) (string, error) {
+	repoRoot := opts.Repo.Path()
+	repoID, err := opts.Repo.RepoID()
+	if err != nil {
+		return "", err
+	}
+	commit, err := nodep2p.Push(ctx, opts)
+	if err != nil {
+		return "", err
+	}
+	event := MaybeEvent{
+		EventType: PushedRepo,
+		PushedRepoEvent: &PushedRepoEvent{
+			RepoID:     repoID,
+			RepoRoot:   repoRoot,
+			BranchName: opts.BranchName,
+			Commit:     commit,
+		},
+	}
+	n.NotifyWatchers(event)
+	return commit, nil
+}
+
+func (n *Node) FetchConscienceRemote(ctx context.Context, opts *nodep2p.FetchOptions) ([]string, error) {
+	repoRoot := opts.Repo.Path()
+	repoID, err := opts.Repo.RepoID()
+	if err != nil {
+		return nil, err
+	}
+	updatedRefs, err := nodep2p.FetchConscienceRemote(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	event := MaybeEvent{
+		EventType: PulledRepo,
+		PulledRepoEvent: &PulledRepoEvent{
+			RepoID:      repoID,
+			RepoRoot:    repoRoot,
+			UpdatedRefs: updatedRefs,
+		},
+	}
+	n.NotifyWatchers(event)
+	return updatedRefs, nil
+}
+
+func (n *Node) Pull(ctx context.Context, opts *nodep2p.PullOptions) ([]string, error) {
+	repoRoot := opts.Repo.Path()
+	repoID, err := opts.Repo.RepoID()
+	if err != nil {
+		return nil, err
+	}
+	updatedRefs, err := nodep2p.Pull(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	event := MaybeEvent{
+		EventType: PulledRepo,
+		PulledRepoEvent: &PulledRepoEvent{
+			RepoID:      repoID,
+			RepoRoot:    repoRoot,
+			UpdatedRefs: updatedRefs,
+		},
+	}
+	n.NotifyWatchers(event)
+	return updatedRefs, nil
+}
+
 func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType CheckoutType) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64, int64) {
 	c := p2pclient.NewSmartClient(n, repoID, repoPath, &n.Config)
 	return c.FetchFromCommit(ctx, commit, checkoutType)
@@ -431,7 +502,7 @@ func (n *Node) TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error) 
 		},
 	}
 	n.NotifyWatchers(event)
-	return n.repoManager.TrackRepo(repoPath, forceReload)
+	return r, nil
 }
 
 func (n *Node) ID() peer.ID {
@@ -589,6 +660,7 @@ func (n *Node) GetBandwidthTotals() metrics.Stats {
 
 func (n *Node) Watch(ctx context.Context, settings *WatcherSettings) *Watcher {
 	w := NewWatcher(ctx, settings)
+	n.watchers = append(n.watchers, w)
 
 	if w.IsWatching(UpdatedRef) {
 		repoIDs := n.repoManager.RepoIDList()
