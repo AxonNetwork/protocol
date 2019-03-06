@@ -789,6 +789,14 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 		return err
 	}
 
+	if diffReader == nil {
+		err = server.Send(&pb.GetDiffResponse{End: true})
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		return nil
+	}
+
 	for {
 		data := make([]byte, OBJ_CHUNK_SIZE)
 		n, err := io.ReadFull(diffReader, data)
