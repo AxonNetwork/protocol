@@ -210,12 +210,27 @@ func (r *Repo) OpenFileAtCommit(filename string, commitID CommitID) (ObjectReade
 	}
 	defer tree.Free()
 
-	treeEntry := tree.EntryByName(filename)
-	if treeEntry == nil {
+	var entry *git.TreeEntry
+	// Intentionally ignoring error because breaking the walk is an error
+	_ = tree.Walk(func(fn string, innerEntry *git.TreeEntry) int {
+		// log.Warnf("< %v >/( %v )", fn, entry.Name)
+		if filepath.Join(fn, innerEntry.Name) == filename {
+			entry = innerEntry
+			return -1
+		}
+		return 0
+	})
+	if entry == nil {
 		return nil, errors.WithStack(Err404)
 	}
 
-	return r.OpenObject(treeEntry.Id[:])
+	// treeEntry := tree.EntryByName(filename)
+	// if treeEntry == nil {
+	// 	log.Warnf("OpenFileAtCommit treeEntry == nil")
+	// 	return nil, errors.WithStack(Err404)
+	// }
+
+	return r.OpenObject(entry.Id[:])
 }
 
 func (r *Repo) ResolveCommitHash(commitID CommitID) (git.Oid, error) {
@@ -653,6 +668,7 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 	return files, nil
 }
 
+// The returned io.Reader is nil when a diff for a merge commit is fetched.
 func (r *Repo) GetDiff(ctx context.Context, commitID CommitID) (io.Reader, error) {
 	if commitID.Ref == "working" {
 		return r.GetDiffWorktree(ctx)
