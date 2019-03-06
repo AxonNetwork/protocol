@@ -11,12 +11,12 @@ type EventType int
 const (
 	AddedRepo EventType = iota
 	PulledRepo
+	PushedRepo
 	UpdatedRef
 	// RemovedRepo
 	// ReplicationRequested
 	// BecomeReplicatorRequested
 	// ClonedRepo
-	// CheckpointedRepo
 	// BehindRemote
 	// UpdatedPermissions
 )
@@ -25,6 +25,7 @@ type MaybeEvent struct {
 	EventType       EventType
 	AddedRepoEvent  *AddedRepoEvent
 	PulledRepoEvent *PulledRepoEvent
+	PushedRepoEvent *PushedRepoEvent
 	UpdatedRefEvent *nodeeth.UpdatedRefEvent
 	Error           error
 }
@@ -35,9 +36,16 @@ type AddedRepoEvent struct {
 }
 
 type PulledRepoEvent struct {
-	RepoID   string
-	RepoRoot string
-	NewHEAD  string
+	RepoID      string
+	RepoRoot    string
+	UpdatedRefs []string
+}
+
+type PushedRepoEvent struct {
+	RepoID     string
+	RepoRoot   string
+	BranchName string
+	Commit     string
 }
 
 type WatcherSettings struct {
@@ -61,10 +69,10 @@ func NewWatcher(ctx context.Context, settings *WatcherSettings) *Watcher {
 }
 
 func (w *Watcher) Notify(event MaybeEvent) {
-	// if eventType == RepoAdded && w.refWatcher != nil {
-	// 	w.refWatcher.AddRepo(repoID)
-	// }
-	// w.EventCh <- MaybeEvent{RepoID: repoID, EventType: eventType}
+	if event.AddedRepoEvent != nil && w.refWatcher != nil {
+		go w.refWatcher.AddRepo(event.AddedRepoEvent.RepoID)
+	}
+	w.EventCh <- event
 }
 
 func (w *Watcher) IsWatching(eventType EventType) bool {

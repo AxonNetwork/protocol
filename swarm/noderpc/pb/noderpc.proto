@@ -443,7 +443,14 @@ message WatchResponse {
     message PulledRepoEvent {
         string repoID = 1;
         string repoRoot = 2;
-        string newHEAD = 3;
+        repeated string updatedRefs = 3;
+    }
+
+    message PushedRepoEvent {
+        string repoID = 1;
+        string repoRoot = 2;
+        string branchName = 3;
+        string commit = 4;
     }
 
     message UpdatedRefEvent {
@@ -457,7 +464,8 @@ message WatchResponse {
     oneof payload {
         AddedRepoEvent addedRepoEvent = 1;
         PulledRepoEvent pulledRepoEvent = 2;
-        UpdatedRefEvent updatedRefEvent = 3;
+        PushedRepoEvent pushedRepoEvent = 3;
+        UpdatedRefEvent updatedRefEvent = 4;
     }
 }
 
