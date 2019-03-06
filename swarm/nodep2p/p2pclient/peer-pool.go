@@ -160,7 +160,6 @@ func (p *peerPool) GetConn() (*peerConn, error) {
 }
 
 func (p *peerPool) ReturnConn(conn *peerConn, strike bool) {
-	log.Println("Return Conn: ", conn)
 	if strike {
 		// if _, exists := p.peerList[conn.peerID]; exists {
 		// 	delete(p.peerList, conn.peerID)
