@@ -124,7 +124,9 @@ func (p *peerPool) Close() error {
 	p.chProviders = nil
 	go func() {
 		for x := range p.chPeers {
-			x.Close()
+			if x.Stream != nil {
+				x.Close()
+			}
 		}
 		p.chPeers = nil
 	}()
