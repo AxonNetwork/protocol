@@ -624,6 +624,7 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	defer odb.Free()
 
 	files := []File{}
 	err = tree.Walk(func(name string, entry *git.TreeEntry) int {
