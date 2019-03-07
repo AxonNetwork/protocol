@@ -2,6 +2,7 @@ package p2pserver
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/hex"
 	"io"
@@ -115,7 +116,10 @@ func getManifestStream(r *repo.Repo, commitHash git.Oid, checkoutType CheckoutTy
 
 	go func() {
 		var err error
-		defer func() { wPipe.CloseWithError(err) }()
+		defer func() {
+			odb.Free()
+			wPipe.CloseWithError(err)
+		}()
 
 		for len(stack) > 0 {
 			if m.seenObj[stack[0]] {
@@ -123,26 +127,29 @@ func getManifestStream(r *repo.Repo, commitHash git.Oid, checkoutType CheckoutTy
 				continue
 			}
 
-			commit, err := m.repo.LookupCommit(&stack[0])
-			if err != nil {
-				return
-			}
-
-			parentCount := commit.ParentCount()
-			parentHashes := []git.Oid{}
-			for i := uint(0); i < parentCount; i++ {
-				hash := commit.ParentId(i)
-				if !m.seenObj[*hash] {
-					parentHashes = append(parentHashes, *hash)
+			func() {
+				commit, err := m.repo.LookupCommit(&stack[0])
+				if err != nil {
+					return
 				}
-			}
+				defer commit.Free()
 
-			stack = append(stack[1:], parentHashes...)
+				parentCount := commit.ParentCount()
+				parentHashes := []git.Oid{}
+				for i := uint(0); i < parentCount; i++ {
+					hash := commit.ParentId(i)
+					if !m.seenObj[*hash] {
+						parentHashes = append(parentHashes, *hash)
+					}
+				}
 
-			err = m.addCommit(commit)
-			if err != nil {
-				return
-			}
+				stack = append(stack[1:], parentHashes...)
+
+				err = m.addCommit(commit)
+				if err != nil {
+					return
+				}
+			}()
 		}
 	}()
 
@@ -164,23 +171,24 @@ func (m *ManifestWriter) addCommit(commit *git.Commit) error {
 	if err != nil {
 		return err
 	}
+	defer tree.Free()
 
-	var obj *git.Object
 	var innerErr error
 	err = tree.Walk(func(name string, entry *git.TreeEntry) int {
-		obj, innerErr = m.repo.Lookup(entry.Id)
-		if innerErr != nil {
+		_, objType, err := m.odb.ReadHeader(entry.Id)
+		if err != nil {
+			innerErr = err
 			return -1
 		}
 
-		switch obj.Type() {
+		switch objType {
 		case git.ObjectTree, git.ObjectBlob:
 			innerErr = m.writeGitOid(*entry.Id)
 			if innerErr != nil {
 				return -1
 			}
 		default:
-			log.Printf("found weird object: %v (%v)\n", entry.Id.String(), obj.Type().String())
+			log.Printf("found weird object: %v (%v)\n", entry.Id.String(), objType.String())
 			return 0
 		}
 
@@ -188,7 +196,7 @@ func (m *ManifestWriter) addCommit(commit *git.Commit) error {
 		// 1. this is a full checkout, or...
 		// 2. this is a working checkout and we're on the first (i.e. checked out) commit
 		// @@TODO: can we assume that the requested commit is the one that will be checked out?
-		if obj.Type() == git.ObjectBlob &&
+		if objType == git.ObjectBlob &&
 			(m.checkoutType == CheckoutTypeFull || (m.checkoutType == CheckoutTypeWorking && m.checkoutCommit == *commit.Id())) {
 
 			isChunked, err := m.repo.FileIsChunked(name, commit.Id())
@@ -243,13 +251,15 @@ func (m *ManifestWriter) writeGitOid(oid git.Oid) error {
 }
 
 func (m *ManifestWriter) writeChunkIDsForBlob(oid git.Oid) error {
-	reader, err := m.odb.NewReadStream(&oid)
+	odbObject, err := m.odb.Read(&oid)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	// It's necessary to manually .Free this object because it must stay live until we're done with
+	// its .Data slice.
+	defer odbObject.Free()
 
-	br := bufio.NewReader(reader)
+	br := bufio.NewReader(bytes.NewReader(odbObject.Data()))
 
 	repoRoot := m.repo.Path()
 	for {
@@ -267,6 +277,7 @@ func (m *ManifestWriter) writeChunkIDsForBlob(oid git.Oid) error {
 
 		chunkID, err := hex.DecodeString(string(line))
 		if err != nil {
+			return err
 		}
 
 		p := filepath.Join(repoRoot, ".git", repo.CONSCIENCE_DATA_SUBDIR, string(line))

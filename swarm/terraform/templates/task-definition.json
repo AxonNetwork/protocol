@@ -27,6 +27,11 @@
         "hostPort": ${container_http_port},
         "containerPort": ${container_http_port},
         "protocol": "tcp"
+      },
+      {
+        "hostPort": 6060,
+        "containerPort": 6060,
+        "protocol": "tcp"
       }
     ],
     "volumesFrom": [],

@@ -29,6 +29,7 @@ RUN ln -s /mnt/.consciencerc $HOME/.consciencerc
 EXPOSE 1337
 EXPOSE 1338
 EXPOSE 8081
+EXPOSE 6060
 
 ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
 CMD ["/usr/local/bin/conscience-node"]

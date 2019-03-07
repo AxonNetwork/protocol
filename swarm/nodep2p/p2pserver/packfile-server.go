@@ -68,72 +68,80 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 			}
 
 			if len(availableObjectIDs) == 0 {
-				return
+				continue
 			}
 		}
 
 		// Write the packfile to the stream
 		{
-			log.Debugf("[packfile server] writing %v objects to packfile stream", len(req.ObjectIDs)/20)
+			log.Debugf("[packfile server] writing %v objects to packfile stream", len(availableObjectIDs))
 
 			rPipe, wPipe := io.Pipe()
 
-			// Generate the packfile
-			// @@TODO: to maximize packing efficiency, add commits first, then trees, then blobs.  Among
-			// each object type, add most recent objects first.
-			go func() {
-				var err error
-				defer func() { wPipe.CloseWithError(err) }()
-
-				packbuilder, err := r.NewPackbuilder()
-				if err != nil {
-					log.Errorln("[packfile server] error instantiating packbuilder:", err)
-					return
-				}
-
-				for i := range availableObjectIDs {
-					oid := util.OidFromBytes(availableObjectIDs[i])
-
-					err = packbuilder.Insert(oid, "")
-					if err != nil {
-						log.Errorln("[packfile server] error adding object to packbuilder:", err)
-						return
-					}
-				}
-
-				err = packbuilder.Write(wPipe)
-				if err != nil {
-					log.Errorln("[packfile server] error writing packfile to stream:", err)
-					return
-				}
-			}()
-
-			var totalWritten int
-			for {
-				data := make([]byte, nodep2p.OBJ_CHUNK_SIZE)
-				n, err := io.ReadFull(rPipe, data)
-				if err == io.EOF {
-					break
-				} else if err == io.ErrUnexpectedEOF {
-					data = data[:n]
-				} else if err != nil {
-					log.Errorf("[packfile server] error reading packfile: %+v", err)
-					return
-				}
-
-				err = wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{Data: data})
-				if err != nil {
-					log.Errorf("[packfile server] %+v", errors.WithStack(err))
-					return
-				}
-				totalWritten += n
-			}
-
-			err = wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{End: true})
+			go generatePackfile(wPipe, r, availableObjectIDs)
+			err := pipePackfileAsPackets(rPipe, stream)
 			if err != nil {
-				log.Errorf("[packfile server] %+v", errors.WithStack(err))
 				return
 			}
 		}
 	}
+}
+
+func generatePackfile(wPipe *io.PipeWriter, r *repo.Repo, availableObjectIDs [][]byte) {
+	// @@TODO: to maximize packing efficiency, add commits first, then trees, then blobs.  Among
+	// each object type, add most recent objects first.
+
+	var err error
+	defer func() { wPipe.CloseWithError(err) }()
+
+	packbuilder, err := r.NewPackbuilder()
+	if err != nil {
+		log.Errorln("[packfile server] error instantiating packbuilder:", err)
+		return
+	}
+	defer packbuilder.Free()
+
+	for i := range availableObjectIDs {
+		oid := util.OidFromBytes(availableObjectIDs[i])
+
+		err = packbuilder.Insert(oid, "")
+		if err != nil {
+			log.Errorln("[packfile server] error adding object to packbuilder:", err)
+			return
+		}
+	}
+
+	err = packbuilder.Write(wPipe)
+	if err != nil {
+		log.Errorln("[packfile server] error writing packfile to stream:", err)
+		return
+	}
+}
+
+func pipePackfileAsPackets(rPipe io.Reader, stream io.Writer) error {
+	data := make([]byte, nodep2p.OBJ_CHUNK_SIZE)
+	for {
+		n, err := io.ReadFull(rPipe, data)
+		if err == io.EOF {
+			break
+		} else if err == io.ErrUnexpectedEOF {
+			data = data[:n]
+		} else if err != nil {
+			log.Errorf("[packfile server] error reading packfile: %+v", err)
+			return err
+		}
+
+		err = wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{Data: data})
+		if err != nil {
+			log.Errorf("[packfile server] %+v", errors.WithStack(err))
+			return err
+		}
+	}
+
+	err := wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{End: true})
+	if err != nil {
+		log.Errorf("[packfile server] %+v", errors.WithStack(err))
+		return err
+	}
+	return nil
 }
