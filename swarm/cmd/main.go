@@ -328,6 +328,7 @@ var replCommands = map[string]struct {
 			repoRoot := args[1]
 
 			_, err := nodep2p.Clone(context.TODO(), &nodep2p.CloneOptions{
+				Node:      n,
 				RepoID:    repoID,
 				RepoRoot:  repoRoot,
 				Bare:      false,

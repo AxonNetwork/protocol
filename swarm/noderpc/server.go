@@ -222,12 +222,14 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 }
 
 func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepoServer) error {
-	repoRoot := req.Path
-	if len(repoRoot) == 0 {
-		repoRoot = s.node.Config.Node.ReplicationRoot
+	replDir := req.Path
+	if len(replDir) == 0 {
+		replDir = s.node.Config.Node.ReplicationRoot
 	}
+	repoRoot := filepath.Join(replDir, req.RepoID)
 
 	r, err := s.node.Clone(context.TODO(), &nodep2p.CloneOptions{
+		Node:      s.node,
 		RepoID:    req.RepoID,
 		RepoRoot:  repoRoot,
 		Bare:      false, // @@TODO
@@ -546,7 +548,10 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		const branchName = "master" // @@TODO: add this field to the RPC request
 
 		branch, err := r.LookupBranch(branchName, git.BranchLocal)
-		if err != nil {
+		if git.IsErrorCode(err, git.ErrNotFound) {
+			// empty repo with no timeline
+			return &pb.GetRepoHistoryResponse{Commits: []*pb.Commit{}, IsEnd: true}, nil
+		} else if err != nil {
 			return nil, err
 		}
 		fromCommit = branch.Target()

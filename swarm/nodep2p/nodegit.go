@@ -14,6 +14,9 @@ import (
 )
 
 type CloneOptions struct {
+	Node interface {
+		TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error)
+	}
 	RepoID     string
 	RepoRoot   string
 	Bare       bool
@@ -67,6 +70,11 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	r, err = opts.Node.TrackRepo(r.Path(), true)
+	if err != nil {
+		return nil, err
 	}
 
 	return r, nil

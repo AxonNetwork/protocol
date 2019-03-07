@@ -448,7 +448,9 @@ func (r *Repo) CommitCurrentWorkdir(opts *CommitOptions) (*git.Oid, error) {
 	}
 
 	headRef, err := r.Head()
-	if err != nil {
+	if git.IsErrorCode(err, git.ErrUnbornBranch) {
+		return r.CreateCommit("HEAD", author, committer, opts.Message, tree)
+	} else if err != nil {
 		return nil, err
 	}
 
