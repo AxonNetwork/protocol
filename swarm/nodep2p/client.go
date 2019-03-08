@@ -1,4 +1,4 @@
-package p2pclient
+package nodep2p
 
 import (
 	"context"
@@ -10,12 +10,11 @@ import (
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
-type SmartClient struct {
-	node   nodep2p.INode
+type Client struct {
+	node   INode
 	config *config.Config
 	repo   *repo.Repo
 	repoID string
@@ -47,10 +46,10 @@ type PackfileData struct {
 
 var ErrFetchingFromPeer = errors.New("fetching from peer")
 
-func NewSmartClient(node nodep2p.INode, repoID string, repoPath string, config *config.Config) *SmartClient {
+func NewClient(node INode, repoID string, repoPath string, config *config.Config) *Client {
 	r, _ := node.RepoAtPathOrID(repoPath, repoID)
 
-	sc := &SmartClient{
+	sc := &Client{
 		node:   node,
 		config: config,
 		repo:   r,
@@ -59,7 +58,7 @@ func NewSmartClient(node nodep2p.INode, repoID string, repoPath string, config *
 	return sc
 }
 
-func (sc *SmartClient) FetchFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) (<-chan MaybeFetchFromCommitPacket, int64, int64) {
+func (sc *Client) FetchFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) (<-chan MaybeFetchFromCommitPacket, int64, int64) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 
 	gitObjects, chunkObjects, uncompressedSize, err := sc.GetManifest(ctx, commitID, checkoutType)
@@ -113,7 +112,7 @@ func ManifestObjectsToHashes(objects []ManifestObject) [][]byte {
 	return hashes
 }
 
-func (sc *SmartClient) FetchChunksFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) (<-chan MaybeChunk, int64) {
+func (sc *Client) FetchChunksFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) (<-chan MaybeChunk, int64) {
 	chOut := make(chan MaybeChunk)
 
 	_, chunkObjects, _, err := sc.GetManifest(ctx, commitID, checkoutType)

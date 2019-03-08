@@ -1,18 +1,17 @@
-package p2pserver
+package nodep2p
 
 import (
 	"context"
 	"time"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 )
 
 type Server struct {
-	node nodep2p.INode
+	node INode
 }
 
-func NewServer(node nodep2p.INode) *Server {
+func NewServer(node INode) *Server {
 	return &Server{node}
 }
 

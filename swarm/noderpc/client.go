@@ -272,21 +272,18 @@ func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodee
 	return resp.Users, resp.Total, nil
 }
 
-type MaybeReplProgress struct {
-	Percent int32
-	Error   error
-}
+func (c *Client) RequestReplication(ctx context.Context, repoID string) <-chan wire.Progress {
+	ch := make(chan wire.Progress)
 
-func (c *Client) RequestReplication(ctx context.Context, repoID string) chan MaybeReplProgress {
-	ch := make(chan MaybeReplProgress)
 	requestReplicationClient, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
 	if err != nil {
 		go func() {
 			defer close(ch)
-			ch <- MaybeReplProgress{Error: err}
+			ch <- wire.Progress{Error: err}
 		}()
 		return ch
 	}
+
 	go func() {
 		defer close(ch)
 		for {
@@ -294,12 +291,13 @@ func (c *Client) RequestReplication(ctx context.Context, repoID string) chan May
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				ch <- MaybeReplProgress{Error: err}
+				ch <- wire.Progress{Error: err}
 				return
 			}
-			ch <- MaybeReplProgress{Percent: progress.Percent}
+			ch <- wire.Progress{Current: uint64(progress.Percent), Total: 100}
 		}
 	}()
+
 	return ch
 }
 
@@ -323,7 +321,7 @@ type MaybeEvent struct {
 	Error           error
 }
 
-func (c *Client) Watch(ctx context.Context, settings *swarm.WatcherSettings) (chan MaybeEvent, error) {
+func (c *Client) Watch(ctx context.Context, settings *swarm.WatcherSettings) (<-chan MaybeEvent, error) {
 	eventTypes := make([]uint64, 0)
 	for _, t := range settings.EventTypes {
 		eventTypes = append(eventTypes, uint64(t))

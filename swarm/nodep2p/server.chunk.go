@@ -1,4 +1,4 @@
-package p2pserver
+package nodep2p
 
 import (
 	"encoding/hex"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -82,7 +81,7 @@ func (s *Server) HandleChunkStreamRequest(stream netp2p.Stream) {
 			}
 
 			for {
-				data := make([]byte, nodep2p.OBJ_CHUNK_SIZE)
+				data := make([]byte, OBJ_CHUNK_SIZE)
 				n, err := io.ReadFull(chunkFile, data)
 				if err == io.EOF {
 					break

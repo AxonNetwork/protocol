@@ -34,8 +34,6 @@ import (
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/nodep2p/gittransport"
-	"github.com/Conscience/protocol/swarm/nodep2p/p2pclient"
-	"github.com/Conscience/protocol/swarm/nodep2p/p2pserver"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
@@ -117,7 +115,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
 	go n.periodicallyRequestContent(ctx)  // Start a goroutine for pulling content from repos we are replicating
 
-	ns := p2pserver.NewServer(n)
+	ns := nodep2p.NewServer(n)
 	n.host.SetStreamHandler(nodep2p.MANIFEST_PROTO, ns.HandleManifestRequest)
 	n.host.SetStreamHandler(nodep2p.PACKFILE_PROTO, ns.HandlePackfileStreamRequest)
 	n.host.SetStreamHandler(nodep2p.CHUNK_PROTO, ns.HandleChunkStreamRequest)
@@ -320,20 +318,6 @@ func (n *Node) announceRepoReplicator(ctx context.Context, repoID string) error 
 	return nil
 }
 
-// Announce to the swarm that this Node can provide a specific object from a given repository.
-func (n *Node) announceObject(ctx context.Context, repoID string, objectID []byte) error {
-	c, err := util.CidForObject(repoID, objectID)
-	if err != nil {
-		return err
-	}
-
-	err = n.dht.Provide(ctx, c, true)
-	if err != nil && err != kbucket.ErrLookupFailure {
-		return errors.Wrapf(err, "could not dht.Provide object '%0x' in repo '%v'", objectID, repoID)
-	}
-	return nil
-}
-
 // Adds a peer to the Node's address book and attempts to .Connect to it using the libp2p Host.
 func (n *Node) AddPeer(ctx context.Context, multiaddrString string) error {
 	// The following code extracts the peer ID from the given multiaddress
@@ -436,22 +420,22 @@ func (n *Node) Pull(ctx context.Context, opts *nodep2p.PullOptions) ([]string, e
 	return updatedRefs, nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType CheckoutType) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64, int64) {
-	c := p2pclient.NewSmartClient(n, repoID, repoPath, &n.Config)
+func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType CheckoutType) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64, int64) {
+	c := nodep2p.NewClient(n, repoID, repoPath, &n.Config)
 	return c.FetchFromCommit(ctx, commit, checkoutType)
 }
 
-func (n *Node) FetchChunks(ctx context.Context, repoID string, repoPath string, chunkObjects [][]byte) <-chan p2pclient.MaybeChunk {
-	c := p2pclient.NewSmartClient(n, repoID, repoPath, &n.Config)
+func (n *Node) FetchChunks(ctx context.Context, repoID string, repoPath string, chunkObjects [][]byte) <-chan nodep2p.MaybeChunk {
+	c := nodep2p.NewClient(n, repoID, repoPath, &n.Config)
 	return c.FetchChunks(ctx, chunkObjects)
 }
 
 func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {
-	return p2pclient.RequestBecomeReplicator(ctx, n, repoID)
+	return nodep2p.RequestBecomeReplicator(ctx, n, repoID)
 }
 
 func (n *Node) RequestReplication(ctx context.Context, repoID string) <-chan nodep2p.MaybeReplProgress {
-	return p2pclient.RequestReplication(ctx, n, repoID)
+	return nodep2p.RequestReplication(ctx, n, repoID)
 }
 
 func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
