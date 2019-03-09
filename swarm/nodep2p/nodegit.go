@@ -184,10 +184,11 @@ func FetchConscienceRemote(ctx context.Context, opts *FetchOptions) ([]string, e
 					return git.ErrGeneric
 				default:
 				}
-
-				innerErr = opts.ProgressCb(uint64(stats.ReceivedObjects), uint64(stats.TotalObjects))
-				if innerErr != nil {
-					return git.ErrGeneric
+				if opts.ProgressCb != nil {
+					innerErr = opts.ProgressCb(uint64(stats.ReceivedObjects), uint64(stats.TotalObjects))
+					if innerErr != nil {
+						return git.ErrGeneric
+					}
 				}
 				return git.ErrOk
 			},
@@ -294,10 +295,11 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 						return git.ErrGeneric
 					default:
 					}
-
-					innerErr = opts.ProgressCb(uint64(stats.ReceivedObjects), uint64(stats.TotalObjects))
-					if innerErr != nil {
-						return git.ErrGeneric
+					if opts.ProgressCb != nil {
+						innerErr = opts.ProgressCb(uint64(stats.ReceivedObjects), uint64(stats.TotalObjects))
+						if innerErr != nil {
+							return git.ErrGeneric
+						}
 					}
 					return git.ErrOk
 				},

@@ -18,7 +18,10 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 	for {
 		req := wire.GetPackfileRequest{}
 		err := wire.ReadStructPacket(stream, &req)
-		if err != nil {
+		if err == io.EOF {
+			log.Debugf("[packfile server] peer closed stream")
+			return
+		} else if err != nil {
 			log.Errorf("[packfile server] %+v", errors.WithStack(err))
 			return
 		}

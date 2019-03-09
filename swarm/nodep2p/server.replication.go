@@ -87,8 +87,10 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		}
 
 		// @@TODO: give context a timeout and make it configurable
-		_, err := FetchConscienceRemote(context.TODO(), &FetchOptions{
-			Repo: r,
+		_, err := Pull(context.TODO(), &PullOptions{
+			Repo:       r,
+			RemoteName: "origin",
+			BranchName: "master",
 			ProgressCb: func(current, total uint64) error {
 				err := WriteStructPacket(stream, &Progress{Current: current, Total: total})
 				if err != nil {
@@ -99,7 +101,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 			},
 		})
 		if err != nil {
-			log.Errorf("[replication server] error fetching conscience:// remote for repo %v: %v", req.RepoID, err)
+			log.Errorf("[replication server] error pulling conscience:// remote for repo %v: %v", req.RepoID, err)
 			err = WriteStructPacket(stream, &Progress{ErrorMsg: err.Error()})
 			if err != nil {
 				log.Errorf("[replication server] error: %v", err)
