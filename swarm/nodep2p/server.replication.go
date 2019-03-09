@@ -1,4 +1,4 @@
-package p2pserver
+package nodep2p
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	netp2p "github.com/libp2p/go-libp2p-net"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -88,7 +87,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		}
 
 		// @@TODO: give context a timeout and make it configurable
-		_, err := nodep2p.FetchConscienceRemote(context.TODO(), &nodep2p.FetchOptions{
+		_, err := FetchConscienceRemote(context.TODO(), &FetchOptions{
 			Repo: r,
 			ProgressCb: func(current, total uint64) error {
 				err := WriteStructPacket(stream, &Progress{Current: current, Total: total})

@@ -11,6 +11,7 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/wire"
 )
 
 type CloneOptions struct {
@@ -84,7 +85,7 @@ type PushOptions struct {
 	Node interface {
 		AnnounceRepo(ctx context.Context, repoID string) error
 		UpdateRef(ctx context.Context, repoID string, branchRefName string, commitID string) (*nodeeth.Transaction, error)
-		RequestReplication(ctx context.Context, repoID string) <-chan MaybeReplProgress
+		RequestReplication(ctx context.Context, repoID string) <-chan wire.Progress
 	}
 	Repo       *repo.Repo
 	BranchName string
@@ -147,7 +148,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 		if progress.Error != nil {
 			return "", progress.Error
 		}
-		opts.ProgressCb(progress.Percent)
+		opts.ProgressCb(int(progress.Current))
 	}
 
 	return commitOid.String(), nil

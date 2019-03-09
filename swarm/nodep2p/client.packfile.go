@@ -1,4 +1,4 @@
-package p2pclient
+package nodep2p
 
 import (
 	"context"
@@ -11,11 +11,10 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/wire"
 )
 
-func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []wire.ManifestObject) <-chan MaybeFetchFromCommitPacket {
+func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.ManifestObject) <-chan MaybeFetchFromCommitPacket {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 	wg := &sync.WaitGroup{}
 
@@ -40,7 +39,7 @@ func (sc *SmartClient) FetchGitPackfiles(ctx context.Context, gitObjects []wire.
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, nodep2p.PACKFILE_PROTO, true)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, PACKFILE_PROTO, true)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
@@ -150,7 +149,7 @@ func determineMissingIDs(desired, available [][]byte) [][]byte {
 	return missing
 }
 
-func (sc *SmartClient) returnJobsToQueue(ctx context.Context, jobs []job, jobQueue chan job) {
+func (sc *Client) returnJobsToQueue(ctx context.Context, jobs []job, jobQueue chan job) {
 	for _, j := range jobs {
 		select {
 		case jobQueue <- j:
@@ -160,7 +159,7 @@ func (sc *SmartClient) returnJobsToQueue(ctx context.Context, jobs []job, jobQue
 	}
 }
 
-func (sc *SmartClient) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([][]byte, netp2p.Stream, error) {
+func (sc *Client) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([][]byte, netp2p.Stream, error) {
 	sig, err := sc.node.SignHash([]byte(sc.repoID))
 	if err != nil {
 		return nil, nil, err
@@ -190,7 +189,7 @@ func (sc *SmartClient) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([]
 	return wire.UnflattenObjectIDs(resp.ObjectIDs), conn, nil
 }
 
-func (sc *SmartClient) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
+func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
 	desiredObjectIDs := make([][]byte, len(batch))

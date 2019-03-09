@@ -1,4 +1,4 @@
-package p2pserver
+package nodep2p
 
 import (
 	"bufio"

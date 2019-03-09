@@ -1,4 +1,4 @@
-package p2pserver
+package nodep2p
 
 import (
 	"io"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
@@ -119,7 +118,7 @@ func generatePackfile(wPipe *io.PipeWriter, r *repo.Repo, availableObjectIDs [][
 }
 
 func pipePackfileAsPackets(rPipe io.Reader, stream io.Writer) error {
-	data := make([]byte, nodep2p.OBJ_CHUNK_SIZE)
+	data := make([]byte, OBJ_CHUNK_SIZE)
 	for {
 		n, err := io.ReadFull(rPipe, data)
 		if err == io.EOF {

@@ -1,4 +1,4 @@
-package p2pclient
+package nodep2p
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -23,7 +22,7 @@ type MaybeChunk struct {
 	Error error
 }
 
-func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects [][]byte) <-chan MaybeChunk {
+func (sc *Client) FetchChunks(ctx context.Context, chunkObjects [][]byte) <-chan MaybeChunk {
 	chOut := make(chan MaybeChunk)
 	wg := &sync.WaitGroup{}
 
@@ -47,7 +46,7 @@ func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects [][]byte) <
 	maxPeers := sc.config.Node.MaxConcurrentPeers
 
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, nodep2p.CHUNK_PROTO, true)
+		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, CHUNK_PROTO, true)
 		if err != nil {
 			chOut <- MaybeChunk{Error: err}
 			return
@@ -84,7 +83,7 @@ func (sc *SmartClient) FetchChunks(ctx context.Context, chunkObjects [][]byte) <
 	return chOut
 }
 
-func (sc *SmartClient) fetchDataChunk(ctx context.Context, conn *peerConn, j job, chOut chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
+func (sc *Client) fetchDataChunk(ctx context.Context, conn *peerConn, j job, chOut chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
 	defer wg.Done()
 
 	log.Infof("[chunk client] requesting data chunk %0x", j.objectID)

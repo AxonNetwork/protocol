@@ -12,7 +12,7 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodep2p/p2pclient"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/wire"
 )
 
@@ -25,7 +25,7 @@ type ConscienceTransport struct {
 }
 
 type INode interface {
-	FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType wire.CheckoutType) (<-chan p2pclient.MaybeFetchFromCommitPacket, int64, int64)
+	FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType wire.CheckoutType) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64, int64)
 	ForEachRemoteRef(ctx context.Context, repoID string, fn func(wire.Ref) (bool, error)) error
 }
 

@@ -1,4 +1,4 @@
-package p2pclient
+package nodep2p
 
 import (
 	"context"
@@ -11,12 +11,11 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
-func (sc *SmartClient) GetManifest(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, []ManifestObject, int64, error) {
+func (sc *Client) GetManifest(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, []ManifestObject, int64, error) {
 	manifest, err := sc.requestManifestFromSwarm(ctx, commitID, checkoutType)
 	if err != nil {
 		return nil, nil, 0, err
@@ -53,7 +52,7 @@ func (sc *SmartClient) GetManifest(ctx context.Context, commitID git.Oid, checko
 	return gitObjects, chunkObjects, uncompressedSize, nil
 }
 
-func (sc *SmartClient) requestManifestFromSwarm(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, error) {
+func (sc *Client) requestManifestFromSwarm(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, error) {
 	c, err := util.CidForString(sc.repoID)
 	if err != nil {
 		return nil, err
@@ -76,11 +75,11 @@ func (sc *SmartClient) requestManifestFromSwarm(ctx context.Context, commitID gi
 	return nil, errors.Errorf("could not find provider for repo '%v'", sc.repoID)
 }
 
-func (sc *SmartClient) requestManifestFromPeer(ctx context.Context, peerID peer.ID, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, error) {
+func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, error) {
 	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", sc.repoID, commitID, peerID.Pretty())
 
 	// Open the stream
-	stream, err := sc.node.NewStream(ctx, peerID, nodep2p.MANIFEST_PROTO)
+	stream, err := sc.node.NewStream(ctx, peerID, MANIFEST_PROTO)
 	if err != nil {
 		return nil, err
 	}

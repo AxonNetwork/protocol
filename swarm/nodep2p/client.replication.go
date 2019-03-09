@@ -1,4 +1,4 @@
-package p2pclient
+package nodep2p
 
 import (
 	"context"
@@ -9,12 +9,11 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
-func RequestBecomeReplicator(ctx context.Context, n nodep2p.INode, repoID string) error {
+func RequestBecomeReplicator(ctx context.Context, n INode, repoID string) error {
 	cfg := n.GetConfig()
 	for _, pubkeyStr := range cfg.Node.KnownReplicators {
 		peerID, err := peer.IDB58Decode(pubkeyStr)
@@ -23,7 +22,7 @@ func RequestBecomeReplicator(ctx context.Context, n nodep2p.INode, repoID string
 			continue
 		}
 
-		stream, err := n.NewStream(ctx, peerID, nodep2p.BECOME_REPLICATOR_PROTO)
+		stream, err := n.NewStream(ctx, peerID, BECOME_REPLICATOR_PROTO)
 		if err != nil {
 			log.Errorf("RequestBecomeReplicator: error connecting to peer %v: %v", peerID, err)
 			continue
@@ -53,13 +52,13 @@ func RequestBecomeReplicator(ctx context.Context, n nodep2p.INode, repoID string
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
-func RequestReplication(ctx context.Context, n nodep2p.INode, repoID string) <-chan nodep2p.MaybeReplProgress {
-	progressCh := make(chan nodep2p.MaybeReplProgress)
+func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Progress {
+	progressCh := make(chan Progress)
 	c, err := util.CidForString("replicate:" + repoID)
 	if err != nil {
 		go func() {
 			defer close(progressCh)
-			progressCh <- nodep2p.MaybeReplProgress{Error: err}
+			progressCh <- Progress{Error: err}
 		}()
 		return progressCh
 	}
@@ -86,7 +85,7 @@ func RequestReplication(ctx context.Context, n nodep2p.INode, repoID string) <-c
 	return progressCh
 }
 
-func requestPeerReplication(ctx context.Context, n nodep2p.INode, repoID string, peerID peer.ID, peerCh chan Progress) {
+func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID peer.ID, peerCh chan Progress) {
 	var err error
 
 	defer func() {
@@ -97,7 +96,7 @@ func requestPeerReplication(ctx context.Context, n nodep2p.INode, repoID string,
 		}
 	}()
 
-	stream, err := n.NewStream(ctx, peerID, nodep2p.REPLICATION_PROTO)
+	stream, err := n.NewStream(ctx, peerID, REPLICATION_PROTO)
 	if err != nil {
 		return
 	}
@@ -135,12 +134,12 @@ func requestPeerReplication(ctx context.Context, n nodep2p.INode, repoID string,
 	}
 }
 
-func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan nodep2p.MaybeReplProgress) {
+func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan Progress) {
 	defer close(progressCh)
 
 	if len(peerChs) == 0 {
 		err := errors.Errorf("no replicators available")
-		progressCh <- nodep2p.MaybeReplProgress{Error: err}
+		progressCh <- Progress{Error: err}
 		return
 	}
 
@@ -155,7 +154,7 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan nodep2p.M
 		for p := range chPercent {
 			if maxPercent < p {
 				maxPercent = p
-				progressCh <- nodep2p.MaybeReplProgress{Percent: maxPercent}
+				progressCh <- Progress{Current: uint64(maxPercent), Total: 100}
 			}
 		}
 	}()
@@ -186,6 +185,6 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan nodep2p.M
 
 	if !someoneFinished {
 		err := errors.Errorf("every replicator failed to replicate repo")
-		progressCh <- nodep2p.MaybeReplProgress{Error: err}
+		progressCh <- Progress{Error: err}
 	}
 }
