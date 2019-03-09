@@ -2,6 +2,7 @@ package nodep2p
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -209,6 +210,8 @@ type PullOptions struct {
 }
 
 func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
+	var err error
+
 	r := opts.Repo
 
 	// 1. stash worktree
@@ -274,8 +277,9 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 
 	// 2. fetch
 	var updatedRefs []string
+	var remote *git.Remote
 	{
-		remote, err := r.Remotes.Lookup(opts.RemoteName)
+		remote, err = r.Remotes.Lookup(opts.RemoteName)
 		if err != nil {
 			return nil, err
 		}
@@ -316,12 +320,12 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 			return nil, errors.Errorf("repository in unexpected state prior to merge: %v", r.State())
 		}
 
-		branch, err := r.LookupBranch(opts.RemoteName+"/"+opts.BranchName, git.BranchRemote)
+		remoteBranch, err := r.LookupBranch(opts.RemoteName+"/"+opts.BranchName, git.BranchRemote)
 		if err != nil {
 			return nil, err
 		}
 
-		mergeHead, err := r.AnnotatedCommitFromRef(branch.Reference)
+		mergeHead, err := r.AnnotatedCommitFromRef(remoteBranch.Reference)
 		if err != nil {
 			return nil, err
 		}
@@ -342,7 +346,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 			// Fast-forward merge.
 
 			unborn := analysis&git.MergeAnalysisUnborn > 0
-			err = doFastForward(r, branch.Target(), unborn)
+			err = doFastForward(r, remoteBranch.Target(), unborn)
 			if err != nil {
 				return nil, err
 			} else {
@@ -370,15 +374,77 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 		}
 
 		if index.HasConflicts() == false {
-
+			err = createMergeCommit(r, index, remote, remoteBranch)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return updatedRefs, nil
 }
 
-// func createMergeCommit(r *repo.Repo, index *git.Index, mergeOpts *git.MergeOpts) error {
+func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remoteBranch *git.Branch) error {
+	headRef, err := r.Head()
+	if err != nil {
+		return err
+	}
 
-// }
+	parentObjOne, err := headRef.Peel(git.ObjectCommit)
+	if err != nil {
+		return err
+	}
+
+	parentObjTwo, err := remoteBranch.Reference.Peel(git.ObjectCommit)
+	if err != nil {
+		return err
+	}
+
+	parentCommitOne, err := parentObjOne.AsCommit()
+	if err != nil {
+		return err
+	}
+
+	parentCommitTwo, err := parentObjTwo.AsCommit()
+	if err != nil {
+		return err
+	}
+
+	parents := []*git.Commit{
+		parentCommitOne,
+		parentCommitTwo,
+	}
+
+	treeOid, err := index.WriteTree()
+	if err != nil {
+		return err
+	}
+
+	tree, err := r.LookupTree(treeOid)
+	if err != nil {
+		return err
+	}
+
+	remoteBranchName, err := remoteBranch.Name()
+	if err != nil {
+		return err
+	}
+
+	message := fmt.Sprintf(`Merge branch '%v' of %v`, remoteBranchName, remote.Url())
+
+	userName, userEmail, err := r.UserIdentityFromConfig()
+	if err != nil {
+		return err
+	}
+
+	var (
+		now       = time.Now()
+		author    = &git.Signature{Name: userName, Email: userEmail, When: now}
+		committer = &git.Signature{Name: userName, Email: userEmail, When: now}
+	)
+
+	_, err = r.CreateCommit(headRef.Name(), author, committer, message, tree, parents...)
+	return err
+}
 
 func doFastForward(r *repo.Repo, targetOid *git.Oid, unborn bool) error {
 	var targetRef *git.Reference

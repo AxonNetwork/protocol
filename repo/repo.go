@@ -396,23 +396,32 @@ func (r *Repo) ConscienceRemote() (*git.Remote, error) {
 	return nil, errors.Wrapf(Err404, "could not find conscience:// remote")
 }
 
+func (r *Repo) UserIdentityFromConfig() (name string, email string, err error) {
+	cfg, err := r.Config()
+	if err != nil {
+		return "", "", err
+	}
+
+	userName, err := cfg.LookupString("user.name")
+	if err != nil {
+		return "", "", err
+	}
+
+	userEmail, err := cfg.LookupString("user.email")
+	if err != nil {
+		return "", "", err
+	}
+
+	return userName, userEmail, nil
+}
+
 type CommitOptions struct {
 	Pathspecs []string
 	Message   string
 }
 
 func (r *Repo) CommitCurrentWorkdir(opts *CommitOptions) (*git.Oid, error) {
-	cfg, err := r.Config()
-	if err != nil {
-		return nil, err
-	}
-
-	userName, err := cfg.LookupString("user.name")
-	if err != nil {
-		return nil, err
-	}
-
-	userEmail, err := cfg.LookupString("user.email")
+	userName, userEmail, err := r.UserIdentityFromConfig()
 	if err != nil {
 		return nil, err
 	}
