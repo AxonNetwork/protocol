@@ -445,6 +445,11 @@ func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remot
 	)
 
 	_, err = r.CreateCommit(headRef.Name(), author, committer, message, tree, parents...)
+	if err != nil {
+		return err
+	}
+
+	err = r.StateCleanup()
 	return err
 }
 
