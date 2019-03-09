@@ -525,8 +525,12 @@ func (n *Node) EnsureUsername(ctx context.Context, username string) (*nodeeth.Tr
 	return n.eth.EnsureUsername(ctx, username)
 }
 
-func (n *Node) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*nodeeth.Transaction, error) {
-	return n.eth.EnsureRepoIDRegistered(ctx, repoID)
+func (n *Node) IsRepoIDRegistered(ctx context.Context, repoID string) (bool, error) {
+	return n.eth.IsRepoIDRegistered(ctx, repoID)
+}
+
+func (n *Node) RegisterRepoID(ctx context.Context, repoID string) (*nodeeth.Transaction, error) {
+	return n.eth.RegisterRepoID(ctx, repoID)
 }
 
 func (n *Node) AddrFromSignedHash(data, sig []byte) (nodeeth.Address, error) {

@@ -95,20 +95,25 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 
 	// Before anything else, try to claim the repoID in the smart contract
-	tx, err := s.node.EnsureRepoIDRegistered(ctx, req.RepoID)
+	isRegistered, err := s.node.IsRepoIDRegistered(ctx, req.RepoID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	} else if isRegistered {
+		return nil, errors.New("repoID already registered")
+	}
+
+	tx, err := s.node.RegisterRepoID(ctx, req.RepoID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	if tx != nil {
-		log.Printf("[rpc] create repo tx sent: %s", tx.Hash().Hex())
+	log.Printf("[rpc] create repo tx sent: %s", tx.Hash().Hex())
 
-		txResult := <-tx.Await(ctx)
-		if txResult.Err != nil {
-			return nil, errors.WithStack(txResult.Err)
-		}
-
-		log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
+	txResult := <-tx.Await(ctx)
+	if txResult.Err != nil {
+		return nil, errors.WithStack(txResult.Err)
 	}
+
+	log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
 
 	// Ping other nodes in the swarm to ask them to replicate this repo
 	err = s.node.RequestBecomeReplicator(ctx, req.RepoID)
@@ -139,8 +144,16 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 	defer r.Free()
 
+	_, err = r.RepoID()
+	if err != nil {
+		err = r.SetupConfig(req.RepoID)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+
 	// Have the node track the local repo
-	_, err = s.node.RepoManager().TrackRepo(path, true)
+	_, err = s.node.TrackRepo(path, true)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -343,24 +356,30 @@ func (s *Server) FetchChunks(req *pb.FetchChunksRequest, server pb.NodeRPC_Fetch
 }
 
 func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDRequest) (*pb.RegisterRepoIDResponse, error) {
-	tx, err := s.node.EnsureRepoIDRegistered(ctx, req.RepoID)
+	isRegistered, err := s.node.IsRepoIDRegistered(ctx, req.RepoID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	} else if isRegistered {
+		return nil, errors.New("repoID already registered")
+	}
+
+	tx, err := s.node.RegisterRepoID(ctx, req.RepoID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	if tx != nil {
-		log.Printf("[rpc] create repo tx sent: %s", tx.Hash().Hex())
-		txResult := <-tx.Await(ctx)
-		if txResult.Err != nil {
-			return nil, errors.WithStack(txResult.Err)
-		}
-		log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
+	log.Printf("[rpc] create repo tx sent: %s", tx.Hash().Hex())
+	txResult := <-tx.Await(ctx)
+	if txResult.Err != nil {
+		return nil, errors.WithStack(txResult.Err)
 	}
+	log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
+
 	return &pb.RegisterRepoIDResponse{}, nil
 }
 
 func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoRequest) (*pb.TrackLocalRepoResponse, error) {
-	_, err := s.node.RepoManager().TrackRepo(req.RepoPath, req.ForceReload)
+	_, err := s.node.TrackRepo(req.RepoPath, req.ForceReload)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
