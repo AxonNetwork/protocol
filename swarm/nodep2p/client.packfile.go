@@ -53,7 +53,9 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 			seenPeers        = make(map[peer.ID]bool)
 		)
 
-		for batch := range aggregateWork(ctx, jobQueue, chUncapBatchSize, batchSize, batchTimeout) {
+		chBatches := aggregateWork(ctx, jobQueue, chUncapBatchSize, batchSize, batchTimeout)
+
+		for {
 			conn, err := pool.GetConn()
 			if err != nil {
 				log.Errorln("[packfile client] error obtaining peer connection:", err)
@@ -67,6 +69,11 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 				chUncapBatchSize <- struct{}{}
 			}
 			seenPeers[conn.peerID] = true
+
+			batch, open := <-chBatches
+			if !open {
+				break
+			}
 
 			go func(batch []job) {
 				err := sc.fetchPackfile(ctx, conn, batch, chOut, jobQueue, wg)
@@ -111,7 +118,13 @@ func aggregateWork(ctx context.Context, jobQueue chan job, chUncapBatchSize <-ch
 					if open {
 						current = append(current, j)
 						if !batchSizeUncapped && uint(len(current)) >= batchSize {
-							chBatch <- current
+							select {
+							case <-chUncapBatchSize:
+								batchSizeUncapped = true
+								log.Println("UNCAP ME BOYS")
+								continue
+							case chBatch <- current:
+							}
 							continue Outer
 						}
 
@@ -121,9 +134,6 @@ func aggregateWork(ctx context.Context, jobQueue chan job, chUncapBatchSize <-ch
 						}
 						return
 					}
-
-				case <-chUncapBatchSize:
-					batchSizeUncapped = true
 
 				case <-timeout:
 					if len(current) > 0 {
@@ -220,8 +230,6 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 		go sc.returnJobsToQueue(ctx, batch, jobQueue)
 		return err
 	}
-	// @@TODO: wrap this in a Closer that just reads to the end of the stream, or negotiates an early termination or something
-	defer packfileStream.Close()
 
 	// Determine which objects the peer can't send us and re-add those to the job queue.
 	missingObjectIDs := determineMissingIDs(desiredObjectIDs, availableObjectIDs)

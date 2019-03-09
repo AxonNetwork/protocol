@@ -348,6 +348,33 @@ var replCommands = map[string]struct {
 			return nil
 		},
 	},
+
+	"push": {
+		"push a repo",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			repoID := args[0]
+			r := n.Repo(repoID)
+			if r == nil {
+				return errors.New("repo not found")
+			}
+
+			_, err := nodep2p.Push(context.TODO(), &nodep2p.PushOptions{
+				Node:       n,
+				Repo:       r,
+				BranchName: "master",
+				ProgressCb: func(percent int) {
+					log.Warnln("Push Progress: ", percent)
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			log.Infoln("push done.")
+
+			return nil
+		},
+	},
 }
 
 func inputLoop(ctx context.Context, n *swarm.Node) {
