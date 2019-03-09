@@ -411,11 +411,6 @@ func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remot
 		return err
 	}
 
-	parents := []*git.Commit{
-		parentCommitOne,
-		parentCommitTwo,
-	}
-
 	treeOid, err := index.WriteTree()
 	if err != nil {
 		return err
@@ -431,8 +426,6 @@ func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remot
 		return err
 	}
 
-	message := fmt.Sprintf(`Merge branch '%v' of %v`, remoteBranchName, remote.Url())
-
 	userName, userEmail, err := r.UserIdentityFromConfig()
 	if err != nil {
 		return err
@@ -442,6 +435,11 @@ func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remot
 		now       = time.Now()
 		author    = &git.Signature{Name: userName, Email: userEmail, When: now}
 		committer = &git.Signature{Name: userName, Email: userEmail, When: now}
+		message   = fmt.Sprintf(`Merge branch '%v' of %v`, remoteBranchName, remote.Url())
+		parents   = []*git.Commit{
+			parentCommitOne,
+			parentCommitTwo,
+		}
 	)
 
 	_, err = r.CreateCommit(headRef.Name(), author, committer, message, tree, parents...)
