@@ -23,6 +23,7 @@ type peerPool struct {
 	chProviders   <-chan peerstore.PeerInfo
 	ctx           context.Context
 	cancel        func()
+	foundPeers    map[peer.ID]bool
 }
 
 type peerConn struct {
@@ -38,6 +39,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	}
 
 	ctxInner, cancel := context.WithCancel(ctx)
+	foundPeers := make(map[peer.ID]bool)
 
 	p := &peerPool{
 		keepalive:     keepalive,
@@ -73,8 +75,12 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 					// if self
 					if peerInfo.ID == node.ID() {
 						continue
+					} else if foundPeers[peerInfo.ID] {
+						continue
 					}
 					peerID = peerInfo.ID
+					foundPeers[peerID] = true
+
 				case <-p.ctx.Done():
 					return
 				}
@@ -83,7 +89,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				// 	continue
 				// }
 
-				log.Infof("[peer pool] found peer")
+				log.Infoln("[peer pool] found peer")
 				conn = &peerConn{
 					peerID: peerID,
 					repoID: repoID,
