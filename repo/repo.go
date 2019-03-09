@@ -66,7 +66,7 @@ func Init(opts *InitOptions) (*Repo, error) {
 
 func Open(repoRoot string) (*Repo, error) {
 	gitRepo, err := git.OpenRepository(repoRoot)
-	if err != nil && strings.Contains(err.Error(), "failed to resolve path") {
+	if err != nil && git.IsErrorCode(err, git.ErrNotFound) {
 		return nil, errors.WithStack(Err404)
 	} else if err != nil {
 		return nil, errors.WithStack(err)

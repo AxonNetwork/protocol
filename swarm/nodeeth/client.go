@@ -170,14 +170,8 @@ func (n *Client) SetUsername(ctx context.Context, username string) (*Transaction
 	return &Transaction{tx, n.ethClient}, nil
 }
 
-func (n *Client) EnsureRepoIDRegistered(ctx context.Context, repoID string) (*Transaction, error) {
-	exists, err := n.protocolContract.RepoExists(n.callOpts(ctx), repoID)
-	if err != nil {
-		return nil, err
-	} else if exists {
-		return nil, nil
-	}
-	return n.RegisterRepoID(ctx, repoID)
+func (n *Client) IsRepoIDRegistered(ctx context.Context, repoID string) (bool, error) {
+	return n.protocolContract.RepoExists(n.callOpts(ctx), repoID)
 }
 
 func (n *Client) RegisterRepoID(ctx context.Context, repoID string) (*Transaction, error) {
