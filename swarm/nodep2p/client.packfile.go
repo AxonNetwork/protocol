@@ -121,7 +121,6 @@ func aggregateWork(ctx context.Context, jobQueue chan job, chUncapBatchSize <-ch
 							select {
 							case <-chUncapBatchSize:
 								batchSizeUncapped = true
-								log.Println("UNCAP ME BOYS")
 								continue
 							case chBatch <- current:
 							}
