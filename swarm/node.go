@@ -434,7 +434,7 @@ func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error
 	return nodep2p.RequestBecomeReplicator(ctx, n, repoID)
 }
 
-func (n *Node) RequestReplication(ctx context.Context, repoID string) <-chan nodep2p.MaybeReplProgress {
+func (n *Node) RequestReplication(ctx context.Context, repoID string) <-chan Progress {
 	return nodep2p.RequestReplication(ctx, n, repoID)
 }
 

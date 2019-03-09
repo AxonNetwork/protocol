@@ -52,13 +52,13 @@ func RequestBecomeReplicator(ctx context.Context, n INode, repoID string) error 
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
-func RequestReplication(ctx context.Context, n INode, repoID string) <-chan MaybeReplProgress {
-	progressCh := make(chan MaybeReplProgress)
+func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Progress {
+	progressCh := make(chan Progress)
 	c, err := util.CidForString("replicate:" + repoID)
 	if err != nil {
 		go func() {
 			defer close(progressCh)
-			progressCh <- MaybeReplProgress{Error: err}
+			progressCh <- Progress{Error: err}
 		}()
 		return progressCh
 	}
@@ -134,12 +134,12 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 	}
 }
 
-func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan MaybeReplProgress) {
+func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan Progress) {
 	defer close(progressCh)
 
 	if len(peerChs) == 0 {
 		err := errors.Errorf("no replicators available")
-		progressCh <- MaybeReplProgress{Error: err}
+		progressCh <- Progress{Error: err}
 		return
 	}
 
@@ -154,7 +154,7 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan MaybeRepl
 		for p := range chPercent {
 			if maxPercent < p {
 				maxPercent = p
-				progressCh <- MaybeReplProgress{Percent: maxPercent}
+				progressCh <- Progress{Current: uint64(maxPercent), Total: 100}
 			}
 		}
 	}()
@@ -185,6 +185,6 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan MaybeRepl
 
 	if !someoneFinished {
 		err := errors.Errorf("every replicator failed to replicate repo")
-		progressCh <- MaybeReplProgress{Error: err}
+		progressCh <- Progress{Error: err}
 	}
 }

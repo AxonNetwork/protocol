@@ -518,7 +518,7 @@ func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRP
 		if progress.Error != nil {
 			return errors.WithStack(progress.Error)
 		}
-		err := server.Send(&pb.ReplicationResponsePacket{Percent: int32(progress.Percent)})
+		err := server.Send(&pb.ReplicationResponsePacket{Percent: int32(progress.Current)})
 		if err != nil {
 			return errors.WithStack(err)
 		}
