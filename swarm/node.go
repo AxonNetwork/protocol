@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -207,15 +208,34 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 		for _, repoID := range n.Config.Node.ReplicateRepos {
 			log.Debugf("[content request] requesting repo '%v'", repoID)
 
+			r := n.Repo(repoID)
+			if r == nil {
+				_, err := nodep2p.Clone(context.TODO(), &nodep2p.CloneOptions{
+					Node:     n,
+					RepoID:   repoID,
+					RepoRoot: filepath.Join(n.Config.Node.ReplicationRoot, repoID),
+					Bare:     false,
+				})
+				if err != nil {
+					log.Warnf("[content request] error cloning conscience://%v remote: %v", repoID, err)
+				}
+				log.Debugf("[content request] cloned conscience://%v remote", repoID)
+				continue
+			}
+
 			r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
 			if err != nil {
 				log.Warnf("[content request] error ensuring repo exists (%v): %v", repoID, err)
 				continue
 			}
 
-			updatedRemotes, err := nodep2p.FetchConscienceRemote(context.TODO(), &nodep2p.FetchOptions{Repo: r})
+			updatedRemotes, err := nodep2p.Pull(context.TODO(), &nodep2p.PullOptions{
+				Repo:       r,
+				RemoteName: "origin",
+				BranchName: "master",
+			})
 			if err != nil {
-				log.Warnf("[content request] error fetching conscience://%v remote: %v", repoID, err)
+				log.Warnf("[content request] error pulling conscience://%v remote: %v", repoID, err)
 				continue
 			}
 
