@@ -46,10 +46,14 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 		}
 		defer pool.Close()
 
-		batchSize := uint(len(gitObjects)) / maxPeers
-		batchTimeout := 3 * time.Second
+		var (
+			batchSize        = uint(len(gitObjects)) / maxPeers
+			batchTimeout     = 3 * time.Second
+			chUncapBatchSize = make(chan struct{}, 1)
+			seenPeers        = make(map[peer.ID]bool)
+		)
 
-		for batch := range aggregateWork(ctx, jobQueue, batchSize, batchTimeout) {
+		for batch := range aggregateWork(ctx, jobQueue, chUncapBatchSize, batchSize, batchTimeout) {
 			conn, err := pool.GetConn()
 			if err != nil {
 				log.Errorln("[packfile client] error obtaining peer connection:", err)
@@ -58,6 +62,11 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
 				return
 			}
+
+			if seenPeers[conn.peerID] {
+				chUncapBatchSize <- struct{}{}
+			}
+			seenPeers[conn.peerID] = true
 
 			go func(batch []job) {
 				err := sc.fetchPackfile(ctx, conn, batch, chOut, jobQueue, wg)
@@ -81,10 +90,12 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 
 // Takes a job queue and batches received jobs up to `batchSize`.  Batches are also time-constrained.
 // If `batchSize` jobs aren't received within `batchTimeout`, the batch is sent anyway.
-func aggregateWork(ctx context.Context, jobQueue chan job, batchSize uint, batchTimeout time.Duration) chan []job {
+func aggregateWork(ctx context.Context, jobQueue chan job, chUncapBatchSize <-chan struct{}, batchSize uint, batchTimeout time.Duration) chan []job {
 	chBatch := make(chan []job)
 	go func() {
 		defer close(chBatch)
+
+		batchSizeUncapped := false
 
 	Outer:
 		for {
@@ -99,7 +110,7 @@ func aggregateWork(ctx context.Context, jobQueue chan job, batchSize uint, batch
 					// If it's closed, send whatever we have and close the batch channel.
 					if open {
 						current = append(current, j)
-						if uint(len(current)) >= batchSize {
+						if !batchSizeUncapped && uint(len(current)) >= batchSize {
 							chBatch <- current
 							continue Outer
 						}
@@ -110,6 +121,9 @@ func aggregateWork(ctx context.Context, jobQueue chan job, batchSize uint, batch
 						}
 						return
 					}
+
+				case <-chUncapBatchSize:
+					batchSizeUncapped = true
 
 				case <-timeout:
 					if len(current) > 0 {
