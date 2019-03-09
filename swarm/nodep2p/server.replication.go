@@ -87,7 +87,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		}
 
 		// @@TODO: give context a timeout and make it configurable
-		_, err := Pull(context.TODO(), &PullOptions{
+		_, err := s.node.Pull(context.TODO(), &PullOptions{
 			Repo:       r,
 			RemoteName: "origin",
 			BranchName: "master",
