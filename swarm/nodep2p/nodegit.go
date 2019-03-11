@@ -85,29 +85,23 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 type PushOptions struct {
 	Node interface {
 		AnnounceRepo(ctx context.Context, repoID string) error
+		GetRef(ctx context.Context, repoID string, refName string) (string, error)
 		UpdateRef(ctx context.Context, repoID string, branchRefName string, commitID string) (*nodeeth.Transaction, error)
 		RequestReplication(ctx context.Context, repoID string) <-chan wire.Progress
 	}
 	Repo       *repo.Repo
 	BranchName string
+	Force      bool
 	ProgressCb func(percent int)
 }
+
+var ErrRequiresForcePush = errors.New("requires force push")
 
 func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	r := opts.Repo
 	node := opts.Node
 
-	// Tell the node to announce the new content so that replicator nodes can find and pull it.
-	// @@TODO: make context timeout configurable
-	ctx1, cancel1 := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel1()
-
 	repoID, err := r.RepoID()
-	if err != nil {
-		return "", err
-	}
-
-	err = node.AnnounceRepo(ctx1, repoID)
 	if err != nil {
 		return "", err
 	}
@@ -122,13 +116,47 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 		return "", err
 	}
 
-	commitOid := srcRef.Target()
+	localCommitOid := srcRef.Target()
+
+	// Check to make sure that the new commit we're pushing is a descendant of the commit in the
+	// remote.  If not, the user must specify opts.Force or the push will fail.
+	{
+		// @@TODO: make context timeout configurable
+		ctx0, cancel0 := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel0()
+
+		currentCommitHash, err := node.GetRef(ctx0, repoID, branch.Reference.Name())
+		if err != nil {
+			return "", err
+		}
+
+		currentCommitOid, err := git.NewOid(currentCommitHash)
+
+		isDescendant, err := r.DescendantOf(localCommitOid, currentCommitOid)
+		if err != nil {
+			return "", err
+		}
+
+		if !isDescendant && !opts.Force {
+			return "", ErrRequiresForcePush
+		}
+	}
+
+	// @@TODO: make context timeout configurable
+	ctx1, cancel1 := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel1()
+
+	// Tell the node to announce the new content so that replicator nodes can find and pull it.
+	err = node.AnnounceRepo(ctx1, repoID)
+	if err != nil {
+		return "", err
+	}
 
 	// @@TODO: make context timeout configurable
 	ctx2, cancel2 := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel2()
 
-	tx, err := node.UpdateRef(ctx2, repoID, branch.Reference.Name(), commitOid.String())
+	tx, err := node.UpdateRef(ctx2, repoID, branch.Reference.Name(), localCommitOid.String())
 	if err != nil {
 		return "", err
 	}
@@ -152,7 +180,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 		opts.ProgressCb(int(progress.Current))
 	}
 
-	return commitOid.String(), nil
+	return localCommitOid.String(), nil
 }
 
 type FetchOptions struct {

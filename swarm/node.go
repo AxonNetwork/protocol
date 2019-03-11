@@ -229,7 +229,7 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 				continue
 			}
 
-			updatedRemotes, err := nodep2p.Pull(context.TODO(), &nodep2p.PullOptions{
+			updatedRemotes, err := n.Pull(context.TODO(), &nodep2p.PullOptions{
 				Repo:       r,
 				RemoteName: "origin",
 				BranchName: "master",
@@ -581,6 +581,10 @@ func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (
 		return false, err
 	}
 	return !r.HasObject(remoteHash), nil
+}
+
+func (n *Node) GetRef(ctx context.Context, repoID string, refName string) (string, error) {
+	return n.eth.GetRef(ctx, repoID, refName)
 }
 
 func (n *Node) GetNumRefs(ctx context.Context, repoID string) (uint64, error) {
