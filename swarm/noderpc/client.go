@@ -2,7 +2,6 @@ package noderpc
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/pkg/errors"
@@ -235,16 +234,12 @@ func (c *Client) GetAllRemoteRefs(ctx context.Context, repoID string) (map[strin
 	refMap := make(map[string]wire.Ref)
 
 	for {
-		fmt.Println("~~~~~ rpcclient.GetAllRemoteRefs page:", page, "numRefs:", numRefs)
-
 		var refs map[string]wire.Ref
 		refs, numRefs, err = c.GetRemoteRefs(ctx, repoID, REF_PAGE_SIZE, page)
 		if err != nil {
-			fmt.Println("~~~~~ rpcclient.GetAllRemoteRefs error:", err)
 			return nil, errors.WithStack(err)
 		}
 
-		fmt.Println("~~~~~ rpcclient.GetAllRemoteRefs refs:", refs)
 		for _, ref := range refs {
 			refMap[ref.RefName] = ref
 		}
@@ -272,33 +267,56 @@ func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodee
 	return resp.Users, resp.Total, nil
 }
 
-func (c *Client) RequestReplication(ctx context.Context, repoID string) <-chan wire.Progress {
-	ch := make(chan wire.Progress)
-
-	requestReplicationClient, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
+func (c *Client) PushRepo(ctx context.Context, repoRoot string, branchName string, force bool) (<-chan wire.Progress, error) {
+	pushRepoClient, err := c.client.PushRepo(ctx, &pb.PushRepoRequest{RepoRoot: repoRoot, BranchName: branchName, Force: force})
 	if err != nil {
-		go func() {
-			defer close(ch)
-			ch <- wire.Progress{Error: err}
-		}()
-		return ch
+		return nil, err
 	}
+
+	ch := make(chan wire.Progress)
 
 	go func() {
 		defer close(ch)
 		for {
-			progress, err := requestReplicationClient.Recv()
+			pkt, err := pushRepoClient.Recv()
 			if err == io.EOF {
 				return
 			} else if err != nil {
 				ch <- wire.Progress{Error: err}
 				return
 			}
-			ch <- wire.Progress{Current: uint64(progress.Percent), Total: 100}
+
+			ch <- wire.Progress{Current: pkt.Current, Total: pkt.Total, Done: pkt.Done}
 		}
 	}()
 
-	return ch
+	return ch, nil
+}
+
+func (c *Client) RequestReplication(ctx context.Context, repoID string) (<-chan wire.Progress, error) {
+	requestReplicationClient, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
+	if err != nil {
+		return nil, err
+	}
+
+	ch := make(chan wire.Progress)
+
+	go func() {
+		defer close(ch)
+		for {
+			pkt, err := requestReplicationClient.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				ch <- wire.Progress{Error: err}
+				return
+			}
+
+			ch <- wire.Progress{Current: pkt.Current, Total: pkt.Total, Done: pkt.Done}
+		}
+	}()
+
+	return ch, nil
 }
 
 func (c *Client) SignMessage(ctx context.Context, message []byte) ([]byte, error) {

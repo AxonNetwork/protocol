@@ -27,8 +27,3 @@ type INode interface {
 	SetReplicationPolicy(repoID string, shouldReplicate bool) error
 	Pull(ctx context.Context, opts *PullOptions) ([]string, error)
 }
-
-type MaybeReplProgress struct {
-	Percent int
-	Error   error
-}

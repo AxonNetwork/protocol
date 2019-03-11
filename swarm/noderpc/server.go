@@ -478,6 +478,42 @@ func (s *Server) IsBehindRemote(ctx context.Context, req *pb.IsBehindRemoteReque
 	return &pb.IsBehindRemoteResponse{RepoID: req.RepoID, IsBehindRemote: isBehindRemote}, nil
 }
 
+func (s *Server) PushRepo(req *pb.PushRepoRequest, server pb.NodeRPC_PushRepoServer) error {
+	r := s.node.RepoManager().RepoAtPath(req.RepoRoot)
+	if r == nil {
+		return errors.Errorf("no repo at path '%v'", req.RepoRoot)
+	}
+
+	ctx, cancel := context.WithCancel(server.Context())
+	defer cancel()
+
+	var innerErr error
+	_, err := s.node.Push(ctx, &nodep2p.PushOptions{
+		Node:       s.node,
+		Repo:       r,
+		BranchName: req.BranchName,
+		Force:      req.Force,
+		ProgressCb: func(percent int) {
+			innerErr = server.Send(&pb.ProgressPacket{Current: uint64(percent), Total: 100})
+			if innerErr != nil {
+				cancel()
+				return
+			}
+		},
+	})
+	if innerErr != nil {
+		return innerErr
+	} else if err != nil {
+		return err
+	}
+
+	err = server.Send(&pb.ProgressPacket{Current: 100, Total: 100, Done: true})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.UpdateRefResponse, error) {
 	tx, err := s.node.UpdateRef(ctx, req.RepoID, req.RefName, req.CommitHash)
 	if err != nil {
@@ -526,7 +562,11 @@ func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) 
 }
 
 func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRPC_RequestReplicationServer) error {
-	ch := s.node.RequestReplication(context.TODO(), req.RepoID)
+	ctx, cancel := context.WithCancel(server.Context())
+	defer cancel()
+
+	ch := s.node.RequestReplication(ctx, req.RepoID)
+
 	for progress := range ch {
 		select {
 		case <-server.Context().Done():
@@ -537,10 +577,15 @@ func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRP
 		if progress.Error != nil {
 			return errors.WithStack(progress.Error)
 		}
-		err := server.Send(&pb.ReplicationResponsePacket{Percent: int32(progress.Current)})
+		err := server.Send(&pb.ProgressPacket{Current: uint64(progress.Current), Total: 100})
 		if err != nil {
 			return errors.WithStack(err)
 		}
+	}
+
+	err := server.Send(&pb.ProgressPacket{Current: 100, Total: 100, Done: true})
+	if err != nil {
+		return errors.WithStack(err)
 	}
 	return nil
 }

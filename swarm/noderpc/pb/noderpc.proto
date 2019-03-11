@@ -24,8 +24,10 @@ service NodeRPC {
   rpc GetLocalRefs(GetLocalRefsRequest) returns (GetLocalRefsResponse) {}
   rpc GetRemoteRefs(GetRemoteRefsRequest) returns (GetRemoteRefsResponse) {}
   rpc IsBehindRemote(IsBehindRemoteRequest) returns (IsBehindRemoteResponse) {}
+
+  rpc PushRepo(PushRepoRequest) returns (stream ProgressPacket) {}
   rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
-  rpc RequestReplication(ReplicationRequest) returns (stream ReplicationResponsePacket) {}
+  rpc RequestReplication(ReplicationRequest) returns (stream ProgressPacket) {}
 
   rpc SetRepoPublic(SetRepoPublicRequest) returns (SetRepoPublicResponse) {}
   rpc IsRepoPublic(IsRepoPublicRequest) returns (IsRepoPublicResponse) {}
@@ -230,6 +232,18 @@ message IsBehindRemoteResponse {
     bool isBehindRemote = 2;
 }
 
+message PushRepoRequest {
+    string repoRoot = 1;
+    string branchName = 2;
+    bool force = 3;
+}
+
+message ProgressPacket {
+    uint64 current = 1;
+    uint64 total = 2;
+    bool done = 3;
+}
+
 message UpdateRefRequest {
     string repoID = 1;
     string refName = 2;
@@ -240,10 +254,6 @@ message UpdateRefResponse {}
 
 message ReplicationRequest {
     string repoID = 1;
-}
-
-message ReplicationResponsePacket {
-    int32 percent = 1;
 }
 
 message SetRepoPublicRequest {
