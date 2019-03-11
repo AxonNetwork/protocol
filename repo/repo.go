@@ -946,7 +946,7 @@ func (r *Repo) getAttributeFileWithAttribute(filename, attrName string) (attrVal
 			}
 		}
 	}
-	return "", 0, 0, nil, nil
+	return "", -1, -1, nil, nil
 }
 
 func parseGitAttributes(repoRoot, path string) ([]*gitattr.Line, error) {
