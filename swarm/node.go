@@ -2,7 +2,6 @@ package swarm
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -567,6 +566,8 @@ func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (
 		return false, err
 	}
 
+	// @@TODO: don't hard code this
+	// @@branches
 	remote, err := n.eth.GetRef(ctx, repoID, "refs/heads/master")
 	if err != nil {
 		return false, err
@@ -576,14 +577,10 @@ func (n *Node) IsBehindRemote(ctx context.Context, repoID string, path string) (
 		return false, nil
 	}
 
-	remoteHash, err := hex.DecodeString(remote)
-	if err != nil {
-		return false, err
-	}
-	return !r.HasObject(remoteHash), nil
+	return !r.HasObject(remote[:]), nil
 }
 
-func (n *Node) GetRef(ctx context.Context, repoID string, refName string) (string, error) {
+func (n *Node) GetRef(ctx context.Context, repoID string, refName string) (git.Oid, error) {
 	return n.eth.GetRef(ctx, repoID, refName)
 }
 
@@ -626,8 +623,8 @@ func (n *Node) ForEachRemoteRef(ctx context.Context, repoID string, fn func(Ref)
 	return nil
 }
 
-func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*nodeeth.Transaction, error) {
-	return n.eth.UpdateRef(ctx, repoID, refName, commitHash)
+func (n *Node) UpdateRef(ctx context.Context, repoID string, refName string, oldCommitHash, newCommitHash git.Oid) (*nodeeth.Transaction, error) {
+	return n.eth.UpdateRef(ctx, repoID, refName, oldCommitHash, newCommitHash)
 }
 
 func (n *Node) SetRepoPublic(ctx context.Context, repoID string, isPublic bool) (*nodeeth.Transaction, error) {

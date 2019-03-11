@@ -14,7 +14,7 @@ contract Protocol
         bool exists;
 
         StringSetLib.StringSet refs;
-        mapping(bytes32 => string) refsToCommits;
+        mapping(bytes32 => bytes20) refsToCommits;
 
         StringSetLib.StringSet admins;
         StringSetLib.StringSet pushers;
@@ -28,7 +28,7 @@ contract Protocol
     event LogCreateRepo(address indexed user, string indexed repoID);
     event LogDeleteRepo(address indexed user, string indexed repoID);
     event LogSetPublic(address indexed user, string repoID, bool isPublic);
-    event LogUpdateRef(address indexed user, string indexed repoID, string indexed refName, string commitHash);
+    event LogUpdateRef(address indexed user, string indexed repoID, string indexed refName, bytes20 commitHash);
     event LogDeleteRef(address indexed user, string indexed repoID, string indexed refName);
 
     constructor() public {
@@ -94,17 +94,17 @@ contract Protocol
         emit LogSetPublic(msg.sender, repoID, isPublic);
     }
 
-    function updateRef(string memory repoID, string memory refName, string memory commitHash) public {
+    function updateRef(string memory repoID, string memory refName, bytes20 oldCommitHash, bytes20 newCommitHash) public {
         require(userHasPushAccess(usernamesByAddress[msg.sender], repoID), "you don't have push access");
-        require(bytes(commitHash).length == 40, "bad commit hash");
 
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
+        require(oldCommitHash != repo.refsToCommits[hashString(refName)], "the provided oldCommitHash is incorrect");
 
         repo.refs.add(refName);
-        repo.refsToCommits[hashString(refName)] = commitHash;
+        repo.refsToCommits[hashString(refName)] = newCommitHash;
 
-        emit LogUpdateRef(msg.sender, repoID, refName, commitHash);
+        emit LogUpdateRef(msg.sender, repoID, refName, newCommitHash);
     }
 
     function deleteRef(string memory repoID, string memory refName) public {
@@ -195,7 +195,7 @@ contract Protocol
         return repositories[hashString(repoID)].refs.size();
     }
 
-    function getRef(string memory repoID, string memory refName) public view returns (string memory) {
+    function getRef(string memory repoID, string memory refName) public view returns (bytes20) {
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
 
@@ -207,13 +207,13 @@ contract Protocol
         require(repo.exists, "repo does not exist");
 
         string memory refName;
-        string memory commit;
+        bytes20 commit;
         uint len = 0;
         uint start = page * pageSize;
         for (uint i = 0; i < pageSize && i + start < repo.refs.size(); i++) {
             refName = repo.refs.get(i + start);
             commit = repo.refsToCommits[hashString(refName)];
-            len += 32 + bytes(refName).length + 32 + bytes(commit).length;
+            len += 32 + bytes(refName).length + 32 + 20;
         }
 
         data = new bytes(len);
@@ -227,10 +227,10 @@ contract Protocol
             writeBytes(bytes(refName), data, written);
             written += bytes(refName).length;
 
-            writeUint(bytes(commit).length, data, written);
+            writeUint(20, data, written);
             written += 32;
-            writeBytes(bytes(commit), data, written);
-            written += bytes(commit).length;
+            writeBytes20(commit, data, written);
+            written += 20;
         }
 
         return (repo.refs.size(), data);
@@ -284,6 +284,12 @@ contract Protocol
 
     function writeBytes(bytes memory src, bytes memory dest, uint offset) private pure {
         for (uint i = 0; i < src.length; i++) {
+            dest[i + offset] = src[i];
+        }
+    }
+
+    function writeBytes20(bytes20 src, bytes memory dest, uint offset) private pure {
+        for (uint8 i = 0; i < 20; i++) {
             dest[i + offset] = src[i];
         }
     }

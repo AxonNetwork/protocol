@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
+	"github.com/libgit2/git2go"
 	"github.com/libp2p/go-libp2p-peer"
 
 	"github.com/Conscience/protocol/config"
@@ -247,7 +248,17 @@ var replCommands = map[string]struct {
 			if len(args) < 3 {
 				return fmt.Errorf("not enough args")
 			}
-			tx, err := n.UpdateRef(ctx, args[0], args[1], args[2])
+
+			oid1, err := git.NewOid(args[2])
+			if err != nil {
+				return err
+			}
+			oid2, err := git.NewOid(args[3])
+			if err != nil {
+				return err
+			}
+
+			tx, err := n.UpdateRef(ctx, args[0], args[1], *oid1, *oid2)
 			if err != nil {
 				return err
 			}

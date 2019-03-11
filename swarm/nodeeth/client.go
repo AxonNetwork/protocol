@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 
@@ -182,8 +183,8 @@ func (n *Client) RegisterRepoID(ctx context.Context, repoID string) (*Transactio
 	return &Transaction{tx, n.ethClient}, nil
 }
 
-func (n *Client) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) (*Transaction, error) {
-	tx, err := n.protocolContract.UpdateRef(n.transactOpts(ctx), repoID, refName, commitHash)
+func (n *Client) UpdateRef(ctx context.Context, repoID string, refName string, oldCommitHash, newCommitHash git.Oid) (*Transaction, error) {
+	tx, err := n.protocolContract.UpdateRef(n.transactOpts(ctx), repoID, refName, oldCommitHash, newCommitHash)
 	if err != nil {
 		return nil, err
 	}
@@ -198,16 +199,16 @@ func (n *Client) GetNumRefs(ctx context.Context, repoID string) (uint64, error) 
 	return num.Uint64(), nil
 }
 
-func (n *Client) GetRef(ctx context.Context, repoID string, refName string) (string, error) {
+func (n *Client) GetRef(ctx context.Context, repoID string, refName string) (git.Oid, error) {
 	ref, err := n.protocolContract.GetRef(n.callOpts(ctx), repoID, refName)
 	if err != nil {
 		// The geth codebase (which handles ABI unpacking) doesn't currently seem to understand a
 		// transaction/call return value containing a Solidity require/assert error message
 		// (as in `require(someCondition, "condition not met")`).  @@TODO?
 		if strings.Contains(err.Error(), "abi: unmarshalling empty output") || strings.Contains(err.Error(), "abi: improperly formatted output") {
-			return "", nil
+			return git.Oid{}, nil
 		} else {
-			return "", err
+			return git.Oid{}, err
 		}
 	}
 	return ref, nil

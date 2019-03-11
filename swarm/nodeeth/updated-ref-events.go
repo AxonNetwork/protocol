@@ -111,7 +111,7 @@ func (n *Client) GetUpdatedRefEvents(ctx context.Context, repoIDs []string, star
 		}
 
 		evt := UpdatedRefEvent{
-			Commit:      iter.Event.CommitHash,
+			Commit:      hex.EncodeToString(iter.Event.CommitHash[:]),
 			RefHash:     hex.EncodeToString(iter.Event.RefName[:]),
 			RepoIDHash:  iter.Event.RepoID,
 			Time:        block.Time().Uint64(),

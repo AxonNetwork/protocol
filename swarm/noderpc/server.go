@@ -514,22 +514,6 @@ func (s *Server) PushRepo(req *pb.PushRepoRequest, server pb.NodeRPC_PushRepoSer
 	return nil
 }
 
-func (s *Server) UpdateRef(ctx context.Context, req *pb.UpdateRefRequest) (*pb.UpdateRefResponse, error) {
-	tx, err := s.node.UpdateRef(ctx, req.RepoID, req.RefName, req.CommitHash)
-	if err != nil {
-		return nil, err
-	}
-
-	txResult := <-tx.Await(ctx)
-	if txResult.Err != nil {
-		return nil, txResult.Err
-	} else if txResult.Receipt.Status == 0 {
-		return nil, errors.New("transaction failed")
-	}
-
-	return &pb.UpdateRefResponse{}, nil
-}
-
 func (s *Server) SetRepoPublic(ctx context.Context, req *pb.SetRepoPublicRequest) (*pb.SetRepoPublicResponse, error) {
 	tx, err := s.node.SetRepoPublic(ctx, req.RepoID, req.IsPublic)
 	if err != nil {

@@ -254,11 +254,6 @@ func (c *Client) GetAllRemoteRefs(ctx context.Context, repoID string) (map[strin
 	return refMap, nil
 }
 
-func (c *Client) UpdateRef(ctx context.Context, repoID string, refName string, commitHash string) error {
-	_, err := c.client.UpdateRef(ctx, &pb.UpdateRefRequest{RepoID: repoID, RefName: refName, CommitHash: commitHash})
-	return errors.WithStack(err)
-}
-
 func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodeeth.UserType, pageSize uint64, page uint64) ([]string, uint64, error) {
 	resp, err := c.client.GetRepoUsers(ctx, &pb.GetRepoUsersRequest{RepoID: repoID, PageSize: pageSize, Page: page})
 	if err != nil {

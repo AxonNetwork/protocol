@@ -26,7 +26,6 @@ service NodeRPC {
   rpc IsBehindRemote(IsBehindRemoteRequest) returns (IsBehindRemoteResponse) {}
 
   rpc PushRepo(PushRepoRequest) returns (stream ProgressPacket) {}
-  rpc UpdateRef(UpdateRefRequest) returns (UpdateRefResponse) {}
   rpc RequestReplication(ReplicationRequest) returns (stream ProgressPacket) {}
 
   rpc SetRepoPublic(SetRepoPublicRequest) returns (SetRepoPublicResponse) {}

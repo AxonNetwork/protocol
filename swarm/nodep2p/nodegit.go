@@ -85,8 +85,8 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 type PushOptions struct {
 	Node interface {
 		AnnounceRepo(ctx context.Context, repoID string) error
-		GetRef(ctx context.Context, repoID string, refName string) (string, error)
-		UpdateRef(ctx context.Context, repoID string, branchRefName string, commitID string) (*nodeeth.Transaction, error)
+		GetRef(ctx context.Context, repoID string, refName string) (git.Oid, error)
+		UpdateRef(ctx context.Context, repoID string, branchRefName string, oldCommitID, newCommitID git.Oid) (*nodeeth.Transaction, error)
 		RequestReplication(ctx context.Context, repoID string) <-chan wire.Progress
 	}
 	Repo       *repo.Repo
@@ -120,19 +120,18 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 
 	// Check to make sure that the new commit we're pushing is a descendant of the commit in the
 	// remote.  If not, the user must specify opts.Force or the push will fail.
+	var currentCommitOid git.Oid
 	{
 		// @@TODO: make context timeout configurable
 		ctx0, cancel0 := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel0()
 
-		currentCommitHash, err := node.GetRef(ctx0, repoID, branch.Reference.Name())
+		currentCommitOid, err = node.GetRef(ctx0, repoID, branch.Reference.Name())
 		if err != nil {
 			return "", err
 		}
 
-		currentCommitOid, err := git.NewOid(currentCommitHash)
-
-		isDescendant, err := r.DescendantOf(localCommitOid, currentCommitOid)
+		isDescendant, err := r.DescendantOf(localCommitOid, &currentCommitOid)
 		if err != nil {
 			return "", err
 		}
@@ -156,7 +155,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	ctx2, cancel2 := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel2()
 
-	tx, err := node.UpdateRef(ctx2, repoID, branch.Reference.Name(), localCommitOid.String())
+	tx, err := node.UpdateRef(ctx2, repoID, branch.Reference.Name(), currentCommitOid, *localCommitOid)
 	if err != nil {
 		return "", err
 	}
@@ -247,17 +246,17 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 	{
 		cfg, err := r.Config()
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		name, err := cfg.LookupString("user.name")
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		email, err := cfg.LookupString("user.email")
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		sig := &git.Signature{
@@ -272,7 +271,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 		if err != nil && strings.Contains(err.Error(), "there is nothing to stash") {
 			// no-op
 		} else if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		} else {
 			didStash = true
 		}
@@ -287,7 +286,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 			if err2 != nil {
 				log.Errorln("repo.Pull: could not create git.DefaultStashApplyOptions:", err2)
 				if err == nil {
-					err = err2
+					err = errors.WithStack(err2)
 				}
 				return
 			}
@@ -298,7 +297,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 			if err2 != nil {
 				log.Errorln("repo.Pull: error popping stash:", err2)
 				if err == nil {
-					err = err2
+					err = errors.WithStack(err2)
 				}
 			}
 		}()
@@ -310,7 +309,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 	{
 		remote, err = r.Remotes.Lookup(opts.RemoteName)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		var innerErr error
@@ -338,9 +337,9 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 			},
 		}, "")
 		if innerErr != nil {
-			return nil, innerErr
+			return nil, errors.WithStack(innerErr)
 		} else if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 
@@ -352,18 +351,18 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 
 		remoteBranch, err := r.LookupBranch(opts.RemoteName+"/"+opts.BranchName, git.BranchRemote)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		mergeHead, err := r.AnnotatedCommitFromRef(remoteBranch.Reference)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		incomingHeads := []*git.AnnotatedCommit{mergeHead}
 		analysis, preference, err := r.MergeAnalysis(incomingHeads)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		if analysis&git.MergeAnalysisUpToDate > 0 {
@@ -378,7 +377,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 			unborn := analysis&git.MergeAnalysisUnborn > 0
 			err = doFastForward(r, remoteBranch.Target(), unborn)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			} else {
 				return updatedRefs, nil
 			}
@@ -388,75 +387,81 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 
 			mergeOpts, err := git.DefaultMergeOptions()
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			mergeOpts.TreeFlags = git.MergeTreeFindRenames
 
 			err = r.Merge(incomingHeads, &mergeOpts, &git.CheckoutOpts{Strategy: git.CheckoutForce | git.CheckoutAllowConflicts})
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
 
 		index, err := r.Index()
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 
 		if index.HasConflicts() == false {
 			err = createMergeCommit(r, index, remote, remoteBranch)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
 	}
+
+	err = r.StateCleanup()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	return updatedRefs, nil
 }
 
 func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remoteBranch *git.Branch) error {
 	headRef, err := r.Head()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	parentObjOne, err := headRef.Peel(git.ObjectCommit)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	parentObjTwo, err := remoteBranch.Reference.Peel(git.ObjectCommit)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	parentCommitOne, err := parentObjOne.AsCommit()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	parentCommitTwo, err := parentObjTwo.AsCommit()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	treeOid, err := index.WriteTree()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	tree, err := r.LookupTree(treeOid)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	remoteBranchName, err := remoteBranch.Name()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	userName, userEmail, err := r.UserIdentityFromConfig()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	var (
@@ -472,11 +477,9 @@ func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remot
 
 	_, err = r.CreateCommit(headRef.Name(), author, committer, message, tree, parents...)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
-
-	err = r.StateCleanup()
-	return err
+	return nil
 }
 
 func doFastForward(r *repo.Repo, targetOid *git.Oid, unborn bool) error {
