@@ -136,7 +136,7 @@ var replCommands = map[string]struct {
 		"list the p2p addresses this node is using to communicate with its swarm",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
 			for _, addr := range n.Addrs() {
-				log.Println(addr.String() + "/ipfs/" + n.ID().Pretty())
+				log.Println(addr.String() + "/p2p/" + n.ID().Pretty())
 			}
 			return nil
 		},

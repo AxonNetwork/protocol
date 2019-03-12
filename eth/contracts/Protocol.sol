@@ -2,13 +2,11 @@ pragma solidity ^0.5.0;
 // pragma experimental ABIEncoderV2;
 
 import "./StringSetLib.sol";
+import "./UserRegistry.sol";
 
 contract Protocol
 {
     using StringSetLib for StringSetLib.StringSet;
-
-    mapping(address => string) public usernamesByAddress;
-    mapping(bytes32 => address) public addressesByUsername;
 
     struct Repo {
         bool exists;
@@ -31,24 +29,25 @@ contract Protocol
     event LogUpdateRef(address indexed user, string indexed repoID, string indexed refName, bytes20 commitHash);
     event LogDeleteRef(address indexed user, string indexed repoID, string indexed refName);
 
+    address public owner;
+    UserRegistry public userRegistry;
+
     constructor() public {
+        owner = msg.sender;
+    }
+
+    function setUserRegistry(address _userRegistry) public {
+        require(msg.sender == owner);
+        userRegistry = UserRegistry(_userRegistry);
     }
 
     function setUsername(string memory username) public {
-        require(bytes(username).length > 0, "argument 'username' cannot be empty");
-        require(bytes(usernamesByAddress[msg.sender]).length == 0, "your address already belongs to a username");
-
-        bytes32 usernameHash = hashString(username);
-        require(addressesByUsername[usernameHash] == address(0x0), "this username is already claimed");
-
-        usernamesByAddress[msg.sender] = username;
-        addressesByUsername[usernameHash] = msg.sender;
-
+        userRegistry.setUsername(msg.sender, username);
         emit LogSetUsername(msg.sender, username);
     }
 
-    function getAddressForUsername(string memory username) public view returns (address) {
-        return addressesByUsername[hashString(username)];
+    function usernamesByAddress(address addr) public view returns (string memory) {
+        return userRegistry.usernamesByAddress(addr);
     }
 
     function createRepo(string memory repoID) public {
@@ -56,7 +55,7 @@ contract Protocol
         require(bytes(repoID).length > 0, "argument 'repoID' cannot be empty");
 
         // Ensure that the user has registered a username
-        string memory username = usernamesByAddress[msg.sender];
+        string memory username = userRegistry.usernamesByAddress(msg.sender);
         require(bytes(username).length > 0, "you have not claimed a username");
 
         Repo storage repo = repositories[hashString(repoID)];
@@ -95,11 +94,11 @@ contract Protocol
     }
 
     function updateRef(string memory repoID, string memory refName, bytes20 oldCommitHash, bytes20 newCommitHash) public {
-        require(userHasPushAccess(usernamesByAddress[msg.sender], repoID), "you don't have push access");
+        require(userHasPushAccess(userRegistry.usernamesByAddress(msg.sender), repoID), "you don't have push access");
 
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
-        require(oldCommitHash != repo.refsToCommits[hashString(refName)], "the provided oldCommitHash is incorrect");
+        require(oldCommitHash == repo.refsToCommits[hashString(refName)], "the provided oldCommitHash is incorrect");
 
         repo.refs.add(refName);
         repo.refsToCommits[hashString(refName)] = newCommitHash;
@@ -108,7 +107,7 @@ contract Protocol
     }
 
     function deleteRef(string memory repoID, string memory refName) public {
-        require(userHasPushAccess(usernamesByAddress[msg.sender], repoID), "you don't have push access");
+        require(userHasPushAccess(userRegistry.usernamesByAddress(msg.sender), repoID), "you don't have push access");
 
         Repo storage repo = repositories[hashString(repoID)];
         require(repo.exists, "repo does not exist");
@@ -140,15 +139,15 @@ contract Protocol
     }
 
     function addressIsAdmin(address addr, string memory repoID) public view returns (bool) {
-        return userIsAdmin(usernamesByAddress[addr], repoID);
+        return userIsAdmin(userRegistry.usernamesByAddress(addr), repoID);
     }
 
     function addressHasPullAccess(address addr, string memory repoID) public view returns (bool) {
-        return userHasPullAccess(usernamesByAddress[addr], repoID);
+        return userHasPullAccess(userRegistry.usernamesByAddress(addr), repoID);
     }
 
     function addressHasPushAccess(address addr, string memory repoID) public view returns (bool) {
-        return userHasPushAccess(usernamesByAddress[addr], repoID);
+        return userHasPushAccess(userRegistry.usernamesByAddress(addr), repoID);
     }
 
     function isRepoPublic(string memory repoID) public view returns(bool) {
