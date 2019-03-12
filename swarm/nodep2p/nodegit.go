@@ -131,9 +131,15 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 			return "", err
 		}
 
-		isDescendant, err := r.DescendantOf(localCommitOid, &currentCommitOid)
-		if err != nil {
-			return "", err
+		var isDescendant bool
+		if currentCommitOid.IsZero() {
+			// nothing pushed to contract yet
+			isDescendant = true
+		} else {
+			isDescendant, err = r.DescendantOf(localCommitOid, &currentCommitOid)
+			if err != nil {
+				return "", err
+			}
 		}
 
 		if !isDescendant && !opts.Force {
