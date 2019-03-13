@@ -162,6 +162,7 @@ func (p *peerPool) GetConn() (*peerConn, error) {
 		select {
 		case <-p.ctx.Done():
 			p.chPeers <- conn
+			return nil, p.ctx.Err()
 		default:
 		}
 
