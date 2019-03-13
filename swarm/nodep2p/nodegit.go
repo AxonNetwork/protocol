@@ -238,6 +238,10 @@ func FetchConscienceRemote(ctx context.Context, opts *FetchOptions) ([]string, e
 
 func FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error) {
 	updatedRefs, err := FetchConscienceRemote(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	refs := opts.Repo.References
 	for _, name := range updatedRefs {
 		if strings.HasPrefix(name, "refs/remotes/origin") {

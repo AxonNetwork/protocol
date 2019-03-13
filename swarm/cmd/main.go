@@ -242,6 +242,19 @@ var replCommands = map[string]struct {
 		},
 	},
 
+	"fetch-and-set-ref": {
+		"update a git ref for the given repository",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			r := n.RepoManager().Repo(args[0])
+			if r == nil {
+				return errors.New("unknown repo")
+			}
+
+			_, err := nodep2p.FetchAndSetRef(ctx, &nodep2p.FetchOptions{Repo: r})
+			return err
+		},
+	},
+
 	"update-ref": {
 		"update a git ref for the given repository",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
