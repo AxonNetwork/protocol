@@ -217,8 +217,9 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 				})
 				if err != nil {
 					log.Warnf("[content request] error cloning conscience://%v remote: %v", repoID, err)
+				} else {
+					log.Debugf("[content request] cloned conscience://%v remote", repoID)
 				}
-				log.Debugf("[content request] cloned conscience://%v remote", repoID)
 				continue
 			}
 
@@ -228,10 +229,8 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 				continue
 			}
 
-			updatedRemotes, err := n.Pull(context.TODO(), &nodep2p.PullOptions{
-				Repo:       r,
-				RemoteName: "origin",
-				BranchName: "master",
+			updatedRemotes, err := n.FetchAndSetRef(context.TODO(), &nodep2p.FetchOptions{
+				Repo: r,
 			})
 			if err != nil {
 				log.Warnf("[content request] error pulling conscience://%v remote: %v", repoID, err)
@@ -395,13 +394,13 @@ func (n *Node) Push(ctx context.Context, opts *nodep2p.PushOptions) (string, err
 	return commit, nil
 }
 
-func (n *Node) FetchConscienceRemote(ctx context.Context, opts *nodep2p.FetchOptions) ([]string, error) {
+func (n *Node) FetchAndSetRef(ctx context.Context, opts *nodep2p.FetchOptions) ([]string, error) {
 	repoRoot := opts.Repo.Path()
 	repoID, err := opts.Repo.RepoID()
 	if err != nil {
 		return nil, err
 	}
-	updatedRefs, err := nodep2p.FetchConscienceRemote(ctx, opts)
+	updatedRefs, err := nodep2p.FetchAndSetRef(ctx, opts)
 	if err != nil {
 		return nil, err
 	}

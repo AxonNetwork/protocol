@@ -236,6 +236,26 @@ func FetchConscienceRemote(ctx context.Context, opts *FetchOptions) ([]string, e
 	return updatedRefs, nil
 }
 
+func FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error) {
+	updatedRefs, err := FetchConscienceRemote(ctx, opts)
+	refs := opts.Repo.References
+	for _, name := range updatedRefs {
+		if strings.HasPrefix(name, "refs/remotes/origin") {
+			ref, err := refs.Lookup(name)
+			if err != nil {
+				return nil, err
+			}
+			oid := ref.Target()
+			localRefName := strings.Replace(name, "refs/remotes/origin", "refs/heads", 1)
+			_, err = refs.Create(localRefName, oid, true, "")
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return updatedRefs, err
+}
+
 type PullOptions struct {
 	Repo       *repo.Repo
 	RemoteName string
@@ -250,18 +270,11 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 
 	// 1. stash worktree
 	{
-		cfg, err := r.Config()
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
 
-		name, err := cfg.LookupString("user.name")
+		name, email, err := r.UserIdentityFromConfig()
 		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		email, err := cfg.LookupString("user.email")
-		if err != nil {
+			name = ""
+			email = ""
 			return nil, errors.WithStack(err)
 		}
 
@@ -467,7 +480,8 @@ func createMergeCommit(r *repo.Repo, index *git.Index, remote *git.Remote, remot
 
 	userName, userEmail, err := r.UserIdentityFromConfig()
 	if err != nil {
-		return errors.WithStack(err)
+		userName = ""
+		userEmail = ""
 	}
 
 	var (

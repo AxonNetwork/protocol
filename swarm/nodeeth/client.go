@@ -3,6 +3,7 @@ package nodeeth
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"math/big"
 	"strings"
 
@@ -240,7 +241,7 @@ func (n *Client) GetRefs(ctx context.Context, repoID string, pageSize uint64, pa
 
 		commitLen := big.NewInt(0).SetBytes(x.Data[read : read+32]).Int64()
 		read += 32
-		ref.CommitHash = string(x.Data[read : read+commitLen])
+		ref.CommitHash = hex.EncodeToString(x.Data[read : read+commitLen])
 		read += commitLen
 
 		refs[ref.RefName] = ref
