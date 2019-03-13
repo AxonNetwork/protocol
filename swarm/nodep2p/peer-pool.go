@@ -157,6 +157,13 @@ func (p *peerPool) GetConn() (*peerConn, error) {
 			log.Debugln("[peer pool] peerConn.Stream successfully opened")
 			conn.Stream = stream
 		}
+
+		select {
+		case <-p.ctx.Done():
+			p.chPeers <- conn
+		default:
+		}
+
 		return conn, nil
 
 	case <-p.ctx.Done():

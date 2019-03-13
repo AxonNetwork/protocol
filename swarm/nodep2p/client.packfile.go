@@ -72,6 +72,7 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 
 			batch, open := <-chBatches
 			if !open {
+				pool.ReturnConn(conn, false)
 				break
 			}
 
