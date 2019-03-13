@@ -158,6 +158,7 @@ func (p *peerPool) GetConn() (*peerConn, error) {
 			conn.Stream = stream
 		}
 
+		// if the pool is closed, return conn to channel
 		select {
 		case <-p.ctx.Done():
 			p.chPeers <- conn

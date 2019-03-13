@@ -57,8 +57,8 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	}
 
 	r := s.node.Repo(req.RepoID)
-	if r == nil {
-		log.Warnf("[manifest server] cannot find repo %v", req.RepoID)
+	if r == nil || !r.HasObject(req.Commit[:]) {
+		log.Warnf("[manifest server] cannot find repo %v: %v", req.RepoID, req.Commit.String())
 		err := WriteStructPacket(stream, &GetManifestResponse{ErrMissingCommit: true})
 		if err != nil {
 			log.Errorf("[manifest server] %+v", errors.WithStack(err))
