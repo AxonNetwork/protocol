@@ -147,7 +147,7 @@ func (sc *Client) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([][]byt
 	return wire.UnflattenObjectIDs(resp.ObjectIDs), conn, nil
 }
 
-func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue *JobQueue) error {
+func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue *jobQueue) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
 	desiredObjectIDs := make([][]byte, len(batch))

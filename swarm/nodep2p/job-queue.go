@@ -6,13 +6,12 @@ import (
 	"time"
 )
 
-type JobQueue struct {
+type jobQueue struct {
 	ctx                context.Context
 	cancel             func()
 	chJobs             chan job
 	chBatches          chan []job
 	chUncapBatchSize   chan struct{}
-	chDone             chan struct{}
 	chFinishedJobs     chan int
 	unfinishedJobs     int
 	batchSize          uint
@@ -21,16 +20,15 @@ type JobQueue struct {
 	uncapBatchSizeOnce *sync.Once
 }
 
-func newJobQueue(ctx context.Context, jobs []job, batchSize uint, batchTimeout time.Duration) *JobQueue {
+func newJobQueue(ctx context.Context, jobs []job, batchSize uint, batchTimeout time.Duration) *jobQueue {
 	ctxInner, cancel := context.WithCancel(ctx)
 
-	q := &JobQueue{
+	q := &jobQueue{
 		ctx:                ctxInner,
 		cancel:             cancel,
 		chJobs:             make(chan job, len(jobs)),
 		chBatches:          make(chan []job),
 		chUncapBatchSize:   make(chan struct{}, 1),
-		chDone:             make(chan struct{}),
 		chFinishedJobs:     make(chan int),
 		unfinishedJobs:     len(jobs),
 		batchSize:          batchSize,
@@ -49,18 +47,18 @@ func newJobQueue(ctx context.Context, jobs []job, batchSize uint, batchTimeout t
 	return q
 }
 
-func (q *JobQueue) Close() {
+func (q *jobQueue) Close() {
 	q.cancel()
 }
 
-func (q *JobQueue) UncapBatchSize() {
+func (q *jobQueue) UncapBatchSize() {
 	// if this isn't limited to a single execution, it can cause deadlocks
 	q.uncapBatchSizeOnce.Do(func() {
 		q.chUncapBatchSize <- struct{}{}
 	})
 }
 
-func (q *JobQueue) GetBatch() []job {
+func (q *jobQueue) GetBatch() []job {
 	batch, open := <-q.chBatches
 	if !open {
 		return nil
@@ -68,7 +66,7 @@ func (q *JobQueue) GetBatch() []job {
 	return batch
 }
 
-func (q *JobQueue) ReturnFailed(jobs []job) {
+func (q *jobQueue) ReturnFailed(jobs []job) {
 	for _, j := range jobs {
 		select {
 		case q.chJobs <- j:
@@ -78,13 +76,13 @@ func (q *JobQueue) ReturnFailed(jobs []job) {
 	}
 }
 
-func (q *JobQueue) MarkDone(num int) {
+func (q *jobQueue) MarkDone(num int) {
 	q.chFinishedJobs <- num
 }
 
 // Batches received jobs up to `batchSize`.  Batches are also time-constrained.
 // If `batchSize` jobs aren't received within `batchTimeout`, the batch is sent anyway.
-func (q *JobQueue) aggregateWork() {
+func (q *jobQueue) aggregateWork() {
 	defer close(q.chBatches)
 
 	batchSizeUncapped := false
