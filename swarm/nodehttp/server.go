@@ -20,6 +20,7 @@ import (
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/logger"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -36,6 +37,7 @@ func New(node *swarm.Node) *Server {
 	router := http.NewServeMux()
 	router.HandleFunc("/", s.handleIndex())
 	router.HandleFunc("/set-replication-policy", s.handleAddReplicatedRepo())
+	router.HandleFunc("/add-peer", s.handleAddPeer())
 	router.HandleFunc("/remove-peer", s.handleRemovePeer())
 	router.HandleFunc("/untrack-repo", s.handleUntrackRepo())
 	router.Handle("/debug/vars", expvar.Handler())
@@ -59,6 +61,33 @@ func (s *Server) Start() {
 
 func (s *Server) Close() error {
 	return s.server.Close()
+}
+
+func (s *Server) handleAddPeer() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseForm()
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		addr := r.Form.Get("addr")
+		if addr == "" {
+			die500(w, fmt.Errorf("no addr supplied"))
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		err = s.node.AddPeer(ctx, addr)
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
 }
 
 func (s *Server) handleRemovePeer() http.HandlerFunc {
@@ -367,6 +396,17 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 display: inline;
             }
 
+            form.form-add-peer {
+                display: inline-block;
+                margin-bottom: 0;
+                margin-top: 10px;
+            }
+
+            form.form-add-peer input[name=addr] {
+                width: 400px;
+                font-family: Consolas, 'Courier New', sans-serif;
+            }
+
             section.section-environment ul li {
                 word-break: break-all;
             }
@@ -418,7 +458,7 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
     <body>
         <header>
             <div class="logo">` + logoSVG + `</div>
-            <div class="text">conscience p2p node</div>
+            <div class="text">axon p2p node</div>
         </header>
 
         <section>
@@ -445,6 +485,15 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             <br />
 
             <label>Peers ({{ .PeersConnected }} connected)</label>
+
+            <div>
+                Add peer:
+                <form method="post" action="/add-peer" class="form-add-peer">
+                    <input name="addr" />
+                    <input type="submit" value="Add" />
+                </form>
+            </div>
+
             <ul>
                 {{ range .Peers }}
                     <li>
