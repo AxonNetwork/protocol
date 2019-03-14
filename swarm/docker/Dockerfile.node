@@ -24,6 +24,7 @@ COPY conscience-node /usr/local/bin/
 # RUN cp ./build/native/conscience-node /usr/local/bin
 
 RUN ln -s /mnt/.consciencerc $HOME/.consciencerc
+RUN ln -s /mnt/.conscience.key $HOME/.conscience.key
 
 # Expose ports
 EXPOSE 1337
