@@ -632,7 +632,7 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
         <script>
             var logs = [
                 {{ range .Logs }}
-                    { level: {{ .Level }}, message: "{{ .Message }}" },
+                    { level: {{ .Level }}, message: "{{ .Message }}".replace('\x3c', '&lt;').replace('\x3e', '&gt;') },
                 {{ end }}
             ]
 
