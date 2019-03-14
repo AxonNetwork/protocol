@@ -366,26 +366,20 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 padding: 20px;
             }
 
-            header {
+            body > header {
                 display: flex;
             }
 
-            header .logo svg {
+            body > header .logo svg {
                 width: 80px;
                 height: 80px;
             }
 
-            header .text {
+            body > header .text {
                 font-family: 'Roboto Condensed', sans-serif;
                 font-size: 2.3rem;
             }
 
-            section {
-                margin-bottom: 30px;
-                border: 1px solid #eaeaea;
-                padding: 30px;
-                border-radius: 10px;
-            }
 
             label {
                 font-weight: bold;
@@ -452,6 +446,38 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             .hidden {
                 display: none;
             }
+
+
+
+
+            section {
+                margin-bottom: 30px;
+                border: 1px solid #eaeaea;
+                border-radius: 10px;
+                overflow: hidden;
+            }
+
+            section > header {
+                width: 100%;
+                height: 34px;
+                background-color: #3e3e3e;
+                color: #f9cb12;
+                font-size: 1.4rem;
+                padding: 10px 30px 0 30px;
+                cursor: pointer;
+            }
+
+            section .body {
+                height: unset;
+                padding: 30px;
+                transition: height 300ms;
+            }
+
+            section.collapsed .body {
+                height: 0;
+                padding: 0;
+                transition: height 300ms;
+            }
         </style>
     </head>
     <body>
@@ -461,126 +487,146 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
         </header>
 
         <section>
-            <div><label>Username:</label> {{ .Username }}</div>
-            <div><label>ETH account:</label> {{ .EthAddress }}</div>
-            <div><label>Protocol contract:</label> {{ .ProtocolContractAddr }}</div>
-            <div><label>RPC listen addr:</label> {{ .RPCListenAddr }}</div>
-            <div>
-                <label>Listen addrs:</label>
+            <header>General</header>
+
+            <div class="body">
+                <div><label>Username:</label> {{ .Username }}</div>
+                <div><label>ETH account:</label> {{ .EthAddress }}</div>
+                <div><label>Protocol contract:</label> {{ .ProtocolContractAddr }}</div>
+                <div><label>RPC listen addr:</label> {{ .RPCListenAddr }}</div>
+                <div>
+                    <label>Listen addrs:</label>
+                    <ul>
+                        {{ range .Addrs }}
+                            <li>{{ . }}</li>
+                        {{ end }}
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section class="section-peers">
+            <header>Network</header>
+
+            <div class="body">
+                <label>Network stats:</label>
+                <div>
+                    <div>In: {{ .GlobalConnStats.TotalIn }} ({{ .GlobalConnStats.RateIn }} / s)</div>
+                    <div>Out: {{ .GlobalConnStats.TotalOut }} ({{ .GlobalConnStats.RateOut }} / s)</div>
+                </div>
+                <br />
+
+                <label>Peers ({{ .PeersConnected }} connected)</label>
+
+                <div>
+                    Add peer:
+                    <form method="post" action="/add-peer" class="form-add-peer">
+                        <input name="addr" />
+                        <input type="submit" value="Add" />
+                    </form>
+                </div>
+
                 <ul>
-                    {{ range .Addrs }}
-                        <li>{{ . }}</li>
+                    {{ range .Peers }}
+                        <li>
+                            <div>
+                                {{ .PrettyName }} ({{ .Name }})
+                                <form method="post" action="/remove-peer">
+                                    <input type="hidden" name="peerid" value="{{ .Name }}" />
+                                    <input type="submit" value="Disconnect" />
+                                </form>
+                            </div>
+
+                            <ul>
+                                {{ range .Addrs }}
+                                    <li>
+                                        {{ . }}
+                                    </li>
+                                {{ end }}
+                            </ul>
+                        </li>
                     {{ end }}
                 </ul>
             </div>
         </section>
 
-        <section class="section-peers">
-            <label>Network stats:</label>
-            <div>
-                <div>In: {{ .GlobalConnStats.TotalIn }} ({{ .GlobalConnStats.RateIn }} / s)</div>
-                <div>Out: {{ .GlobalConnStats.TotalOut }} ({{ .GlobalConnStats.RateOut }} / s)</div>
-            </div>
-            <br />
-
-            <label>Peers ({{ .PeersConnected }} connected)</label>
-
-            <div>
-                Add peer:
-                <form method="post" action="/add-peer" class="form-add-peer">
-                    <input name="addr" />
-                    <input type="submit" value="Add" />
-                </form>
-            </div>
-
-            <ul>
-                {{ range .Peers }}
-                    <li>
-                        <div>
-                            {{ .PrettyName }} ({{ .Name }})
-                            <form method="post" action="/remove-peer">
-                                <input type="hidden" name="peerid" value="{{ .Name }}" />
-                                <input type="submit" value="Disconnect" />
-                            </form>
-                        </div>
-
-                        <ul>
-                            {{ range .Addrs }}
-                                <li>
-                                    {{ . }}
-                                </li>
-                            {{ end }}
-                        </ul>
-                    </li>
-                {{ end }}
-            </ul>
-        </section>
-
         <section>
-            <label>Replicating repos:</label>
-            <ul>
-                {{ range .ReplicateRepos }}
-                    <li>{{ . }}</li>
-                {{ end }}
-            </ul>
+            <header>Repos</header>
 
-            <div><label>Set replication policy</label></div>
-            <form action="/set-replication-policy" method="post">
-                <div>Repo ID: <input type="text" name="repo" /></div>
-                <div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
-                <div><input type="submit" value="Set" /></div>
-            </form>
+            <div class="body">
+                <label>Replicating repos:</label>
+                <ul>
+                    {{ range .ReplicateRepos }}
+                        <li>{{ . }}</li>
+                    {{ end }}
+                </ul>
 
-            <div><label>Untrack repo</label></div>
-            <form action="/untrack-repo" method="post">
-                <div>Repo path: <input type="text" name="repoPath" /></div>
-                <div><input type="submit" value="Untrack" /></div>
-            </form>
+                <div><label>Set replication policy</label></div>
+                <form action="/set-replication-policy" method="post">
+                    <div>Repo ID: <input type="text" name="repo" /></div>
+                    <div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
+                    <div><input type="submit" value="Set" /></div>
+                </form>
 
-            <br />
+                <div><label>Untrack repo</label></div>
+                <form action="/untrack-repo" method="post">
+                    <div>Repo path: <input type="text" name="repoPath" /></div>
+                    <div><input type="submit" value="Untrack" /></div>
+                </form>
 
-            <label>Local repos:</label>
-            <ul class="local-repos">
-                {{ range .LocalRepos }}
-                    <li>
-                        <div>{{ .RepoID }} ({{ .Path }}) <span class="toggle-refs">[toggle refs]</span></div>
-                        <table class="hidden">
-                            <thead>
-                                <td>Ref</td>
-                                <td>Local</td>
-                                <td>Remote</td>
-                            </thead>
-                            <tbody>
-                            {{ range .Refs }}
-                                <tr>
-                                    <td>{{ .RefName }}</td>
-                                    <td>{{ .LocalCommit }}</td>
-                                    <td>{{ .RemoteCommit }}</td>
-                                </tr>
-                            {{ end }}
-                            </tbody>
-                        </table>
-                    </li>
-                {{ end }}
-            </ul>
+                <br />
+
+                <label>Local repos:</label>
+                <ul class="local-repos">
+                    {{ range .LocalRepos }}
+                        <li>
+                            <div>{{ .RepoID }} ({{ .Path }}) <span class="toggle-refs">[toggle refs]</span></div>
+                            <table class="hidden">
+                                <thead>
+                                    <td>Ref</td>
+                                    <td>Local</td>
+                                    <td>Remote</td>
+                                </thead>
+                                <tbody>
+                                {{ range .Refs }}
+                                    <tr>
+                                        <td>{{ .RefName }}</td>
+                                        <td>{{ .LocalCommit }}</td>
+                                        <td>{{ .RemoteCommit }}</td>
+                                    </tr>
+                                {{ end }}
+                                </tbody>
+                            </table>
+                        </li>
+                    {{ end }}
+                </ul>
+            </div>
         </section>
 
         <section class="section-environment">
-            <label>Environment</label>
-            <ul>
-                {{ range .Env }}
-                    <li>{{ .Name }} <span class="equals">=</span> <span class="value">{{ .Value }}</span></li>
-                {{ end }}
-            </ul>
+            <header>Environment</header>
+
+            <div class="body">
+                <label>Environment variables</label>
+                <ul>
+                    {{ range .Env }}
+                        <li>{{ .Name }} <span class="equals">=</span> <span class="value">{{ .Value }}</span></li>
+                    {{ end }}
+                </ul>
+            </div>
         </section>
 
         <section class="section-logs">
-            <div>Debug <input type="checkbox" data-level="debug"   value="on" checked /></div>
-            <div>Info  <input type="checkbox" data-level="info"    value="on" checked /></div>
-            <div>Warn  <input type="checkbox" data-level="warning" value="on" checked /></div>
-            <div>Error <input type="checkbox" data-level="error"   value="on" checked /></div>
-            <label>Logs:</label>
-            <ul></ul>
+            <header>Logs</header>
+
+            <div class="body">
+                <div>Debug <input type="checkbox" data-level="debug"   value="on" checked /></div>
+                <div>Info  <input type="checkbox" data-level="info"    value="on" checked /></div>
+                <div>Warn  <input type="checkbox" data-level="warning" value="on" checked /></div>
+                <div>Error <input type="checkbox" data-level="error"   value="on" checked /></div>
+                <label>Logs:</label>
+                <ul></ul>
+            </div>
         </section>
 
         <script>
@@ -600,12 +646,20 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 for (var i = 0; i < refToggles.length; i++) {
                     refToggles[i].addEventListener('click', toggleRefVisibility)
                 }
+
+                var headers = document.querySelectorAll('section > header')
+                for (var i = 0; i < headers.length; i++) {
+                    headers[i].addEventListener('click', toggleSectionVisibility)
+                }
             }
 
             function toggleRefVisibility(event) {
-                console.log('event', event)
                 var table = event.target.parentElement.parentElement.querySelector('table')
                 table.classList.toggle('hidden')
+            }
+
+            function toggleSectionVisibility(event) {
+                event.target.parentElement.classList.toggle('collapsed')
             }
 
             function getFilters() {
