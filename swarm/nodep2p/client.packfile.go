@@ -16,29 +16,29 @@ import (
 
 func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.ManifestObject) <-chan MaybeFetchFromCommitPacket {
 	chOut := make(chan MaybeFetchFromCommitPacket)
-	wg := &sync.WaitGroup{}
 
 	// Load the job queue up with everything in the manifest
-	jobQueue := make(chan job, len(gitObjects))
-	for _, obj := range gitObjects {
-		wg.Add(1)
-		jobQueue <- job{
+	jobs := make([]job, len(gitObjects))
+	for i, obj := range gitObjects {
+		jobs[i] = job{
 			size:        obj.UncompressedSize,
 			objectID:    obj.Hash,
 			failedPeers: make(map[peer.ID]bool),
 		}
 	}
 
-	go func() {
-		wg.Wait()
-		close(jobQueue)
-		close(chOut)
-	}()
-
-	maxPeers := sc.config.Node.MaxConcurrentPeers
+	var (
+		maxPeers     = sc.config.Node.MaxConcurrentPeers
+		batchSize    = uint(len(gitObjects)) / maxPeers
+		batchTimeout = 3 * time.Second
+		jobQueue     = newJobQueue(ctx, jobs, batchSize, batchTimeout)
+	)
 
 	// Consume the job queue with connections managed by a peerPool{}
 	go func() {
+		defer close(chOut)
+		defer jobQueue.Close()
+
 		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, PACKFILE_PROTO, true)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
@@ -46,108 +46,52 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 		}
 		defer pool.Close()
 
-		var (
-			batchSize        = uint(len(gitObjects)) / maxPeers
-			batchTimeout     = 3 * time.Second
-			chUncapBatchSize = make(chan struct{}, 1)
-			seenPeers        = make(map[peer.ID]bool)
-		)
-
-		chBatches := aggregateWork(ctx, jobQueue, chUncapBatchSize, batchSize, batchTimeout)
+		seenPeers := make(map[peer.ID]bool)
+		wg := &sync.WaitGroup{}
 
 		for {
 			conn, err := pool.GetConn()
 			if err != nil {
 				log.Errorln("[packfile client] error obtaining peer connection:", err)
-				return
+				continue
 			} else if conn == nil {
 				log.Errorln("[packfile client] nil PeerConnection, operation canceled?")
 				return
 			}
 
 			if seenPeers[conn.peerID] {
-				chUncapBatchSize <- struct{}{}
+				jobQueue.UncapBatchSize()
 			}
 			seenPeers[conn.peerID] = true
 
-			batch, open := <-chBatches
-			if !open {
+			batch := jobQueue.GetBatch()
+			if batch == nil {
 				pool.ReturnConn(conn, false)
 				break
 			}
 
+			wg.Add(1)
 			go func(batch []job) {
-				err := sc.fetchPackfile(ctx, conn, batch, chOut, jobQueue, wg)
+				defer wg.Done()
+
+				var strike bool
+				defer func() { pool.ReturnConn(conn, strike) }()
+
+				err := sc.fetchPackfile(ctx, conn, batch, chOut, jobQueue)
 				if err != nil {
-					log.Errorln("[packfile client] fetchObject:", err)
 					if errors.Cause(err) == ErrFetchingFromPeer {
 						// @@TODO: mark failed peer on job{}
 						// @@TODO: maybe call ReturnConn with true if the peer should be discarded
 					}
-					pool.ReturnConn(conn, true)
-
-				} else {
-					pool.ReturnConn(conn, false)
+					strike = true
 				}
 			}(batch)
 		}
+
+		wg.Wait()
 	}()
 
 	return chOut
-}
-
-// Takes a job queue and batches received jobs up to `batchSize`.  Batches are also time-constrained.
-// If `batchSize` jobs aren't received within `batchTimeout`, the batch is sent anyway.
-func aggregateWork(ctx context.Context, jobQueue chan job, chUncapBatchSize <-chan struct{}, batchSize uint, batchTimeout time.Duration) chan []job {
-	chBatch := make(chan []job)
-	go func() {
-		defer close(chBatch)
-
-		batchSizeUncapped := false
-
-	Outer:
-		for {
-			// We don't wait more than this amount of time
-			timeout := time.After(batchTimeout)
-			current := make([]job, 0)
-
-			for {
-				select {
-				case j, open := <-jobQueue:
-					// If the channel is open, add the received job to the current batch.
-					// If it's closed, send whatever we have and close the batch channel.
-					if open {
-						current = append(current, j)
-						if !batchSizeUncapped && uint(len(current)) >= batchSize {
-							select {
-							case <-chUncapBatchSize:
-								batchSizeUncapped = true
-								continue
-							case chBatch <- current:
-							}
-							continue Outer
-						}
-
-					} else {
-						if len(current) > 0 {
-							chBatch <- current
-						}
-						return
-					}
-
-				case <-timeout:
-					if len(current) > 0 {
-						chBatch <- current
-					}
-					continue Outer
-
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-	return chBatch
 }
 
 func makePackfileTempID(objectIDs [][]byte) []byte {
@@ -171,16 +115,6 @@ func determineMissingIDs(desired, available [][]byte) [][]byte {
 		}
 	}
 	return missing
-}
-
-func (sc *Client) returnJobsToQueue(ctx context.Context, jobs []job, jobQueue chan job) {
-	for _, j := range jobs {
-		select {
-		case jobQueue <- j:
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 func (sc *Client) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([][]byte, netp2p.Stream, error) {
@@ -213,7 +147,7 @@ func (sc *Client) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([][]byt
 	return wire.UnflattenObjectIDs(resp.ObjectIDs), conn, nil
 }
 
-func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue chan job, wg *sync.WaitGroup) error {
+func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue *JobQueue) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
 	desiredObjectIDs := make([][]byte, len(batch))
@@ -227,7 +161,7 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 	if err != nil {
 		err = errors.Wrapf(ErrFetchingFromPeer, "tried requesting packfile from peer %v: %v", conn.peerID, err)
 		log.Errorf("[packfile client]", err)
-		go sc.returnJobsToQueue(ctx, batch, jobQueue)
+		go jobQueue.ReturnFailed(batch)
 		return err
 	}
 
@@ -238,7 +172,7 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 		for i, oid := range missingObjectIDs {
 			jobsToReturn[i] = jobMap[string(oid)]
 		}
-		go sc.returnJobsToQueue(ctx, jobsToReturn, jobQueue)
+		go jobQueue.ReturnFailed(jobsToReturn)
 	}
 
 	if len(availableObjectIDs) == 0 {
@@ -267,11 +201,9 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 			log.Errorln("[packfile client] error reading GetPackfileResponsePacket:", err)
 			break
 		} else if packet.End {
-			log.Debugln("[packfile client] got packet.End")
 			break
 		}
 
-		log.Debugln("[packfile client] got packet", packet.DataLen, packet.End)
 		chOut <- MaybeFetchFromCommitPacket{
 			PackfileData: &PackfileData{
 				PackfileID: packfileTempID,
@@ -285,7 +217,7 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 		for i, oid := range availableObjectIDs {
 			failedJobs[i] = jobMap[string(oid)]
 		}
-		go sc.returnJobsToQueue(ctx, failedJobs, jobQueue)
+		go jobQueue.ReturnFailed(failedJobs)
 		return err
 	}
 
@@ -295,11 +227,8 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 			End:        true,
 		},
 	}
-	log.Debugln("[packfile client] done")
 
-	for i := 0; i < len(availableObjectIDs); i++ {
-		wg.Done()
-	}
+	go jobQueue.MarkDone(len(availableObjectIDs))
 
 	return nil
 }

@@ -2,6 +2,7 @@ package nodep2p
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
@@ -14,7 +15,6 @@ import (
 )
 
 type peerPool struct {
-	protocol  protocol.ID
 	keepalive bool
 	node      INode
 
@@ -26,13 +26,7 @@ type peerPool struct {
 	foundPeers    map[peer.ID]bool
 }
 
-type peerConn struct {
-	peerID peer.ID
-	repoID string
-	netp2p.Stream
-}
-
-func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns uint, protocol protocol.ID, keepalive bool) (*peerPool, error) {
+func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns uint, protocolID protocol.ID, keepalive bool) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -44,7 +38,6 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	p := &peerPool{
 		keepalive:     keepalive,
 		node:          node,
-		protocol:      protocol,
 		chPeers:       make(chan *peerConn, concurrentConns),
 		chNeedNewPeer: make(chan struct{}),
 		chProviders:   node.FindProvidersAsync(ctxInner, cid, 999),
@@ -56,6 +49,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 	// from the `chProviders` channel, open a peerConn to it, and add it to the pool.
 	go func() {
 		defer close(p.chPeers)
+
 		for {
 			select {
 			case <-p.chNeedNewPeer:
@@ -64,19 +58,20 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 			}
 
 			var conn *peerConn
+		FindPeerLoop:
 			for {
 				var peerID peer.ID
 				select {
 				case peerInfo, open := <-p.chProviders:
 					if !open {
 						p.chProviders = node.FindProvidersAsync(p.ctx, cid, 999)
-						continue
+						continue FindPeerLoop
 					}
 					// if self
 					if peerInfo.ID == node.ID() {
-						continue
+						continue FindPeerLoop
 					} else if foundPeers[peerInfo.ID] {
-						continue
+						continue FindPeerLoop
 					}
 					peerID = peerInfo.ID
 					foundPeers[peerID] = true
@@ -85,20 +80,11 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 					return
 				}
 
-				// if _, exists := p.peerList[peerID]; exists {
-				// 	continue
-				// }
+				log.Infof("[peer pool] found peer %v (repoID: %v, protocolID: %v)", peerID.String(), repoID, protocolID)
+				conn = newPeerConn(ctxInner, p.node, peerID, repoID, protocolID)
 
-				log.Infoln("[peer pool] found peer")
-				conn = &peerConn{
-					peerID: peerID,
-					repoID: repoID,
-					Stream: nil,
-				}
 				break
 			}
-
-			// p.peerList[conn.peerID] = conn
 
 			select {
 			case p.chPeers <- conn:
@@ -127,14 +113,6 @@ func (p *peerPool) Close() error {
 
 	p.chNeedNewPeer = nil
 	p.chProviders = nil
-	go func() {
-		for x := range p.chPeers {
-			if x.Stream != nil {
-				x.Close()
-			}
-		}
-		p.chPeers = nil
-	}()
 
 	return nil
 }
@@ -143,30 +121,8 @@ func (p *peerPool) GetConn() (*peerConn, error) {
 	select {
 	case conn := <-p.chPeers:
 
-		if conn.Stream == nil {
-			log.Debugf("[peer pool] peerConn.Stream is nil, opening new connection (proto: %v)", p.protocol)
-
-			// @@TODO: make context timeout configurable
-			ctx, cancel := context.WithTimeout(p.ctx, 15*time.Second)
-			defer cancel()
-
-			stream, err := p.node.NewStream(ctx, conn.peerID, p.protocol)
-			if err != nil {
-				return nil, err
-			}
-			log.Debugln("[peer pool] peerConn.Stream successfully opened")
-			conn.Stream = stream
-		}
-
-		// if the pool is closed, return conn to channel
-		select {
-		case <-p.ctx.Done():
-			p.chPeers <- conn
-			return nil, p.ctx.Err()
-		default:
-		}
-
-		return conn, nil
+		err := conn.Open()
+		return conn, err
 
 	case <-p.ctx.Done():
 		return nil, p.ctx.Err()
@@ -175,13 +131,10 @@ func (p *peerPool) GetConn() (*peerConn, error) {
 
 func (p *peerPool) ReturnConn(conn *peerConn, strike bool) {
 	if strike {
-		// if _, exists := p.peerList[conn.peerID]; exists {
-		// 	delete(p.peerList, conn.peerID)
-		// }
-
+		// Close the faulty connection
 		conn.Close()
-		conn.Stream = nil
 
+		// Try to obtain a new peer
 		select {
 		case p.chNeedNewPeer <- struct{}{}:
 		case <-p.ctx.Done():
@@ -190,12 +143,102 @@ func (p *peerPool) ReturnConn(conn *peerConn, strike bool) {
 	} else {
 		if !p.keepalive {
 			conn.Close()
-			conn.Stream = nil
 		}
 
+		// Return the peer to the pool
 		select {
 		case p.chPeers <- conn:
 		case <-p.ctx.Done():
 		}
 	}
+}
+
+type peerConn struct {
+	netp2p.Stream
+	node       INode
+	peerID     peer.ID
+	repoID     string
+	protocolID protocol.ID
+	ctx        context.Context
+	mu         *sync.Mutex
+	done       bool
+}
+
+func newPeerConn(ctx context.Context, node INode, peerID peer.ID, repoID string, protocolID protocol.ID) *peerConn {
+	conn := &peerConn{
+		node:       node,
+		peerID:     peerID,
+		repoID:     repoID,
+		protocolID: protocolID,
+		Stream:     nil,
+		ctx:        ctx,
+		mu:         &sync.Mutex{},
+		done:       false,
+	}
+
+	go func() {
+		<-ctx.Done()
+		conn.closeForever()
+	}()
+
+	return conn
+}
+
+func (conn *peerConn) Open() error {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	if conn.done {
+		log.Debugf("[peer conn] peerConn is done, refusing to reopen (repoID: %v, proto: %v)", conn.repoID, conn.protocolID)
+		return nil
+	}
+
+	if conn.Stream == nil {
+		log.Debugf("[peer conn] peerConn.Stream is nil, opening new connection (proto: %v)", conn.protocolID)
+
+		// @@TODO: make context timeout configurable
+		ctxConnect, cancel := context.WithTimeout(conn.ctx, 15*time.Second)
+		defer cancel()
+
+		stream, err := conn.node.NewStream(ctxConnect, conn.peerID, conn.protocolID)
+		if err != nil {
+			return err
+		}
+
+		log.Debugln("[peer conn] peerConn.Stream successfully opened")
+		conn.Stream = stream
+	}
+
+	return nil
+}
+
+func (conn *peerConn) close() error {
+	if conn.Stream != nil {
+		log.Debugf("[peer conn] closing peerConn %v (repoID: %v, protocolID: %v)", conn.peerID, conn.repoID, conn.protocolID)
+
+		err := conn.Stream.Close()
+		if err != nil {
+			log.Warnln("[peer conn] error closing peerConn:", err)
+		}
+		conn.Stream = nil
+
+	} else {
+		log.Debugf("[peer conn] already closed: peerConn %v (repoID: %v, protocolID: %v)", conn.peerID, conn.repoID, conn.protocolID)
+	}
+	return nil
+}
+
+func (conn *peerConn) closeForever() error {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	conn.done = true
+	return conn.close()
+}
+
+func (conn *peerConn) Close() error {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	return conn.close()
 }

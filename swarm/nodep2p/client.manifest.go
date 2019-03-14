@@ -33,8 +33,10 @@ func (sc *Client) GetManifest(ctx context.Context, commitID git.Oid, checkoutTyp
 	}
 
 	// Split the manifest into git objects and conscience chunks
-	gitObjects := []ManifestObject{}
-	chunkObjects := []ManifestObject{}
+	var (
+		gitObjects   = []ManifestObject{}
+		chunkObjects = []ManifestObject{}
+	)
 
 	// Calculate the uncompressed size of the entire tree of commits & chunks that will be transferred.
 	var uncompressedSize int64
@@ -45,7 +47,7 @@ func (sc *Client) GetManifest(ctx context.Context, commitID git.Oid, checkoutTyp
 		} else if len(obj.Hash) == repo.CONSCIENCE_HASH_LENGTH {
 			chunkObjects = append(chunkObjects, obj)
 		} else {
-			log.Errorln("[manifest clients] received an oddly sized hash from peer")
+			log.Errorln("[manifest client] received an oddly sized hash from peer:", obj.Hash)
 		}
 	}
 
@@ -66,7 +68,7 @@ func (sc *Client) requestManifestFromSwarm(ctx context.Context, commitID git.Oid
 			// We found a peer with the object
 			manifest, err := sc.requestManifestFromPeer(ctx, provider.ID, commitID, checkoutType)
 			if err != nil {
-				log.Errorln("[packfile client] requestManifestFromPeer:", err)
+				log.Errorln("[manifest client] requestManifestFromPeer:", err)
 				continue
 			}
 			return manifest, nil
@@ -76,7 +78,7 @@ func (sc *Client) requestManifestFromSwarm(ctx context.Context, commitID git.Oid
 }
 
 func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, error) {
-	log.Debugf("[p2p object client] requesting manifest %v/%v from peer %v", sc.repoID, commitID, peerID.Pretty())
+	log.Debugf("[manifest client] requesting manifest %v/%v from peer %v", sc.repoID, commitID.String(), peerID.Pretty())
 
 	// Open the stream
 	stream, err := sc.node.NewStream(ctx, peerID, MANIFEST_PROTO)
@@ -101,7 +103,7 @@ func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, c
 	}
 
 	// Read the response
-	resp := GetManifestResponse{}
+	var resp GetManifestResponse
 	err = ReadStructPacket(stream, &resp)
 	if err != nil {
 		return nil, err
@@ -111,20 +113,22 @@ func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, c
 		return nil, errors.Wrapf(ErrObjectNotFound, "%v:%0x", sc.repoID, commitID)
 	}
 
-	log.Debugf("[p2p object client] got manifest metadata %+v", resp)
+	log.Debugf("[manifest client] got manifest header %+v", resp)
 
 	manifest := make([]ManifestObject, 0)
 	for {
-		obj := ManifestObject{}
+		var obj ManifestObject
 		err = ReadStructPacket(stream, &obj)
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
 		}
+
 		if obj.End == true {
 			break
 		}
+
 		manifest = append(manifest, obj)
 	}
 

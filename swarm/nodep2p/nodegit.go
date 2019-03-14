@@ -242,22 +242,23 @@ func FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error) {
 		return nil, err
 	}
 
-	refs := opts.Repo.References
+	repo := opts.Repo
 	for _, name := range updatedRefs {
 		if strings.HasPrefix(name, "refs/remotes/origin") {
-			ref, err := refs.Lookup(name)
+			ref, err := repo.References.Lookup(name)
 			if err != nil {
 				return nil, err
 			}
+
 			oid := ref.Target()
 			localRefName := strings.Replace(name, "refs/remotes/origin", "refs/heads", 1)
-			_, err = refs.Create(localRefName, oid, true, "")
+			_, err = repo.References.Create(localRefName, oid, true, "")
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-	return updatedRefs, err
+	return updatedRefs, nil
 }
 
 type PullOptions struct {

@@ -24,7 +24,7 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	defer stream.Close()
 
 	// Read the request packet
-	req := GetManifestRequest{}
+	var req GetManifestRequest
 	err := ReadStructPacket(stream, &req)
 	if err != nil {
 		log.Errorf("[manifest server] %+v", errors.WithStack(err))
@@ -47,7 +47,7 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	}
 
 	if hasAccess == false {
-		log.Warnf("[manifest server] address 0x%0x does not have pull access", addr.Bytes())
+		log.Warnf("[manifest server] address 0x%0x does not have pull access to repo %v", addr.Bytes(), req.RepoID)
 		err := WriteStructPacket(stream, &GetManifestResponse{ErrUnauthorized: true})
 		if err != nil {
 			log.Errorf("[manifest server] %+v", errors.WithStack(err))
@@ -128,8 +128,9 @@ func getManifestStream(r *repo.Repo, commitHash git.Oid, checkoutType CheckoutTy
 			}
 
 			func() {
-				commit, err := m.repo.LookupCommit(&stack[0])
-				if err != nil {
+				commit, innerErr := m.repo.LookupCommit(&stack[0])
+				if innerErr != nil {
+					err = innerErr
 					return
 				}
 				defer commit.Free()
@@ -145,11 +146,17 @@ func getManifestStream(r *repo.Repo, commitHash git.Oid, checkoutType CheckoutTy
 
 				stack = append(stack[1:], parentHashes...)
 
-				err = m.addCommit(commit)
-				if err != nil {
+				innerErr = m.addCommit(commit)
+				if innerErr != nil {
+					err = innerErr
 					return
 				}
 			}()
+
+			if err != nil {
+				log.Errorln("[manifest server] getManifestStream:", err)
+				return
+			}
 		}
 	}()
 
