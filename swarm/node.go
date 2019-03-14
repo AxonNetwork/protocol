@@ -259,9 +259,11 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 
 		// Announce what we're willing to replicate.
 		for _, repoID := range n.Config.Node.ReplicateRepos {
-			log.Debugf("[content announce] announcing repo '%v'", repoID)
+			log.Debugf("[content announce] i'm a replicator for '%v'", repoID)
 
-			err := n.announceRepoReplicator(ctx, repoID)
+			ctxInner, _ := context.WithTimeout(ctx, 10*time.Second)
+
+			err := n.announceRepoReplicator(ctxInner, repoID)
 			if err != nil {
 				log.Warnf("[content announce] %+v", err)
 				continue
@@ -269,22 +271,20 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 		}
 
 		// Announce the repos we have locally
-		err := n.repoManager.ForEachRepo(func(r *repo.Repo) error {
+		_ = n.repoManager.ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
 			if err != nil {
 				return err
 			}
 
-			err = n.AnnounceRepo(ctx, repoID)
-			if err != nil {
-				return err
-			}
+			ctxInner, _ := context.WithTimeout(ctx, 10*time.Second)
 
+			err = n.AnnounceRepo(ctxInner, repoID)
+			if err != nil {
+				log.Warnf("[content announce] error announcing repo: %+v", err)
+			}
 			return nil
 		})
-		if err != nil {
-			log.Warnf("[content announce] %+v", err)
-		}
 
 		time.Sleep(time.Duration(n.Config.Node.ContentAnnounceInterval))
 	}
