@@ -20,7 +20,6 @@ import (
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/logger"
-	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/util"
 )
 
