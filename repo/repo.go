@@ -946,7 +946,13 @@ func (r *Repo) getAttributeFileWithAttribute(filename, attrName string) (attrVal
 			}
 		}
 	}
-	return "", -1, -1, nil, nil
+	// if attr isn't in a file, return root gitattributes
+	attrFilePath := filepath.Join(repoRoot, ".gitattributes")
+	lines, err := parseGitAttributes(repoRoot, ".gitattributes")
+	if err != nil {
+		lines = []*gitattr.Line{}
+	}
+	return "", -1, -1, &AttrFile{Path: attrFilePath, lines: lines}, nil
 }
 
 func parseGitAttributes(repoRoot, path string) ([]*gitattr.Line, error) {
