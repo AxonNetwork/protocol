@@ -164,6 +164,9 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan Progress)
 		go func(peerCh chan Progress) {
 			defer wg.Done()
 			for progress := range peerCh {
+				if someoneFinished {
+					break
+				}
 				if progress.Done == true {
 					someoneFinished = true
 				}
