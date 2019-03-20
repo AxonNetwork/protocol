@@ -206,7 +206,7 @@ func (m *ManifestWriter) addCommit(commit *git.Commit) error {
 		if objType == git.ObjectBlob &&
 			(m.checkoutType == CheckoutTypeFull || (m.checkoutType == CheckoutTypeWorking && m.checkoutCommit == *commit.Id())) {
 
-			isChunked, err := m.repo.FileIsChunked(name, commit.Id())
+			isChunked, err := m.repo.FileIsChunked(entry.Name, commit.Id())
 			if err != nil {
 				innerErr = err
 				return -1
