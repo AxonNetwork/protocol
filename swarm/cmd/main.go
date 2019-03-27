@@ -221,6 +221,17 @@ var replCommands = map[string]struct {
 		},
 	},
 
+	"init": {
+		"initialize a repo and add it to list of list of local repos",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 1 {
+				return fmt.Errorf("not enough args")
+			}
+			_, err := n.TrackRepo(args[0], true)
+			return err
+		},
+	},
+
 	"add-repo": {
 		"add a repo to the list of local repos this node is tracking and serving",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
@@ -348,6 +359,9 @@ var replCommands = map[string]struct {
 	"clone": {
 		"clone a repo",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough args")
+			}
 			repoID := args[0]
 			repoRoot := args[1]
 
@@ -376,6 +390,9 @@ var replCommands = map[string]struct {
 	"push": {
 		"push a repo",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
+			if len(args) < 1 {
+				return fmt.Errorf("not enough args")
+			}
 			repoID := args[0]
 			r := n.Repo(repoID)
 			if r == nil {

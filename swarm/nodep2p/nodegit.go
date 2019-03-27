@@ -3,12 +3,17 @@ package nodep2p
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
 
+	"github.com/Conscience/protocol/filters/decode"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
@@ -75,6 +80,11 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 	}
 
 	r, err = opts.Node.TrackRepo(r.Path(), true)
+	if err != nil {
+		return nil, err
+	}
+
+	err = decodeFiles(r.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -439,6 +449,8 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 		return nil, errors.WithStack(err)
 	}
 
+	err = decodeFiles(r.Path())
+
 	return updatedRefs, nil
 }
 
@@ -548,4 +560,141 @@ func doFastForward(r *repo.Repo, targetOid *git.Oid, unborn bool) error {
 
 	_, err = targetRef.SetTarget(targetOid, "")
 	return err
+}
+
+func decodeFiles(repoRoot string) error {
+	repo, err := repo.Open(repoRoot)
+	if err != nil {
+		return err
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		// no head
+		return nil
+	}
+
+	commitObj, err := head.Peel(git.ObjectCommit)
+	if err != nil {
+		return err
+	}
+
+	commit, err := commitObj.AsCommit()
+	if err != nil {
+		return err
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		return err
+	}
+
+	odb, err := repo.Odb()
+	if err != nil {
+		return err
+	}
+
+	wg := sync.WaitGroup{}
+	waitCh := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitCh)
+	}()
+
+	errCh := make(chan error)
+	var innerErr error
+	err = tree.Walk(func(relPath string, entry *git.TreeEntry) int {
+		isChunked, err := repo.FileIsChunked(entry.Name, commitObj.Id())
+		if err != nil {
+			innerErr = err
+			return -1
+		}
+
+		if isChunked {
+			go func() {
+				wg.Add(1)
+				err = decodeFile(repoRoot, relPath, entry, odb)
+				if err != nil {
+					errCh <- err
+				}
+				wg.Done()
+			}()
+		}
+		return 0
+	})
+	if innerErr != nil {
+		return innerErr
+	} else if err != nil {
+		return err
+	}
+
+	select {
+	case msg := <-errCh:
+		return msg
+	case <-waitCh:
+		return nil
+	}
+
+	return nil
+}
+
+func decodeFile(repoRoot, relPath string, entry *git.TreeEntry, odb *git.Odb) error {
+	odbObj, err := odb.Read(entry.Id)
+	if err != nil {
+		return err
+	}
+	defer odbObj.Free()
+
+	data := odbObj.Data()
+	length := int(odbObj.Len())
+	if length%65 != 0 {
+		return errors.Errorf("invalid conscience object: hash lengths not parsable")
+	}
+	rPipe, wPipe := io.Pipe()
+	go func() {
+		defer wPipe.Close()
+		for i := 0; i < length; i += 65 {
+			n, err := wPipe.Write(data[i : i+65])
+			if err != nil {
+				wPipe.CloseWithError(err)
+				break
+			} else if n < 64 {
+				wPipe.CloseWithError(errors.Errorf("did not write full object"))
+				break
+			}
+		}
+	}()
+
+	p := filepath.Join(repoRoot, relPath, entry.Name)
+	f, err := os.Create(p)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gitDir := filepath.Join(repoRoot, ".git")
+	missingChunks := false
+	fileReader := decode.Decode(gitDir, rPipe, func(chunks [][]byte) error {
+		// chunks should have already been pulled
+		// if missing, the user did a sparse checkout, and we write empty files
+		missingChunks = true
+		return nil
+	})
+	defer fileReader.Close()
+
+	if missingChunks {
+		return nil
+	}
+
+	_, err = io.Copy(f, fileReader)
+	if err != nil {
+		return err
+	}
+
+	err = f.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

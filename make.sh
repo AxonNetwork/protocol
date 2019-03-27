@@ -36,15 +36,15 @@ function build_native {
     # cd -
 
     # mkdir -p build/native
-    # cd filters/encode
+    # cd filters/encode/cmd
     # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../../build/native/conscience_encode
+    # mv main ../../../build/native/conscience_encode
     # cd -
 
     # mkdir -p build/native
-    # cd filters/decode
+    # cd filters/decode/cmd
     # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../../build/native/conscience_decode
+    # mv main ../../../build/native/conscience_decode
     # cd -
 
     # mkdir -p build/native
@@ -75,7 +75,7 @@ function checkout_libgit2 {
         pushd vendor/github.com/libgit2 &&
         git clone https://github.com/Conscience/git2go &&
         pushd git2go &&
-        git checkout 11852da4957d34a27bb516ed527d2a6a9bdfef7b &&
+        git checkout 27d682f350318f017dc4ae1f5a6f70808a88f595 &&
         # git remote add lhchavez https://github.com/lhchavez/git2go &&
         # git fetch --all &&
         # git cherry-pick 122ccfadea1e219c819adf1e62534f0b869d82a3 &&
