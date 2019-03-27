@@ -636,7 +636,7 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 	defer odb.Free()
 
 	files := []File{}
-	err = tree.Walk(func(name string, entry *git.TreeEntry) int {
+	err = tree.Walk(func(relPath string, entry *git.TreeEntry) int {
 		select {
 		case <-ctx.Done():
 			return -1 // @@TODO: make sure this actually breaks the loop; docs aren't very clear
@@ -647,8 +647,10 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 			return 0
 		}
 
+		filename := filepath.Join(relPath, entry.Name)
+
 		// Grab the file's filter attribute (if any) so that we can determine if it's chunked or not
-		filterAttrValue, _, _, _, err := r.getAttributeFileWithAttributeInTree(entry.Name, "filter", tree)
+		filterAttrValue, _, _, _, err := r.getAttributeFileWithAttributeInTree(filename, "filter", tree)
 		if err != nil {
 			log.Errorln("error looking up file's filter attribute:", err)
 		}
@@ -659,15 +661,17 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 			log.Errorln("error looking up file's size:", err)
 		}
 
+		modified := uint32(commit.Author().When.Unix())
+
 		files = append(files, File{
-			Filename: entry.Name,
+			Filename: filename,
 			Hash:     *entry.Id,
 			Status: Status{
 				Unstaged: ' ',
 				Staged:   ' ',
 			},
 			Size:      size,
-			Modified:  0,
+			Modified:  modified,
 			IsChunked: string(filterAttrValue) == "conscience",
 		})
 
