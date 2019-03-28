@@ -2,6 +2,7 @@ package nodep2p
 
 import (
 	"context"
+	"path/filepath"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
 
@@ -82,30 +83,48 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 	{
 		r := s.node.Repo(req.RepoID)
 		if r == nil {
-			log.Errorf("[replication server] don't have this repo locally")
-			return
-		}
-
-		// @@TODO: give context a timeout and make it configurable
-		_, err := s.node.FetchAndSetRef(context.TODO(), &FetchOptions{
-			Repo: r,
-			ProgressCb: func(current, total uint64) error {
-				err := WriteStructPacket(stream, &Progress{Current: current, Total: total})
+			log.Debugf("[replication server] don't have this repo locally. cloning")
+			_, err = s.node.Clone(context.TODO(), &CloneOptions{
+				Node:     s.node,
+				RepoID:   req.RepoID,
+				RepoRoot: filepath.Join(s.node.GetConfig().Node.ReplicationRoot, req.RepoID),
+				Bare:     false,
+				ProgressCb: func(current, total uint64) error {
+					err := WriteStructPacket(stream, &Progress{Current: current, Total: total})
+					if err != nil {
+						log.Errorf("[replication server] error: %v", err)
+						return err
+					}
+					return nil
+				},
+			})
+			if err != nil {
+				log.Warnf("[replication server] error cloning conscience://%v remote: %v", req.RepoID, err)
+			} else {
+				log.Debugf("[replication server] cloned conscience://%v remote", req.RepoID)
+			}
+		} else {
+			// @@TODO: give context a timeout and make it configurable
+			_, err := s.node.FetchAndSetRef(context.TODO(), &FetchOptions{
+				Repo: r,
+				ProgressCb: func(current, total uint64) error {
+					err := WriteStructPacket(stream, &Progress{Current: current, Total: total})
+					if err != nil {
+						log.Errorf("[replication server] error: %v", err)
+						return err
+					}
+					return nil
+				},
+			})
+			if err != nil {
+				log.Errorf("[replication server] error fetching conscience:// remote for repo %v: %v", req.RepoID, err)
+				err = WriteStructPacket(stream, &Progress{ErrorMsg: err.Error()})
 				if err != nil {
 					log.Errorf("[replication server] error: %v", err)
-					return err
+					return
 				}
-				return nil
-			},
-		})
-		if err != nil {
-			log.Errorf("[replication server] error fetching conscience:// remote for repo %v: %v", req.RepoID, err)
-			err = WriteStructPacket(stream, &Progress{ErrorMsg: err.Error()})
-			if err != nil {
-				log.Errorf("[replication server] error: %v", err)
 				return
 			}
-			return
 		}
 	}
 

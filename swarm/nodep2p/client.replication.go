@@ -91,7 +91,7 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 	defer func() {
 		defer close(peerCh)
 		if err != nil {
-			log.Errorf("[pull error: %v]", err)
+			log.Errorf("[request replication error: %v]", err)
 			peerCh <- Progress{Error: err}
 		}
 	}()

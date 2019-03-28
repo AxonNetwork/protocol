@@ -25,5 +25,7 @@ type INode interface {
 	RepoAtPathOrID(path string, repoID string) (*repo.Repo, error)
 	GetConfig() config.Config
 	SetReplicationPolicy(repoID string, shouldReplicate bool) error
+	Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error)
 	FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error)
+	TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error)
 }
