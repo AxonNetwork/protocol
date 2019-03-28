@@ -84,9 +84,11 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 		return nil, err
 	}
 
-	err = decodeFiles(r.Path())
-	if err != nil {
-		return nil, err
+	if !opts.Bare {
+		err = decodeFiles(r.Path())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return r, nil

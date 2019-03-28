@@ -99,7 +99,13 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 				},
 			})
 			if err != nil {
-				log.Warnf("[replication server] error cloning conscience://%v remote: %v", req.RepoID, err)
+				log.Errorf("[replication server] error cloning conscience://%v remote: %v", req.RepoID, err)
+				err = WriteStructPacket(stream, &Progress{ErrorMsg: err.Error()})
+				if err != nil {
+					log.Errorf("[replication server] error: %v", err)
+					return
+				}
+				return
 			} else {
 				log.Debugf("[replication server] cloned conscience://%v remote", req.RepoID)
 			}
