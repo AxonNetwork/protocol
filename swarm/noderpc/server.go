@@ -184,7 +184,7 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 	}
 
 	_, err := r.CommitCurrentWorkdir(&repo.CommitOptions{
-		Pathspecs: []string{"."},
+		Pathspecs: []string{""},
 		Message:   req.Message,
 	})
 	if err != nil {

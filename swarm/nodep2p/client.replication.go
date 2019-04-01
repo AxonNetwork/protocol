@@ -91,7 +91,7 @@ func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID 
 	defer func() {
 		defer close(peerCh)
 		if err != nil {
-			log.Errorf("[pull error: %v]", err)
+			log.Errorf("[request replication error: %v]", err)
 			peerCh <- Progress{Error: err}
 		}
 	}()
@@ -164,6 +164,9 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan Progress)
 		go func(peerCh chan Progress) {
 			defer wg.Done()
 			for progress := range peerCh {
+				if someoneFinished {
+					break
+				}
 				if progress.Done == true {
 					someoneFinished = true
 				}

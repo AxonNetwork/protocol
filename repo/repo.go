@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
 
+	"github.com/Conscience/protocol/filters/encode"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/util"
 )
@@ -431,14 +433,105 @@ func (r *Repo) CommitCurrentWorkdir(opts *CommitOptions) (*git.Oid, error) {
 		committer = &git.Signature{Name: userName, Email: userEmail, When: time.Now()}
 	)
 
+	// find which files to chunk
+	toAdd := make([]string, 0)
+	toChunk := make([]string, 0)
+	{
+		statusList, err := r.StatusList(&git.StatusOptions{
+			Pathspec: opts.Pathspecs,
+			Show:     git.StatusShowWorkdirOnly,
+			Flags:    git.StatusOptIncludeUntracked,
+		})
+		if err != nil {
+			return nil, err
+		}
+		defer statusList.Free()
+
+		statusCount, err := statusList.EntryCount()
+		if err != nil {
+			return nil, err
+		}
+
+		for i := 0; i < statusCount; i++ {
+			status, err := statusList.ByIndex(i)
+			if err != nil {
+				return nil, err
+			}
+
+			code := status.Status
+			if code != git.StatusWtNew &&
+				code != git.StatusWtModified &&
+				code != git.StatusWtRenamed &&
+				code != git.StatusWtTypeChange {
+				break
+			}
+
+			filename := status.IndexToWorkdir.NewFile.Path
+			shouldChunk, err := r.FileIsChunked(filename, nil)
+			if err != nil {
+				return nil, err
+			}
+			if shouldChunk {
+				toChunk = append(toChunk, filename)
+			} else {
+				toAdd = append(toAdd, filename)
+			}
+		}
+	}
+
 	idx, err := r.Index()
 	if err != nil {
 		return nil, err
 	}
 
-	err = idx.AddAll(opts.Pathspecs, git.IndexAddDefault, nil)
+	err = idx.AddAll(toAdd, git.IndexAddDefault, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	for i := 0; i < len(toChunk); i++ {
+		filename := toChunk[i]
+		reader, err := encode.EncodeFile(r.Path(), filename)
+		if err != nil {
+			return nil, err
+		}
+
+		chunked, err := ioutil.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+
+		oid, err := r.CreateBlobFromBuffer(chunked)
+		if err != nil {
+			return nil, err
+		}
+
+		p := filepath.Join(r.Path(), filename)
+		stat, err := os.Stat(p)
+		if err != nil {
+			return nil, err
+		}
+
+		entry := &git.IndexEntry{
+			Ctime: git.IndexTime{
+				Seconds:     int32(time.Now().Unix()),
+				Nanoseconds: uint32(time.Now().UnixNano()),
+			},
+			Mtime: git.IndexTime{
+				Seconds: int32(stat.ModTime().Unix()),
+			},
+			Mode: git.FilemodeBlob,
+			Uid:  uint32(os.Getuid()),
+			Gid:  uint32(os.Getgid()),
+			Size: uint32(stat.Size()),
+			Id:   oid,
+			Path: filename,
+		}
+
+		err = idx.Add(entry)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err = idx.Write()
@@ -533,7 +626,19 @@ func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
 		if err != nil {
 			return nil, err
 		}
-		files[i].IsChunked = string(attr) == "conscience"
+
+		isChunked := string(attr) == "conscience"
+		files[i].IsChunked = isChunked
+		// git2go does not know about our custom chunking filters
+		if isChunked && files[i].Status.Unstaged == 'M' {
+			isModified, err := r.hasChunkedFileBeenModified(entry)
+			if err != nil {
+				return nil, err
+			}
+			if !isModified {
+				files[i].Status.Unstaged = ' '
+			}
+		}
 	}
 	return files, nil
 }
@@ -615,6 +720,33 @@ func mapStatusEntry(entry git.StatusEntry, repoRoot string) File {
 	return file
 }
 
+func (r *Repo) hasChunkedFileBeenModified(entry git.StatusEntry) (bool, error) {
+	odb, err := r.Odb()
+	if err != nil {
+		return false, err
+	}
+
+	oldOid := entry.IndexToWorkdir.OldFile.Oid
+	oldObj, err := odb.Read(oldOid)
+	if err != nil {
+		return true, nil
+	}
+
+	path := entry.IndexToWorkdir.NewFile.Path
+	encReader, err := encode.EncodeFile(r.Path(), path)
+	if err != nil {
+		return false, err
+	}
+
+	oldData := oldObj.Data()
+	newData, err := ioutil.ReadAll(encReader)
+	if err != nil {
+		return false, err
+	}
+
+	return bytes.Compare(oldData, newData) == 0, nil
+}
+
 // Returns the file list for a commit specified by its hash or a commit ref.
 func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, error) {
 	commit, err := r.ResolveCommit(commitID)
@@ -636,7 +768,7 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 	defer odb.Free()
 
 	files := []File{}
-	err = tree.Walk(func(name string, entry *git.TreeEntry) int {
+	err = tree.Walk(func(relPath string, entry *git.TreeEntry) int {
 		select {
 		case <-ctx.Done():
 			return -1 // @@TODO: make sure this actually breaks the loop; docs aren't very clear
@@ -647,8 +779,10 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 			return 0
 		}
 
+		filename := filepath.Join(relPath, entry.Name)
+
 		// Grab the file's filter attribute (if any) so that we can determine if it's chunked or not
-		filterAttrValue, _, _, _, err := r.getAttributeFileWithAttributeInTree(entry.Name, "filter", tree)
+		filterAttrValue, _, _, _, err := r.getAttributeFileWithAttributeInTree(filename, "filter", tree)
 		if err != nil {
 			log.Errorln("error looking up file's filter attribute:", err)
 		}
@@ -659,15 +793,17 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 			log.Errorln("error looking up file's size:", err)
 		}
 
+		modified := uint32(commit.Author().When.Unix())
+
 		files = append(files, File{
-			Filename: entry.Name,
+			Filename: filename,
 			Hash:     *entry.Id,
 			Status: Status{
 				Unstaged: ' ',
 				Staged:   ' ',
 			},
 			Size:      size,
-			Modified:  0,
+			Modified:  modified,
 			IsChunked: string(filterAttrValue) == "conscience",
 		})
 
@@ -816,6 +952,14 @@ func pipeDiff(diff *git.Diff) io.Reader {
 }
 
 func (r *Repo) FileIsChunked(filename string, commitID *git.Oid) (bool, error) {
+	// for current worktree
+	if commitID == nil {
+		filterName, _, _, _, err := r.getAttributeFileWithAttribute(filename, "filter")
+		if err != nil {
+			return false, err
+		}
+		return filterName == "conscience", nil
+	}
 	commit, err := r.LookupCommit(commitID)
 	if err != nil {
 		return false, errors.WithStack(err)
@@ -946,7 +1090,13 @@ func (r *Repo) getAttributeFileWithAttribute(filename, attrName string) (attrVal
 			}
 		}
 	}
-	return "", -1, -1, nil, nil
+	// if attr isn't in a file, return root gitattributes
+	attrFilePath := filepath.Join(repoRoot, ".gitattributes")
+	lines, err := parseGitAttributes(repoRoot, ".gitattributes")
+	if err != nil {
+		lines = []*gitattr.Line{}
+	}
+	return "", -1, -1, &AttrFile{Path: attrFilePath, lines: lines}, nil
 }
 
 func parseGitAttributes(repoRoot, path string) ([]*gitattr.Line, error) {

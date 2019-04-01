@@ -20,7 +20,10 @@ func (s *Server) HandleChunkStreamRequest(stream netp2p.Stream) {
 	for {
 		req := wire.GetChunkRequest{}
 		err := wire.ReadStructPacket(stream, &req)
-		if err != nil {
+		if err == io.EOF {
+			log.Debugf("[packfile server] peer closed stream")
+			return
+		} else if err != nil {
 			log.Errorf("[chunk server] %+v", errors.WithStack(err))
 			return
 		}

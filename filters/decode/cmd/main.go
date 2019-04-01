@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -11,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/filters/decode"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/noderpc"
@@ -20,7 +19,7 @@ import (
 var (
 	GIT_DIR  = os.Getenv("GIT_DIR")
 	RepoRoot = filepath.Dir(GIT_DIR)
-	DataRoot = filepath.Join(GIT_DIR, repo.CONSCIENCE_DATA_SUBDIR)
+	DataDir  = filepath.Join(GIT_DIR, "data")
 
 	repository = func() *repo.Repo {
 		r, err := repo.Open(RepoRoot)
@@ -33,56 +32,11 @@ var (
 )
 
 func main() {
-	chunks := make([]string, 0)
-	toFetch := make([][]byte, 0)
-
-	for {
-		line, _, err := r.ReadLine()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			die(err)
-		}
-
-		p := filepath.Join(DataDir, string(line))
-		chunks = append(chunks, p)
-		_, err = os.Stat(p)
-		if os.IsNotExist(err) {
-			hash, err := hex.DecodeString(string(line))
-			if err != nil {
-				die(err)
-			}
-			toFetch = append(toFetch, hash)
-		}
-	}
-
-	if len(toFetch) > 0 {
-		err = fetchChunks(toFetch)
-		if err != nil {
-			die(err)
-		}
-	}
-
-	for _, chunk := range chunks {
-		err = copyFileToStdout(chunk)
-		if err != nil {
-			die(err)
-		}
-	}
-}
-
-func copyFileToStdout(filename string) error {
-	f, err := os.Open(filename)
+	reader := decode.Decode(GIT_DIR, os.Stdin, fetchChunks)
+	_, err := io.Copy(os.Stdout, reader)
 	if err != nil {
-		return err
+		die(err)
 	}
-	defer f.Close()
-
-	_, err = io.Copy(os.Stdout, f)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func fetchChunks(chunks [][]byte) error {

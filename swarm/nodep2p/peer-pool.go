@@ -39,7 +39,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 		keepalive:     keepalive,
 		node:          node,
 		chPeers:       make(chan *peerConn, concurrentConns),
-		chNeedNewPeer: make(chan struct{}),
+		chNeedNewPeer: make(chan struct{}, concurrentConns),
 		chProviders:   node.FindProvidersAsync(ctxInner, cid, 999),
 		ctx:           ctxInner,
 		cancel:        cancel,
