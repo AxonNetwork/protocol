@@ -121,7 +121,11 @@ Outer:
 
 			case <-timeout:
 				if len(current) > 0 {
-					q.chBatches <- current
+					select {
+					case q.chBatches <- current:
+					case <-q.ctx.Done():
+						return
+					}
 				}
 				continue Outer
 
