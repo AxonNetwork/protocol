@@ -103,17 +103,23 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 
 	repoID, err := r.RepoID()
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 
-	branch, err := r.LookupBranch(opts.BranchName, git.BranchLocal)
+	ref, err := r.References.Dwim(opts.BranchName)
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
+	branch := ref.Branch()
+
+	// branch, err := r.LookupBranch(opts.BranchName, git.BranchLocal)
+	// if err != nil {
+	// 	return "", errors.WithStack(err)
+	// }
 
 	srcRef, err := branch.Reference.Resolve()
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 
 	localCommitOid := srcRef.Target()
@@ -128,7 +134,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 
 		currentCommitOid, err = node.GetRef(ctx0, repoID, branch.Reference.Name())
 		if err != nil {
-			return "", err
+			return "", errors.WithStack(err)
 		}
 
 		var isDescendant bool
@@ -138,12 +144,12 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 		} else {
 			isDescendant, err = r.DescendantOf(localCommitOid, &currentCommitOid)
 			if err != nil {
-				return "", err
+				return "", errors.WithStack(err)
 			}
 		}
 
 		if !isDescendant && !opts.Force {
-			return "", ErrRequiresForcePush
+			return "", errors.WithStack(ErrRequiresForcePush)
 		}
 	}
 
@@ -154,7 +160,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	// Tell the node to announce the new content so that replicator nodes can find and pull it.
 	err = node.AnnounceRepo(ctx1, repoID)
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 
 	// @@TODO: make context timeout configurable
@@ -163,12 +169,12 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 
 	tx, err := node.UpdateRef(ctx2, repoID, branch.Reference.Name(), currentCommitOid, *localCommitOid)
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 
 	txResult := <-tx.Await(ctx)
 	if txResult.Err != nil {
-		return "", txResult.Err
+		return "", errors.WithStack(txResult.Err)
 	} else if txResult.Receipt.Status == 0 {
 		return "", errors.New("transaction failed")
 	}
@@ -180,7 +186,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	ch := node.RequestReplication(ctx3, repoID)
 	for progress := range ch {
 		if progress.Error != nil {
-			return "", progress.Error
+			return "", errors.WithStack(progress.Error)
 		}
 		opts.ProgressCb(int(progress.Current))
 	}
