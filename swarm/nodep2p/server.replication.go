@@ -2,6 +2,7 @@ package nodep2p
 
 import (
 	"context"
+	"time"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
 
@@ -87,7 +88,10 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 		}
 
 		// @@TODO: give context a timeout and make it configurable
-		_, err := s.node.FetchAndSetRef(context.TODO(), &FetchOptions{
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		updated, err := s.node.FetchAndSetRef(ctx, &FetchOptions{
 			Repo: r,
 			ProgressCb: func(current, total uint64) error {
 				err := WriteStructPacket(stream, &Progress{Current: current, Total: total})
