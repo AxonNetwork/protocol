@@ -478,6 +478,11 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 padding: 0;
                 transition: height 300ms;
             }
+
+            input#log-search {
+                width: 400px;
+                font-family: Consolas, 'Courier New', sans-serif;
+            }
         </style>
     </head>
     <body>
@@ -624,6 +629,11 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 <div>Info  <input type="checkbox" data-level="info"    value="on" checked /></div>
                 <div>Warn  <input type="checkbox" data-level="warning" value="on" checked /></div>
                 <div>Error <input type="checkbox" data-level="error"   value="on" checked /></div>
+
+                <div>
+                    Filter logs by string: <input id="log-search" />
+                </div>
+
                 <label>Logs:</label>
                 <ul></ul>
             </div>
@@ -635,6 +645,9 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                     { level: {{ .Level }}, message: "{{ .Message }}".replace('\x3c', '&lt;').replace('\x3e', '&gt;') },
                 {{ end }}
             ]
+
+            var logFilterInput = document.querySelector('input#log-search')
+            var logFilterCheckboxes = document.querySelectorAll('section.section-logs input[type=checkbox]')
 
             function attachListeners() {
                 var checkboxes = document.querySelectorAll('section.section-logs input[type=checkbox]')
@@ -651,6 +664,9 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 for (var i = 0; i < headers.length; i++) {
                     headers[i].addEventListener('click', toggleSectionVisibility)
                 }
+
+                var logFilterInput = document.querySelector('input#log-search')
+                logFilterInput.addEventListener('keyup', throttle(updateLogs, 200))
             }
 
             function toggleRefVisibility(event) {
@@ -662,28 +678,29 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 event.target.parentElement.classList.toggle('collapsed')
             }
 
-            function getFilters() {
-                var checkboxes = document.querySelectorAll('section.section-logs input[type=checkbox]')
+            function getLogLevelFilters() {
                 var filters = {
                     debug: true,
                     info: true,
                     warn: true,
                     error: true,
                 }
-                for (var i = 0; i < checkboxes.length; i++) {
-                    filters[ checkboxes[i].dataset.level ] = checkboxes[i].checked
+                for (var i = 0; i < logFilterCheckboxes.length; i++) {
+                    filters[ logFilterCheckboxes[i].dataset.level ] = logFilterCheckboxes[i].checked
                 }
                 return filters
             }
 
             function updateLogs() {
-                var filters = getFilters()
+                var logLevelFilters = getLogLevelFilters()
 
                 var ul = document.querySelector('section.section-logs ul')
                 ul.innerHTML = ''
 
                 for (var i = 0; i < logs.length; i++) {
-                    if (filters[ logs[i].level ] === false) {
+                    if (logLevelFilters[ logs[i].level ] === false) {
+                        continue
+                    } else if (logFilterInput.value.length > 0 && logs[i].message.indexOf(logFilterInput.value) === -1) {
                         continue
                     }
 
@@ -692,6 +709,27 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                     li.classList.add('log')
                     li.classList.add(logs[i].level)
                     ul.appendChild(li)
+                }
+            }
+
+            function throttle(fn, delay) {
+                var last = undefined
+                var timer = undefined
+
+                return function() {
+                    var now = +new Date()
+
+                    if (last && now < last + delay) {
+                        clearTimeout(timer)
+
+                        timer = setTimeout(function() {
+                            last = now
+                            fn()
+                        }, delay)
+                    } else {
+                        last = now
+                        fn()
+                    }
                 }
             }
 
