@@ -5,12 +5,12 @@ import (
 )
 
 const (
-	MANIFEST_PROTO          protocol.ID = "/conscience/manifest/1.0.0"
-	OBJECT_PROTO            protocol.ID = "/conscience/object/1.1.0"
-	PACKFILE_PROTO          protocol.ID = "/conscience/packfile/1.0.0"
-	CHUNK_PROTO             protocol.ID = "/conscience/chunk/1.1.0"
-	REPLICATION_PROTO       protocol.ID = "/conscience/replication/1.1.0"
-	BECOME_REPLICATOR_PROTO protocol.ID = "/conscience/become-replicator/1.1.0"
+	MANIFEST_PROTO          protocol.ID = "/axon/manifest/1.0.0"
+	OBJECT_PROTO            protocol.ID = "/axon/object/1.1.0"
+	PACKFILE_PROTO          protocol.ID = "/axon/packfile/1.0.0"
+	CHUNK_PROTO             protocol.ID = "/axon/chunk/1.1.0"
+	REPLICATION_PROTO       protocol.ID = "/axon/replication/1.1.0"
+	BECOME_REPLICATOR_PROTO protocol.ID = "/axon/become-replicator/1.1.0"
 )
 
 // @@TODO: make configurable

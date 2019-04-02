@@ -36,7 +36,7 @@ func main() {
 		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 	}()
 
-	log.SetField("App", "conscience-node")
+	log.SetField("App", "axon-node")
 	log.SetField("ReleaseStage", env.ReleaseStage)
 	log.SetField("AppVersion", env.AppVersion)
 	log.SetLevel(log.DebugLevel)
@@ -44,7 +44,7 @@ func main() {
 	app := cli.NewApp()
 	app.Version = env.AppVersion
 
-	configPath := filepath.Join(env.HOME, ".consciencerc")
+	configPath := filepath.Join(env.HOME, ".axonrc")
 	// for setting custom config path. Mainly used for testing with multiple nodes
 	if len(os.Args) > 1 {
 		configPath = os.Args[1]

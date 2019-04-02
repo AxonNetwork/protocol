@@ -26,37 +26,37 @@ function build_native {
     mkdir -p build/native
     cd swarm/cmd
     GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    mv main ../../build/native/conscience-node
+    mv main ../../build/native/axon-node
     cd -
 
     # mkdir -p build/native
     # cd remote-helper
     # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../build/native/git-remote-conscience
+    # mv main ../build/native/git-remote-axon
     # cd -
 
     # mkdir -p build/native
     # cd filters/encode/cmd
     # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../../../build/native/conscience_encode
+    # mv main ../../../build/native/axon_encode
     # cd -
 
     # mkdir -p build/native
     # cd filters/decode/cmd
     # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../../../build/native/conscience_decode
+    # mv main ../../../build/native/axon_decode
     # cd -
 
     # mkdir -p build/native
     # cd filters/diff
     # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../../build/native/conscience_diff
+    # mv main ../../build/native/axon_diff
     # cd -
 
     # mkdir -p build/native
     # cd cmd
     # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../build/native/conscience
+    # mv main ../build/native/axon
     # cd -
 }
 
@@ -65,7 +65,7 @@ function build_docker {
     mkdir -p build/docker &&
     pushd swarm/cmd &&
     GO111MODULE=on go build --tags "static" -o main ./*.go &&
-    mv main ../../build/docker/conscience-node &&
+    mv main ../../build/docker/axon-node &&
     popd
 }
 

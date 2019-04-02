@@ -38,7 +38,7 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 	}
 
 	var innerErr error
-	cRepo, err := git.Clone("conscience://"+opts.RepoID, opts.RepoRoot, &git.CloneOptions{
+	cRepo, err := git.Clone("axon://"+opts.RepoID, opts.RepoRoot, &git.CloneOptions{
 		Bare: opts.Bare,
 		FetchOptions: &git.FetchOptions{
 			RemoteCallbacks: git.RemoteCallbacks{
@@ -656,7 +656,7 @@ func decodeFile(repoRoot, relPath string, entry *git.TreeEntry, odb *git.Odb) er
 	data := odbObj.Data()
 	length := int(odbObj.Len())
 	if length%65 != 0 {
-		return errors.Errorf("invalid conscience object: hash lengths not parsable")
+		return errors.Errorf("invalid axon object: hash lengths not parsable")
 	}
 	rPipe, wPipe := io.Pipe()
 	go func() {

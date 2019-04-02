@@ -27,7 +27,7 @@ var (
 )
 
 func main() {
-	log.SetField("App", "git-remote-conscience")
+	log.SetField("App", "git-remote-axon")
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
@@ -39,7 +39,7 @@ func main() {
 		die(errors.New("error: empty GIT_DIR"))
 	}
 
-	repoID = strings.Replace(os.Args[2], "conscience://", "", -1)
+	repoID = strings.Replace(os.Args[2], "axon://", "", -1)
 
 	client, err = noderpc.NewClient(cfg.RPCClient.Host)
 	if err != nil {

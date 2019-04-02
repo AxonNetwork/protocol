@@ -325,7 +325,7 @@ func cidForString(s string) (cid.Cid, error) {
 }
 
 func obtainKey() crypto.PrivKey {
-	data, err := ioutil.ReadFile(filepath.Join(config.HOME, ".conscience.key"))
+	data, err := ioutil.ReadFile(filepath.Join(config.HOME, ".axon.key"))
 	if err != nil {
 		return makeKey()
 	}

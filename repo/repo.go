@@ -89,9 +89,9 @@ func (r *Repo) RepoID() (string, error) {
 	}
 	defer cfg.Free()
 
-	repoID, err := cfg.LookupString("conscience.repoid")
+	repoID, err := cfg.LookupString("axon.repoid")
 	if err != nil {
-		return "", errors.Wrapf(err, "error looking up conscience.repoid in .git/config (path: %v)", r.Path())
+		return "", errors.Wrapf(err, "error looking up axon.repoid in .git/config (path: %v)", r.Path())
 	}
 
 	return repoID, nil
@@ -286,25 +286,25 @@ func (r *Repo) SetupConfig(repoID string) error {
 	}
 	defer cfg.Free()
 
-	_repoID, err := cfg.LookupString("conscience.repoid")
+	_repoID, err := cfg.LookupString("axon.repoid")
 	if err != nil || _repoID != repoID {
-		err = cfg.SetString("conscience.repoid", repoID)
+		err = cfg.SetString("axon.repoid", repoID)
 		if err != nil {
 			return errors.WithStack(err)
 		}
 	}
 
-	cleanFilter, err := cfg.LookupString("filter.conscience.clean")
-	if err != nil || cleanFilter != "conscience_encode" {
-		err = cfg.SetString("filter.conscience.clean", "conscience_encode %f")
+	cleanFilter, err := cfg.LookupString("filter.axon.clean")
+	if err != nil || cleanFilter != "axon_encode" {
+		err = cfg.SetString("filter.axon.clean", "axon_encode %f")
 		if err != nil {
 			return errors.WithStack(err)
 		}
 	}
 
-	smudgeFilter, err := cfg.LookupString("filter.conscience.smudge")
-	if err != nil || smudgeFilter != "conscience_encode" {
-		err = cfg.SetString("filter.conscience.smudge", "conscience_decode %f")
+	smudgeFilter, err := cfg.LookupString("filter.axon.smudge")
+	if err != nil || smudgeFilter != "axon_encode" {
+		err = cfg.SetString("filter.axon.smudge", "axon_decode %f")
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -327,7 +327,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 			url := remote.Url()
 			remote.Free()
 
-			if url == "conscience://"+repoID {
+			if url == "axon://"+repoID {
 				found = true
 				break
 			}
@@ -344,7 +344,7 @@ func (r *Repo) SetupConfig(repoID string) error {
 				remoteName = repoID
 			}
 
-			remote, err = r.Remotes.CreateWithFetchspec(remoteName, "conscience://"+repoID, "+refs/heads/*:refs/remotes/"+remoteName+"/*")
+			remote, err = r.Remotes.CreateWithFetchspec(remoteName, "axon://"+repoID, "+refs/heads/*:refs/remotes/"+remoteName+"/*")
 			if err != nil {
 				return errors.Wrapf(err, "could not create remote (repoID: %v, path: %v)", repoID, r.Path())
 			}
@@ -391,11 +391,11 @@ func (r *Repo) ConscienceRemote() (*git.Remote, error) {
 		}
 
 		url := remote.Url()
-		if url[0:len("conscience://")] == "conscience://" {
+		if url[0:len("axon://")] == "axon://" {
 			return remote, nil
 		}
 	}
-	return nil, errors.Wrapf(Err404, "could not find conscience:// remote")
+	return nil, errors.Wrapf(Err404, "could not find axon:// remote")
 }
 
 func (r *Repo) UserIdentityFromConfig() (name string, email string, err error) {
@@ -627,7 +627,7 @@ func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
 			return nil, err
 		}
 
-		isChunked := string(attr) == "conscience"
+		isChunked := string(attr) == "axon"
 		files[i].IsChunked = isChunked
 		// git2go does not know about our custom chunking filters
 		if isChunked && files[i].Status.Unstaged == 'M' {
@@ -804,7 +804,7 @@ func (r *Repo) listFilesCommit(ctx context.Context, commitID CommitID) ([]File, 
 			},
 			Size:      size,
 			Modified:  modified,
-			IsChunked: string(filterAttrValue) == "conscience",
+			IsChunked: string(filterAttrValue) == "axon",
 		})
 
 		return 0
@@ -958,7 +958,7 @@ func (r *Repo) FileIsChunked(filename string, commitID *git.Oid) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		return filterName == "conscience", nil
+		return filterName == "axon", nil
 	}
 	commit, err := r.LookupCommit(commitID)
 	if err != nil {
@@ -975,7 +975,7 @@ func (r *Repo) FileIsChunked(filename string, commitID *git.Oid) (bool, error) {
 		return false, errors.WithStack(err)
 	}
 
-	return filterName == "conscience", nil
+	return filterName == "axon", nil
 }
 
 func (r *Repo) SetFileChunking(filename string, shouldEnable bool) error {
@@ -984,7 +984,7 @@ func (r *Repo) SetFileChunking(filename string, shouldEnable bool) error {
 		return errors.WithStack(err)
 	}
 
-	isEnabled := string(attrValue) == "conscience"
+	isEnabled := string(attrValue) == "axon"
 
 	if shouldEnable && !isEnabled {
 		// create a .gitattributes file at the root if it doesn't exist
@@ -995,14 +995,14 @@ func (r *Repo) SetFileChunking(filename string, shouldEnable bool) error {
 		if lineIndex > -1 {
 			if attrIndex > -1 {
 				// change the existing attribute on the existing line
-				attrFile.lines[lineIndex].Attrs[attrIndex].V = "conscience"
+				attrFile.lines[lineIndex].Attrs[attrIndex].V = "axon"
 			} else {
 				// add a new attribute to the existing line
-				attrFile.lines[lineIndex].Attrs = append(attrFile.lines[lineIndex].Attrs, &gitattr.Attr{K: "filter", V: "conscience"})
+				attrFile.lines[lineIndex].Attrs = append(attrFile.lines[lineIndex].Attrs, &gitattr.Attr{K: "filter", V: "axon"})
 			}
 		} else {
 			// append a new line referring to this file
-			attrFile.lines = append(attrFile.lines, createAttrLine(filename, "filter", "conscience"))
+			attrFile.lines = append(attrFile.lines, createAttrLine(filename, "filter", "axon"))
 		}
 
 		// write the .gitattributes file

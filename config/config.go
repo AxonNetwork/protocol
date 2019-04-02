@@ -51,11 +51,11 @@ type RPCClientConfig struct {
 
 var DefaultConfig = Config{
 	Node: &NodeConfig{
-		PrivateKeyFile: filepath.Join(env.HOME, ".conscience.key"),
+		PrivateKeyFile: filepath.Join(env.HOME, ".axon.key"),
 		P2PListenAddr:  "0.0.0.0",
 		P2PListenPort:  1337,
 		// RPCListenNetwork:        "unix",
-		// RPCListenHost:           "/tmp/conscience.sock",
+		// RPCListenHost:           "/tmp/axon.sock",
 		RPCListenNetwork:        "tcp",
 		RPCListenHost:           "0.0.0.0:1338",
 		HTTPListenAddr:          ":8081",
@@ -68,7 +68,7 @@ var DefaultConfig = Config{
 		ContentRequestInterval:  Duration(15 * time.Second),
 		FindProviderTimeout:     Duration(10 * time.Second),
 		LocalRepos:              []string{},
-		ReplicationRoot:         filepath.Join(env.HOME, "conscience"),
+		ReplicationRoot:         filepath.Join(env.HOME, "axon"),
 		ReplicateRepos:          []string{},
 		BootstrapPeers:          []string{"/dns4/node.conscience.network/tcp/1337/p2p/16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
 		KnownReplicators:        []string{"16Uiu2HAkvcdAFKchv9uGPeRguQubPxA4wrzyZDf1jLhhHiQ7qBbH"},
@@ -76,13 +76,13 @@ var DefaultConfig = Config{
 		MaxConcurrentPeers:      4,
 	},
 	RPCClient: &RPCClientConfig{
-		// Host: "unix:///tmp/conscience.sock",
+		// Host: "unix:///tmp/axon.sock",
 		Host: "0.0.0.0:1338",
 	},
 }
 
 func ReadConfig() (*Config, error) {
-	configPath, err := filepath.Abs(filepath.Join(env.HOME, ".consciencerc"))
+	configPath, err := filepath.Abs(filepath.Join(env.HOME, ".axonrc"))
 	if err != nil {
 		return nil, errors.Wrapf(err, "[config] calling filepath.Abs")
 	}

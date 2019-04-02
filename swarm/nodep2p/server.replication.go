@@ -105,7 +105,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 				},
 			})
 			if err != nil {
-				log.Errorf("[replication server] error cloning conscience://%v remote: %v", req.RepoID, err)
+				log.Errorf("[replication server] error cloning axon://%v remote: %v", req.RepoID, err)
 				err = WriteStructPacket(stream, &Progress{ErrorMsg: err.Error()})
 				if err != nil {
 					log.Errorf("[replication server] error writing error packet: %v", err)
@@ -113,7 +113,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 				return
 
 			}
-			log.Debugf("[replication server] cloned conscience://%v remote", req.RepoID)
+			log.Debugf("[replication server] cloned axon://%v remote", req.RepoID)
 
 		} else {
 			_, err = s.node.FetchAndSetRef(ctx, &FetchOptions{
@@ -128,7 +128,7 @@ func (s *Server) HandleReplicationRequest(stream netp2p.Stream) {
 				},
 			})
 			if err != nil {
-				log.Errorf("[replication server] error fetching conscience:// remote for repo %v: %v", req.RepoID, err)
+				log.Errorf("[replication server] error fetching axon:// remote for repo %v: %v", req.RepoID, err)
 				err = WriteStructPacket(stream, &Progress{ErrorMsg: err.Error()})
 				if err != nil {
 					log.Errorf("[replication server] error writing error packet: %v", err)

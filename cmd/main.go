@@ -39,7 +39,7 @@ func main() {
 		{
 			Name:      "init",
 			Aliases:   []string{"i"},
-			UsageText: "conscience init <repo ID>",
+			UsageText: "axon init <repo ID>",
 			Usage:     "initialize a git repo to interact with the Conscience network",
 			ArgsUsage: "[args usage]",
 			Flags:     flags,
@@ -63,7 +63,7 @@ func main() {
 		},
 		{
 			Name:      "set-username",
-			UsageText: "conscience set-username <username>",
+			UsageText: "axon set-username <username>",
 			Usage:     "set your username on the Conscience network",
 			ArgsUsage: "[args usage]",
 			Action: func(c *cli.Context) error {
@@ -77,7 +77,7 @@ func main() {
 		},
 		{
 			Name:      "replicate",
-			UsageText: "conscience replicate <repo ID> <1 | 0>",
+			UsageText: "axon replicate <repo ID> <1 | 0>",
 			Usage:     "set whether or not to replicate the given repo",
 			ArgsUsage: "[args usage]",
 			Action: func(c *cli.Context) error {
@@ -97,8 +97,8 @@ func main() {
 		},
 		{
 			Name:      "repos",
-			UsageText: "conscience repos",
-			Usage:     "returns a list of conscience repositories hosted locally on this machine",
+			UsageText: "axon repos",
+			Usage:     "returns a list of axon repositories hosted locally on this machine",
 			ArgsUsage: "[args usage]",
 			Action: func(c *cli.Context) error {
 				repos, err := getLocalRepos()
@@ -114,7 +114,7 @@ func main() {
 		},
 		{
 			Name:      "get-refs",
-			UsageText: "conscience get-refs <repo ID>",
+			UsageText: "axon get-refs <repo ID>",
 			Usage:     "return all on-chain refs for the given repo",
 			ArgsUsage: "[args usage]",
 			Action: func(c *cli.Context) error {

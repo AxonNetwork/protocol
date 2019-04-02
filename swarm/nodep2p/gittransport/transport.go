@@ -30,7 +30,7 @@ type INode interface {
 }
 
 func Register(node INode) error {
-	return git.RegisterTransport("conscience", func(remote *git.Remote) (git.Transport, error) {
+	return git.RegisterTransport("axon", func(remote *git.Remote) (git.Transport, error) {
 		return &ConscienceTransport{remote: remote, node: node}, nil
 	})
 }
@@ -41,7 +41,7 @@ func (t *ConscienceTransport) SetCustomHeaders(headers []string) error {
 
 func (t *ConscienceTransport) Connect(url string) error {
 	log.Warnln("TRANSPORT Connect", t.repoID)
-	t.repoID = strings.Replace(url, "conscience://", "", -1)
+	t.repoID = strings.Replace(url, "axon://", "", -1)
 	return nil
 }
 

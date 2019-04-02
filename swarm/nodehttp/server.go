@@ -359,7 +359,7 @@ func die500(w http.ResponseWriter, err error) {
 var tplIndex = template.Must(template.New("indexpage").Parse(`
     <html>
     <head>
-        <title>Conscience node stats</title>
+        <title>Axon node stats</title>
         <style>
             body {
                 font-family: Consolas, 'Courier New', sans-serif;

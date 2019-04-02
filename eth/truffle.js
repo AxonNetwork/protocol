@@ -5,7 +5,7 @@ var conf = {
   mnemonic: "",
   host: ""
 }
-var appCfg = require('rc')('conscience', conf);
+var appCfg = require('rc')('axon', conf);
 var mnemonic = appCfg.node.EthereumBIP39Seed
 var host = appCfg.node.EthereumHost
 

@@ -7,7 +7,7 @@
 
 2. Run `./make.sh -n` to compile native binaries
 
-3. Add a file called `.consciencerc` to your home directory containing the following information:
+3. Add a file called `.axonrc` to your home directory containing the following information:
 
 ```
 [user]
@@ -17,7 +17,7 @@ Username = "bryn"
 P2PListenPort       = 1337
 P2PListenAddr       = "0.0.0.0"
 RPCListenNetwork    = "unix"
-RPCListenHost       = "/tmp/conscience.sock"
+RPCListenHost       = "/tmp/axon.sock"
 EthereumHost        = "https://rinkeby.infura.io/<your infura API key>"
 ProtocolContract    = "0xe31e0e2e114bcb7be568e648746b12a19757307a"
 EthereumBIP39Seed   = "your 12 word seed phrase goes here"
@@ -27,15 +27,15 @@ ReplicateRepos      = []
 BootstrapPeers      = []
 
 [rpcclient]
-Host    = "unix:///tmp/conscience.sock"
+Host    = "unix:///tmp/axon.sock"
 ```
 
-4. Run the node with `CONSOLE_LOGGING=1 ./build/native/conscience-node`.
+4. Run the node with `CONSOLE_LOGGING=1 ./build/native/axon-node`.
 
 ## Config notes
 
 `RPCClient.Host` can be things like:
-- `unix:///tmp/conscience.sock`
+- `unix:///tmp/axon.sock`
 - `0.0.0.0:1338`
 
 ## Environment variables
@@ -43,17 +43,17 @@ Host    = "unix:///tmp/conscience.sock"
 - `CONSOLE_LOGGING`: Controls whether the logger prints to stderr.  Any non-empty value will be treated as true.
 - `BUGSNAG_ENABLED`: Controls whether the logger sends errors to Bugsnag.  Any non-empty value will be treated as true.
 - `LOG_CHILD_PROCS`: Controls whether the logger logs stdout and stderr of any child process started by the node (primarily calls to git).  Any non-empty value will be treated as true.
-- `CONSCIENCE_BINARIES_PATH`: Specifies the location of the Conscience binaries (git-remote-conscience, conscience_decode, conscience_encode, conscience_diff).  This location is added to the `PATH` of any child process invoked by the node so that Git can find these helpers.
+- `CONSCIENCE_BINARIES_PATH`: Specifies the location of the Conscience binaries (git-remote-axon, axon_decode, axon_encode, axon_diff).  This location is added to the `PATH` of any child process invoked by the node so that Git can find these helpers.
 
 ## Weird bugs and other errata
 
-- Keep an eye out for line endings.  The git remote helper (git-remote-conscience) was failing on Windows due to the presence of `\r` characters in the stream.
+- Keep an eye out for line endings.  The git remote helper (git-remote-axon) was failing on Windows due to the presence of `\r` characters in the stream.
 
 
 ## Helpful profiling commands
 
 ```sh
-pprof -http :1227 ~/projects/conscience/protocol/build/native/conscience-node http://localhost:6060/debug/pprof/profile?seconds=18
+pprof -http :1227 ~/projects/conscience/protocol/build/native/axon-node http://localhost:6060/debug/pprof/profile?seconds=18
 ```
 
 

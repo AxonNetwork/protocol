@@ -28,7 +28,7 @@ var (
 	// git) will be logged to files for debugging purposes.
 	ChildProcLoggingEnabled = getenv("LOG_CHILD_PROCS", "") != ""
 
-	// This controls the output of the git-remote-conscience helper.  If enabled, the helper will
+	// This controls the output of the git-remote-axon helper.  If enabled, the helper will
 	// output progress information in a format more easily readable by other programs.  Otherwise,
 	// it will print human-friendly output.
 	MachineOutputEnabled = getenv("MACHINE_OUTPUT", "") != ""

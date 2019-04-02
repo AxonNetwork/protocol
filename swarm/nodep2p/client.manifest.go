@@ -32,7 +32,7 @@ func (sc *Client) GetManifest(ctx context.Context, commitID git.Oid, checkoutTyp
 		manifest = filteredManifest
 	}
 
-	// Split the manifest into git objects and conscience chunks
+	// Split the manifest into git objects and axon chunks
 	var (
 		gitObjects   = []ManifestObject{}
 		chunkObjects = []ManifestObject{}

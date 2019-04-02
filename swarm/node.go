@@ -109,7 +109,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 
 	err = gittransport.Register(n)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not register conscience:// git transport")
+		return nil, errors.Wrap(err, "could not register axon:// git transport")
 	}
 
 	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
@@ -216,9 +216,9 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 					Bare:     false,
 				})
 				if err != nil {
-					log.Warnf("[content request] error cloning conscience://%v remote: %v", repoID, err)
+					log.Warnf("[content request] error cloning axon://%v remote: %v", repoID, err)
 				} else {
-					log.Debugf("[content request] cloned conscience://%v remote", repoID)
+					log.Debugf("[content request] cloned axon://%v remote", repoID)
 				}
 				continue
 			}
@@ -233,7 +233,7 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 				Repo: r,
 			})
 			if err != nil {
-				log.Warnf("[content request] error pulling conscience://%v remote: %v", repoID, err)
+				log.Warnf("[content request] error pulling axon://%v remote: %v", repoID, err)
 				continue
 			}
 

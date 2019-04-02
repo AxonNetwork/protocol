@@ -9,7 +9,7 @@ variable "namespace" {
 }
 variable "container_name" {
   description = "Docker image container names in a csv list"
-  default = "conscience-node"
+  default = "axon-node"
 }
 variable "container_p2p_port" {
   description = "P2P port inside of container[i] (comma separated list)"
