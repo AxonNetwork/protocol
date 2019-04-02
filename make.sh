@@ -127,6 +127,6 @@ EOF
 [[ -n $docker ]] && build_docker
 [[ -n $native ]] && build_native
 
-[[ -n $copy ]] && cp -R ./build/* $DESKTOP_APP_BINARY_ROOT/
+[[ -n $copy ]] && cp -R ./build/native/* $DESKTOP_APP_BINARY_ROOT/
 
 echo Done.
