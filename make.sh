@@ -1,28 +1,43 @@
 #!/bin/bash
 
-if [ "$#" -eq 0 ]; then
-    native=1
-fi
+function read_cli_flags {
+    if [ "$#" -eq 0 ]; then
+        native=1
+    fi
 
-while [[ "$#" > 0 ]]; do case $1 in
-  # -m|--darwin) deploy="$2"; shift;;
-  -g|--libgit) libgit=1;;
-  -d|--docker) docker=1;;
-  -n|--native) native=1;;
-  -c|--copy) copy=1;;
-  *) echo "Unknown parameter passed: $1"; exit 1;;
-esac; shift; done
+    while [[ "$#" > 0 ]]; do case $1 in
+        # -m|--darwin) deploy="$2"; shift;;
+        -g|--libgit) libgit=1;;
+        -d|--docker) docker=1;;
+        -n|--native) native=1;;
+        -c|--copy) copy=1;;
+        *) echo "Unknown parameter passed: $1"; exit 1;;
+    esac; shift; done
+}
 
-echo Running gofmt
-gofmt -s -w .
 
-echo Building:
-[[ -n $libgit  ]] && echo   - libgit2
-[[ -n $docker  ]] && echo   - docker
-[[ -n $native  ]] && echo   - native
-
+function check_os {
+    unameOut="$(uname -s)"
+    case "${unameOut}" in
+        Linux*)     os=linux;;
+        Darwin*)    os=mac;;
+        CYGWIN*)    os=windows;;
+        MINGW*)     os=windows;;
+        *)          os="UNKNOWN:${unameOut}"
+    esac
+}
 
 function build_native {
+    
+    if [[ $os == "windows" ]]; then
+        PWD=$(pwd)
+        GIT2GO_PATH="${PWD}/vendor/github.com/libgit2/git2go"
+        LIBGIT2_BUILD="${GIT2GO_PATH}/vendor/libgit2/build"
+        #FLAGS="-lws2_32"
+        FLAGS="-lwinhttp -lcrypt32 -lrpcrt4 -lole32 -lws2_32"
+        export CGO_LDFLAGS="${LIBGIT2_BUILD}/libgit2.a -L${LIBGIT2_BUILD} ${FLAGS}"
+    fi
+
     mkdir -p build/native
     cd swarm/cmd
     GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
@@ -87,6 +102,12 @@ function checkout_libgit2 {
 function build_libgit2 {
     checkout_libgit2
 
+    if [[ $os == "windows" ]]; then
+        makefiles="MinGW Makefiles"
+    else
+        makefiles="Unix Makefiles"
+    fi
+
     pushd vendor/github.com/libgit2/git2go/vendor/libgit2 &&
     mkdir -p install/lib &&
     mkdir -p build &&
@@ -103,6 +124,8 @@ function build_libgit2 {
       -DUSE_EXT_HTTP_PARSER=OFF \
       -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
       -DCMAKE_INSTALL_PREFIX=../install \
+      -DWINHTTP=OFF \
+      -G "$makefiles" \
       .. && \
     cmake --build . &&
     popd && popd &&
@@ -123,10 +146,23 @@ libgit2: Build complete.
 EOF
 }
 
+check_os
+read_cli_flags $@
+
+echo Running gofmt
+gofmt -s -w .
+
+echo Building:
+[[ -n $libgit  ]] && echo   - libgit2
+[[ -n $docker  ]] && echo   - docker
+[[ -n $native  ]] && echo   - native \($os\)
+
+
 [[ -n $libgit ]] && build_libgit2
 [[ -n $docker ]] && build_docker
 [[ -n $native ]] && build_native
 
+[[ -n $copy ]] && echo Copying binaries to $DESKTOP_APP_BINARY_ROOT
 [[ -n $copy ]] && cp -R ./build/native/* $DESKTOP_APP_BINARY_ROOT/
 
 echo Done.
