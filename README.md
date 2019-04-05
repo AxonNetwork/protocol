@@ -69,3 +69,9 @@ pprof -http :1227 ~/projects/conscience/protocol/build/native/axon-node http://l
 replace github.com/libgit2/git2go => ./vendor/github.com/libgit2/git2go
 ```
 
+
+## Building on Windows
+
+1. Install MSYS2 and gcc: <https://stackoverflow.com/questions/30069830/how-to-install-mingw-w64-and-msys2/30071634#30071634>
+2. `./make.sh -n -c` from inside an MSYS2 terminal
+
