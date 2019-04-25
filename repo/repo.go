@@ -24,6 +24,7 @@ import (
 
 type Repo struct {
 	*git.Repository
+	path string
 }
 
 const (
@@ -49,7 +50,7 @@ func Init(opts *InitOptions) (*Repo, error) {
 		return nil, errors.Wrapf(err, "could not initialize repo at path '%v'", opts.RepoRoot)
 	}
 
-	r := &Repo{Repository: cRepo}
+	r := &Repo{Repository: cRepo, path: opts.RepoRoot}
 
 	err = r.SetupConfig(opts.RepoID)
 	if err != nil {
@@ -74,12 +75,13 @@ func Open(repoRoot string) (*Repo, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	return &Repo{Repository: gitRepo}, nil
+	return &Repo{Repository: gitRepo, path: repoRoot}, nil
 }
 
 func (r *Repo) Path() string {
-	p := strings.Replace(r.Repository.Path(), "/.git/", "", -1)
-	return p
+	// p := strings.Replace(r.Repository.Path(), "/.git/", "", -1)
+	// return p
+	return r.path
 }
 
 func (r *Repo) RepoID() (string, error) {
