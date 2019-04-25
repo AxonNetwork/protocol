@@ -162,6 +162,10 @@ func (c *Config) save() error {
 	return nil
 }
 
+func (c *Config) Path() string {
+	return c.configPath
+}
+
 type Duration time.Duration
 
 func (d Duration) MarshalText() ([]byte, error) {

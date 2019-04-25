@@ -207,6 +207,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 	}
 
 	type State struct {
+		ConfigPath           string
 		Username             string
 		EthAddress           string
 		ProtocolContractAddr string
@@ -244,6 +245,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 		var state State
 
+		state.ConfigPath = s.node.Config.Path()
 		state.Username = username
 		state.EthAddress = s.node.EthAddress().Hex()
 		state.ProtocolContractAddr = s.node.Config.Node.ProtocolContract
@@ -495,6 +497,7 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             <header>General</header>
 
             <div class="body">
+                <div><label>.axonrc path:</label> {{ .ConfigPath }}</div>
                 <div><label>Username:</label> {{ .Username }}</div>
                 <div><label>ETH account:</label> {{ .EthAddress }}</div>
                 <div><label>Protocol contract:</label> {{ .ProtocolContractAddr }}</div>
