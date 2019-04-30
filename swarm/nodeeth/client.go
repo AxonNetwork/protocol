@@ -165,7 +165,12 @@ func (n *Client) EnsureUsername(ctx context.Context, username string) (*Transact
 }
 
 func (n *Client) SetUsername(ctx context.Context, username string) (*Transaction, error) {
-	tx, err := n.protocolContract.SetUsername(n.transactOpts(ctx), username)
+	opts := n.transactOpts(ctx)
+
+	// Manually set a gas limit so that we get a clearer error when the tx fails
+	opts.GasLimit = 73000
+
+	tx, err := n.protocolContract.SetUsername(opts, username)
 	if err != nil {
 		return nil, err
 	}
