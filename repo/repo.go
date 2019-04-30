@@ -642,7 +642,57 @@ func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
 			}
 		}
 	}
+
+	// Add empty directories to the list (git doesn't recognize them)
+	emptyDirs, err := getEmptyDirs(r.path)
+	if err != nil {
+		return nil, err
+	}
+
+	files = append(files, emptyDirs...)
+
 	return files, nil
+}
+
+func getEmptyDirs(root string) ([]File, error) {
+	stack := []string{"."}
+
+	var emptyDirs []File
+
+	for len(stack) > 0 {
+		path := stack[0]
+		fullpath := filepath.Join(root, stack[0])
+		stack = stack[1:]
+
+		files, err := ioutil.ReadDir(fullpath)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(files) == 0 {
+			// Stat the folder to get its modtime
+			stat, err := os.Stat(fullpath)
+			if err != nil {
+				return nil, err
+			}
+
+			emptyDirs = append(emptyDirs, File{
+				Filename: path + string(filepath.Separator) + ".",
+				Modified: uint32(stat.ModTime().Unix()),
+				Status: Status{
+					Staged:   ' ',
+					Unstaged: 'M',
+				},
+			})
+		} else {
+			for _, file := range files {
+				if file.IsDir() && file.Name() != ".git" {
+					stack = append(stack, filepath.Join(path, file.Name()))
+				}
+			}
+		}
+	}
+	return emptyDirs, nil
 }
 
 // Simplifies the interpretation of 'status' for a UI that primarily needs to display information
