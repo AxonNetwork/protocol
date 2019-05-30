@@ -9,7 +9,7 @@ import (
 
 	"github.com/libgit2/git2go"
 
-	"github.com/Conscience/protocol/swarm"
+	// "github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/swarm/wire"
@@ -334,54 +334,51 @@ type MaybeEvent struct {
 	Error           error
 }
 
-func (c *Client) Watch(ctx context.Context, settings *swarm.WatcherSettings) (<-chan MaybeEvent, error) {
-	eventTypes := make([]uint64, 0)
-	for _, t := range settings.EventTypes {
-		eventTypes = append(eventTypes, uint64(t))
-	}
+// func (c *Client) Watch(ctx context.Context, settings *swarm.WatcherSettings) (<-chan MaybeEvent, error) {
+// 	eventTypes := swarm.EventTypeBitfieldToArray(settings.EventTypes)
 
-	watchClient, err := c.client.Watch(ctx, &pb.WatchRequest{
-		EventTypes:      eventTypes,
-		UpdatedRefStart: settings.UpdatedRefStart,
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+// 	watchClient, err := c.client.Watch(ctx, &pb.WatchRequest{
+// 		EventTypes:      eventTypes,
+// 		UpdatedRefStart: settings.UpdatedRefStart,
+// 	})
+// 	if err != nil {
+// 		return nil, errors.WithStack(err)
+// 	}
 
-	ch := make(chan MaybeEvent)
-	go func() {
-		defer close(ch)
-		for {
-			evt, err := watchClient.Recv()
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				ch <- MaybeEvent{Error: errors.WithStack(err)}
-				return
-			}
+// 	ch := make(chan MaybeEvent)
+// 	go func() {
+// 		defer close(ch)
+// 		for {
+// 			evt, err := watchClient.Recv()
+// 			if err == io.EOF {
+// 				return
+// 			} else if err != nil {
+// 				ch <- MaybeEvent{Error: errors.WithStack(err)}
+// 				return
+// 			}
 
-			addedEvt := evt.GetAddedRepoEvent()
-			if addedEvt != nil {
-				ch <- MaybeEvent{AddedRepoEvent: addedEvt}
-				continue
-			}
+// 			addedEvt := evt.GetAddedRepoEvent()
+// 			if addedEvt != nil {
+// 				ch <- MaybeEvent{AddedRepoEvent: addedEvt}
+// 				continue
+// 			}
 
-			pulledEvt := evt.GetPulledRepoEvent()
-			if pulledEvt != nil {
-				ch <- MaybeEvent{PulledRepoEvent: pulledEvt}
-				continue
-			}
+// 			pulledEvt := evt.GetPulledRepoEvent()
+// 			if pulledEvt != nil {
+// 				ch <- MaybeEvent{PulledRepoEvent: pulledEvt}
+// 				continue
+// 			}
 
-			refEvt := evt.GetUpdatedRefEvent()
-			if refEvt != nil {
-				ch <- MaybeEvent{UpdatedRefEvent: refEvt}
-				continue
-			}
+// 			refEvt := evt.GetUpdatedRefEvent()
+// 			if refEvt != nil {
+// 				ch <- MaybeEvent{UpdatedRefEvent: refEvt}
+// 				continue
+// 			}
 
-			ch <- MaybeEvent{Error: errors.New("[rpc client] unexpected event")}
-			return
-		}
-	}()
+// 			ch <- MaybeEvent{Error: errors.New("[rpc client] unexpected event")}
+// 			return
+// 		}
+// 	}()
 
-	return ch, nil
-}
+// 	return ch, nil
+// }

@@ -896,24 +896,28 @@ func (s *Server) SetFileChunking(ctx context.Context, req *pb.SetFileChunkingReq
 }
 
 func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) error {
-	eventTypes := make([]swarm.EventType, 0)
+	var eventTypes swarm.EventType
 	for _, t := range req.EventTypes {
-		eventTypes = append(eventTypes, swarm.EventType(t))
+		eventTypes |= swarm.EventType(t)
 	}
 
-	settings := &swarm.WatcherSettings{
+	watcher := s.node.EventBus.Watch(&swarm.WatcherSettings{
 		EventTypes:      eventTypes,
 		UpdatedRefStart: req.UpdatedRefStart,
-	}
+	})
+	defer s.node.EventBus.Unwatch(watcher)
 
-	ctx := context.Background()
-	watcher := s.node.Watch(ctx, settings)
+	for {
+		var evt swarm.MaybeEvent
+		var open bool
 
-	for evt := range watcher.EventCh {
 		select {
 		case <-server.Context().Done():
 			return errors.WithStack(server.Context().Err())
-		default:
+		case evt, open = <-watcher.Events():
+			if !open {
+				return errors.New("event watcher closed early")
+			}
 		}
 
 		var err error

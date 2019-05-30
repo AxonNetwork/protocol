@@ -39,14 +39,13 @@ import (
 )
 
 type Node struct {
-	host        host.Host
-	dht         *dht.IpfsDHT
-	eth         *nodeeth.Client
-	repoManager *RepoManager
-	watchers    []*Watcher
-	Config      config.Config
-	Shutdown    chan struct{}
-
+	host             host.Host
+	dht              *dht.IpfsDHT
+	eth              *nodeeth.Client
+	repoManager      *RepoManager
+	EventBus         *EventBus
+	Config           config.Config
+	Shutdown         chan struct{}
 	bandwidthCounter *metrics.BandwidthCounter
 }
 
@@ -96,12 +95,14 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	}
 	log.SetField("username", username)
 
+	repoManager := NewRepoManager(cfg)
+
 	n := &Node{
 		host:             h,
 		dht:              d,
 		eth:              eth,
-		repoManager:      NewRepoManager(cfg),
-		watchers:         make([]*Watcher, 0),
+		repoManager:      repoManager,
+		EventBus:         NewEventBus(repoManager, eth),
 		Config:           *cfg,
 		Shutdown:         make(chan struct{}),
 		bandwidthCounter: bandwidthCounter,
@@ -372,69 +373,72 @@ func (n *Node) Clone(ctx context.Context, opts *nodep2p.CloneOptions) (*repo.Rep
 }
 
 func (n *Node) Push(ctx context.Context, opts *nodep2p.PushOptions) (string, error) {
-	repoRoot := opts.Repo.Path()
 	repoID, err := opts.Repo.RepoID()
 	if err != nil {
 		return "", err
 	}
+
 	commit, err := nodep2p.Push(ctx, opts)
 	if err != nil {
 		return "", err
 	}
-	event := MaybeEvent{
-		EventType: PushedRepo,
+
+	n.EventBus.NotifyWatchers(MaybeEvent{
+		EventType: EventType_PushedRepo,
 		PushedRepoEvent: &PushedRepoEvent{
 			RepoID:     repoID,
-			RepoRoot:   repoRoot,
+			RepoRoot:   opts.Repo.Path(),
 			BranchName: opts.BranchName,
 			Commit:     commit,
 		},
-	}
-	n.NotifyWatchers(event)
+	})
+
 	return commit, nil
 }
 
 func (n *Node) FetchAndSetRef(ctx context.Context, opts *nodep2p.FetchOptions) ([]string, error) {
-	repoRoot := opts.Repo.Path()
 	repoID, err := opts.Repo.RepoID()
 	if err != nil {
 		return nil, err
 	}
+
 	updatedRefs, err := nodep2p.FetchAndSetRef(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	event := MaybeEvent{
-		EventType: PulledRepo,
+
+	n.EventBus.NotifyWatchers(MaybeEvent{
+		EventType: EventType_PulledRepo,
 		PulledRepoEvent: &PulledRepoEvent{
 			RepoID:      repoID,
-			RepoRoot:    repoRoot,
+			RepoRoot:    opts.Repo.Path(),
 			UpdatedRefs: updatedRefs,
 		},
-	}
-	n.NotifyWatchers(event)
+	})
+
 	return updatedRefs, nil
 }
 
 func (n *Node) Pull(ctx context.Context, opts *nodep2p.PullOptions) ([]string, error) {
-	repoRoot := opts.Repo.Path()
 	repoID, err := opts.Repo.RepoID()
 	if err != nil {
 		return nil, err
 	}
+
 	updatedRefs, err := nodep2p.Pull(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	event := MaybeEvent{
-		EventType: PulledRepo,
+
+	n.EventBus.NotifyWatchers(MaybeEvent{
+		EventType: EventType_PulledRepo,
 		PulledRepoEvent: &PulledRepoEvent{
 			RepoID:      repoID,
-			RepoRoot:    repoRoot,
+			RepoRoot:    opts.Repo.Path(),
 			UpdatedRefs: updatedRefs,
 		},
-	}
-	n.NotifyWatchers(event)
+	})
+
 	return updatedRefs, nil
 }
 
@@ -492,18 +496,20 @@ func (n *Node) TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error) 
 	if err != nil {
 		return nil, err
 	}
+
 	repoID, err := r.RepoID()
 	if err != nil {
 		return nil, err
 	}
-	event := MaybeEvent{
-		EventType: AddedRepo,
+
+	n.EventBus.NotifyWatchers(MaybeEvent{
+		EventType: EventType_AddedRepo,
 		AddedRepoEvent: &AddedRepoEvent{
 			RepoRoot: repoPath,
 			RepoID:   repoID,
 		},
-	}
-	n.NotifyWatchers(event)
+	})
+
 	return r, nil
 }
 
@@ -664,25 +670,4 @@ func (n *Node) GetBandwidthForProtocol(proto protocol.ID) metrics.Stats {
 
 func (n *Node) GetBandwidthTotals() metrics.Stats {
 	return n.bandwidthCounter.GetBandwidthTotals()
-}
-
-func (n *Node) Watch(ctx context.Context, settings *WatcherSettings) *Watcher {
-	w := NewWatcher(ctx, settings)
-	n.watchers = append(n.watchers, w)
-
-	if w.IsWatching(UpdatedRef) {
-		repoIDs := n.repoManager.RepoIDList()
-		rw := n.eth.WatchUpdatedRefEvents(ctx, repoIDs, settings.UpdatedRefStart)
-		go w.AddUpdatedRefEventWatcher(rw)
-	}
-
-	return w
-}
-
-func (n *Node) NotifyWatchers(event MaybeEvent) {
-	for _, w := range n.watchers {
-		if w.IsWatching(event.EventType) {
-			go w.Notify(event)
-		}
-	}
 }

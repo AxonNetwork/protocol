@@ -21,12 +21,13 @@ import (
 )
 
 type Client struct {
-	ethClient        *ethclient.Client
-	protocolContract *Protocol
-	privateKey       *ecdsa.PrivateKey
-	account          accounts.Account
-	auth             *bind.TransactOpts
-	wallet           *Wallet
+	ethClient            *ethclient.Client
+	protocolContract     *Protocol
+	protocolContractAddr Address
+	privateKey           *ecdsa.PrivateKey
+	account              accounts.Account
+	auth                 *bind.TransactOpts
+	wallet               *Wallet
 }
 
 type Address = common.Address
@@ -37,7 +38,9 @@ func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
-	protocolContract, err := NewProtocol(common.HexToAddress(cfg.Node.ProtocolContract), ethClient)
+	protocolContractAddr := common.HexToAddress(cfg.Node.ProtocolContract)
+
+	protocolContract, err := NewProtocol(protocolContractAddr, ethClient)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +63,13 @@ func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 	auth := bind.NewKeyedTransactor(prv)
 
 	return &Client{
-		ethClient:        ethClient,
-		protocolContract: protocolContract,
-		privateKey:       prv,
-		auth:             auth,
-		account:          account,
-		wallet:           wallet,
+		ethClient:            ethClient,
+		protocolContract:     protocolContract,
+		protocolContractAddr: protocolContractAddr,
+		privateKey:           prv,
+		auth:                 auth,
+		account:              account,
+		wallet:               wallet,
 	}, nil
 }
 
@@ -345,4 +349,50 @@ func (n *Client) CurrentBlock(ctx context.Context) (uint64, error) {
 	}
 
 	return header.Number.Uint64(), nil
+}
+
+type UpdatedRefEvent struct {
+	Commit      string
+	RefHash     string
+	RepoIDHash  common.Hash
+	RepoID      string
+	TxHash      string
+	Time        uint64
+	BlockNumber uint64
+}
+
+func (c *Client) GetUpdatedRefEvents(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]UpdatedRefEvent, error) {
+	opts := &bind.FilterOpts{
+		Context: ctx,
+		Start:   start,
+	}
+	users := []Address{}
+	refs := []string{}
+
+	iter, err := c.protocolContract.ProtocolFilterer.FilterLogUpdateRef(opts, users, repoIDs, refs)
+	if err != nil {
+		return nil, err
+	}
+
+	evts := make([]UpdatedRefEvent, 0)
+	for iter.Next() {
+		blockNumber := iter.Event.Raw.BlockNumber
+		block, err := c.ethClient.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
+		if err != nil {
+			return nil, err
+		}
+
+		evt := UpdatedRefEvent{
+			Commit:      hex.EncodeToString(iter.Event.CommitHash[:]),
+			RefHash:     hex.EncodeToString(iter.Event.RefName[:]),
+			RepoIDHash:  iter.Event.RepoID,
+			Time:        block.Time().Uint64(),
+			TxHash:      hex.EncodeToString(iter.Event.Raw.TxHash[:]),
+			BlockNumber: blockNumber,
+		}
+
+		evts = append(evts, evt)
+	}
+
+	return evts, nil
 }

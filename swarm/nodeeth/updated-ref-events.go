@@ -2,125 +2,93 @@ package nodeeth
 
 import (
 	"context"
-	"encoding/hex"
-	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+type UpdatedRefEventWatcher struct {
+	chOut     chan MaybeUpdatedRefEvent
+	chAddRepo chan string
+	repoIDs   []string
+	eth       *Client
+	ctx       context.Context
+}
 
 type MaybeUpdatedRefEvent struct {
 	Event UpdatedRefEvent
 	Error error
 }
 
-type UpdatedRefEvent struct {
-	Commit      string
-	RefHash     string
-	RepoIDHash  common.Hash
-	RepoID      string
-	TxHash      string
-	Time        uint64
-	BlockNumber uint64
-}
-
-type UpdatedRefEventWatcher struct {
-	Ch       chan MaybeUpdatedRefEvent
-	repoIDs  []string
-	repoIDCh chan string
-}
-
-func (rw *UpdatedRefEventWatcher) AddRepo(repoID string) {
-	rw.repoIDCh <- repoID
-}
-
-func (rw *UpdatedRefEventWatcher) Close() {
-	close(rw.Ch)
-	close(rw.repoIDCh)
-}
-
-func (n *Client) WatchUpdatedRefEvents(ctx context.Context, repoIDs []string, start uint64) *UpdatedRefEventWatcher {
-	cursor := start
-	logsTimer := time.NewTicker(5 * time.Second)
-
+func NewUpdatedRefEventWatcher(ctx context.Context, eth *Client, repoIDs []string, start uint64) *UpdatedRefEventWatcher {
 	rw := &UpdatedRefEventWatcher{
-		Ch:       make(chan MaybeUpdatedRefEvent),
-		repoIDs:  repoIDs,
-		repoIDCh: make(chan string),
+		chOut:     make(chan MaybeUpdatedRefEvent),
+		chAddRepo: make(chan string),
+		ctx:       ctx,
 	}
 
-	go func() {
-		defer rw.Close()
+	go rw.runLoop(eth, repoIDs, start)
 
-		repoIDByHash := make(map[string]string)
-		for _, repoID := range rw.repoIDs {
-			hash := crypto.Keccak256([]byte(repoID))
-			repoIDByHash[string(hash)] = repoID
-		}
+	return rw
+}
 
-		for {
-			evts, err := n.GetUpdatedRefEvents(ctx, rw.repoIDs, cursor, nil)
+func (rw *UpdatedRefEventWatcher) Events() <-chan MaybeUpdatedRefEvent {
+	return rw.chOut
+}
+
+func (rw *UpdatedRefEventWatcher) AddRepo(ctx context.Context, repoID string) {
+	select {
+	case rw.chAddRepo <- repoID:
+	case <-rw.ctx.Done():
+	case <-ctx.Done():
+	}
+}
+
+func (rw *UpdatedRefEventWatcher) runLoop(eth *Client, repoIDs []string, start uint64) {
+	defer close(rw.chOut)
+
+	repoIDByHash := make(map[string]string)
+	for _, repoID := range repoIDs {
+		hash := crypto.Keccak256([]byte(repoID))
+		repoIDByHash[string(hash)] = repoID
+	}
+
+	cursor := start
+	logsTimer := time.NewTicker(10 * time.Second) // @@TODO: make this configurable
+
+	for {
+		select {
+		case <-rw.ctx.Done():
+			return
+
+		case <-logsTimer.C:
+			ctx, _ := context.WithTimeout(rw.ctx, 30*time.Second) // @@TODO: make this configurable
+
+			evts, err := rw.eth.GetUpdatedRefEvents(ctx, rw.repoIDs, cursor, nil)
 			if err != nil {
-				rw.Ch <- MaybeUpdatedRefEvent{Error: err}
+				select {
+				case rw.chOut <- MaybeUpdatedRefEvent{Error: err}:
+				case <-rw.ctx.Done():
+				}
 				return
 			}
 
 			for _, evt := range evts {
 				hashStr := string(evt.RepoIDHash[:])
 				evt.RepoID = repoIDByHash[hashStr]
-				rw.Ch <- MaybeUpdatedRefEvent{Event: evt}
+
+				select {
+				case rw.chOut <- MaybeUpdatedRefEvent{Event: evt}:
+				case <-rw.ctx.Done():
+				}
+
 				cursor = evt.BlockNumber + 1
 			}
 
-			select {
-			case <-logsTimer.C:
-			case repoID := <-rw.repoIDCh:
-				rw.repoIDs = append(rw.repoIDs, repoID)
-				hash := crypto.Keccak256([]byte(repoID))
-				repoIDByHash[string(hash)] = repoID
-			case <-ctx.Done():
-				return
-			}
+		case repoID := <-rw.chAddRepo:
+			rw.repoIDs = append(rw.repoIDs, repoID)
+			hash := crypto.Keccak256([]byte(repoID))
+			repoIDByHash[string(hash)] = repoID
 		}
-	}()
-
-	return rw
-}
-
-func (n *Client) GetUpdatedRefEvents(ctx context.Context, repoIDs []string, start uint64, end *uint64) ([]UpdatedRefEvent, error) {
-	opts := &bind.FilterOpts{
-		Context: ctx,
-		Start:   start,
 	}
-	users := []common.Address{}
-	refs := []string{}
-
-	iter, err := n.protocolContract.ProtocolFilterer.FilterLogUpdateRef(opts, users, repoIDs, refs)
-	if err != nil {
-		return []UpdatedRefEvent{}, err
-	}
-
-	evts := make([]UpdatedRefEvent, 0)
-	for iter.Next() {
-		blockNumber := iter.Event.Raw.BlockNumber
-		block, err := n.ethClient.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return []UpdatedRefEvent{}, err
-		}
-
-		evt := UpdatedRefEvent{
-			Commit:      hex.EncodeToString(iter.Event.CommitHash[:]),
-			RefHash:     hex.EncodeToString(iter.Event.RefName[:]),
-			RepoIDHash:  iter.Event.RepoID,
-			Time:        block.Time().Uint64(),
-			TxHash:      hex.EncodeToString(iter.Event.Raw.TxHash[:]),
-			BlockNumber: blockNumber,
-		}
-
-		evts = append(evts, evt)
-	}
-
-	return evts, nil
 }
