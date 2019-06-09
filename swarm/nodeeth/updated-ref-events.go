@@ -54,7 +54,9 @@ func (rw *UpdatedRefEventWatcher) runLoop(eth *Client, repoIDs []string, start u
 	}
 
 	cursor := start
+
 	logsTimer := time.NewTicker(10 * time.Second) // @@TODO: make this configurable
+	defer logsTimer.Stop()
 
 	for {
 		select {
