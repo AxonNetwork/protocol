@@ -16,7 +16,8 @@
   "dependencies": {
     "any-promise": "^1.3.0",
     "rc": "^1.2.8",
-    "truffle": "^5.0.7",
-    "truffle-hdwallet-provider": "^1.0.0-web3one.5"
+    "truffle": "^5.0.19",
+    "truffle-hdwallet-provider": "^1.0.10",
+    "web3": "^1.0.0-beta.37"
   }
 }
