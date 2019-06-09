@@ -32,6 +32,13 @@ module.exports = {
       gas: 4000000,
       gasPrice: 50000000000,
     },
+    kaleido: {
+      provider: function() {
+          return new HDWalletProvider(mnemonic, `https://${process.env.KALEIDO_USERNAME}:${process.env.KALEIDO_PASSWORD}@${KALEIDO_ETH_HOST_HTTPS}`)
+      },
+      gas: 6900000,
+      gasPrice: 50000000000,
+    },
     awsgeth: {
       network_id: 23332,
       provider: function() {
