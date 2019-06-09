@@ -12,6 +12,7 @@ require (
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
 	github.com/allegro/bigcache v1.1.0 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20181109020153-5faa74ffbed7 // indirect
+	github.com/aws/aws-sdk-go v1.19.36 // indirect
 	github.com/brynbellomy/debugcharts v0.0.0-20180826220201-c3f57e57ea6f
 	github.com/btcsuite/btcd v0.0.0-20190213025234-306aecffea32
 	github.com/btcsuite/btcutil v0.0.0-20190207003914-4c204d697803
@@ -25,7 +26,6 @@ require (
 	github.com/git-lfs/git-lfs v0.0.0-20190228200031-78645419de54
 	github.com/git-lfs/wildmatch v1.0.2
 	github.com/go-ole/go-ole v1.2.4 // indirect
-	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gofrs/uuid v3.1.0+incompatible // indirect
 	github.com/golang/lint v0.0.0-20180702182130-06c8688daad7 // indirect
 	github.com/golang/protobuf v1.3.0
@@ -33,8 +33,9 @@ require (
 	github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6 // indirect
 	github.com/ijc25/Gotty v0.0.0-20170406111628-a8b993ba6abd
 	github.com/ipfs/go-cid v0.0.1
-	github.com/ipfs/go-datastore v0.0.1
+	github.com/ipfs/go-datastore v0.0.2
 	github.com/kardianos/osext v0.0.0-20170510131534-ae77be60afb1 // indirect
+	github.com/kdar/logrus-cloudwatchlogs v0.0.0-20190402042352-9a67b2f09ba3 // indirect
 	github.com/kkdai/bstream v0.0.0-20181106074824-b3251f7901ec // indirect
 	github.com/libgit2/git2go v0.0.0-20190215132637-bf1e8a433882
 	github.com/libp2p/go-libp2p v0.0.1
@@ -56,6 +57,7 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/rs/cors v1.6.0 // indirect
+	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/shirou/gopsutil v2.18.10+incompatible // indirect
 	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4 // indirect
 	github.com/sirupsen/logrus v1.2.0
