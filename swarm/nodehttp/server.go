@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
+	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 
 	peer "github.com/libp2p/go-libp2p-peer"
 
+	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
@@ -39,6 +43,7 @@ func New(node *swarm.Node) *Server {
 	router.HandleFunc("/add-peer", s.handleAddPeer())
 	router.HandleFunc("/remove-peer", s.handleRemovePeer())
 	router.HandleFunc("/untrack-repo", s.handleUntrackRepo())
+	router.HandleFunc("/set-config", s.handleSetConfig())
 	router.Handle("/debug/vars", expvar.Handler())
 	debugcharts.RegisterHandlers(router)
 
@@ -182,6 +187,29 @@ func (s *Server) handleAddReplicatedRepo() http.HandlerFunc {
 	}
 }
 
+func (s *Server) handleSetConfig() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		err := req.ParseForm()
+		if err != nil {
+			die500(w, err)
+			return
+		}
+
+		// repoPath := req.Form.Get("repoPath")
+		// if repoPath == "" {
+		//     die500(w, err)
+		//     return
+		// }
+
+		s.node.Config.Update(func() error {
+			parseStructForm(req.Form, &s.node.Config.Node)
+			return nil
+		})
+
+		http.Redirect(w, req, "/", http.StatusFound)
+	}
+}
+
 func (s *Server) handleIndex() http.HandlerFunc {
 	type Peer struct {
 		PrettyName string
@@ -207,19 +235,23 @@ func (s *Server) handleIndex() http.HandlerFunc {
 	}
 
 	type State struct {
-		ConfigPath           string
-		Username             string
+		ConfigPath string
+		Username   string
+
+		Config config.Config
+
 		EthAddress           string
 		ProtocolContractAddr string
 		RPCListenAddr        string
-		Addrs                []string
-		Peers                []Peer
-		PeersConnected       int
 		LocalRepos           []RepoInfo
 		ReplicateRepos       []string
-		Logs                 []logger.Entry
-		Env                  []EnvVar
-		GlobalConnStats      struct {
+
+		Addrs           []string
+		Peers           []Peer
+		PeersConnected  int
+		Logs            []logger.Entry
+		Env             []EnvVar
+		GlobalConnStats struct {
 			TotalIn  string
 			TotalOut string
 			RateIn   string
@@ -246,6 +278,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		var state State
 
 		state.ConfigPath = s.node.Config.Path()
+		state.Config = s.node.Config
 		state.Username = username
 		state.EthAddress = s.node.EthAddress().Hex()
 		state.ProtocolContractAddr = s.node.Config.Node.ProtocolContract
@@ -344,7 +377,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		state.GlobalConnStats.RateIn = util.HumanizeBytes(stats.RateIn)
 		state.GlobalConnStats.RateOut = util.HumanizeBytes(stats.RateOut)
 
-		err = tplIndex.Execute(w, state)
+		err = tplIndex(s.node.Config).Execute(w, state)
 		if err != nil {
 			die500(w, err)
 			return
@@ -358,7 +391,8 @@ func die500(w http.ResponseWriter, err error) {
 	w.Write([]byte("Internal server error: " + err.Error()))
 }
 
-var tplIndex = template.Must(template.New("indexpage").Parse(`
+func tplIndex(cfg config.Config) *template.Template {
+	return template.Must(template.New("indexpage").Parse(`
     <html>
     <head>
         <title>Axon node stats</title>
@@ -449,9 +483,6 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 display: none;
             }
 
-
-
-
             section {
                 margin-bottom: 30px;
                 border: 1px solid #eaeaea;
@@ -485,6 +516,30 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 width: 400px;
                 font-family: Consolas, 'Courier New', sans-serif;
             }
+
+            form#config-form table {
+                width: 100%;
+            }
+
+            form#config-form table td:first-child {
+                font-weight: bold;
+                vertical-align: top;
+            }
+
+            form#config-form table td:last-child {
+                width: 99%;
+            }
+
+            form#config-form input {
+                display: block;
+                width: 100%;
+                font-family: Consolas;
+                padding: 4px 0;
+                margin: 4px 0;
+                border-top: 0;
+                border-left: 0;
+                border-right: 0;
+            }
         </style>
     </head>
     <body>
@@ -500,16 +555,19 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                 <div><label>.axonrc path:</label> {{ .ConfigPath }}</div>
                 <div><label>Username:</label> {{ .Username }}</div>
                 <div><label>ETH account:</label> {{ .EthAddress }}</div>
-                <div><label>Protocol contract:</label> {{ .ProtocolContractAddr }}</div>
-                <div><label>RPC listen addr:</label> {{ .RPCListenAddr }}</div>
-                <div>
-                    <label>Listen addrs:</label>
-                    <ul>
-                        {{ range .Addrs }}
-                            <li>{{ . }}</li>
-                        {{ end }}
-                    </ul>
-                </div>
+            </div>
+        </section>
+
+        <section>
+            <header>.axonrc</header>
+
+            <div class="body">
+                <form action="/set-config" method="POST" id="config-form">
+                <table>
+                    ` + generateStructForm(*cfg.Node) + `
+                </table>
+                <button type="submit">Save</button>
+                </form>
             </div>
         </section>
 
@@ -517,6 +575,15 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
             <header>Network</header>
 
             <div class="body">
+                <div>
+                    <label>P2P listen addrs:</label>
+                    <ul>
+                        {{ range .Addrs }}
+                            <li>{{ . }}</li>
+                        {{ end }}
+                    </ul>
+                </div>
+
                 <label>Network stats:</label>
                 <div>
                     <div>In: {{ .GlobalConnStats.TotalIn }} ({{ .GlobalConnStats.RateIn }} / s)</div>
@@ -668,6 +735,18 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
                     headers[i].addEventListener('click', toggleSectionVisibility)
                 }
 
+                var addItemButtons = document.querySelectorAll('button.btn-add-item')
+                for (var i = 0; i < addItemButtons.length; i++) {
+                    addItemButtons[i].addEventListener('click', function(evt) {
+                        evt.stopPropagation()
+                        evt.preventDefault()
+                        var btn = evt.target
+                        var inputElem = document.createElement('input')
+                        inputElem.name = btn.dataset.inputName + '[]'
+                        btn.parentElement.insertBefore(inputElem, btn)
+                    })
+                }
+
                 var logFilterInput = document.querySelector('input#log-search')
                 logFilterInput.addEventListener('keyup', throttle(updateLogs, 200))
             }
@@ -742,6 +821,7 @@ var tplIndex = template.Must(template.New("indexpage").Parse(`
     </body>
     </html>
 `))
+}
 
 var logoSVG = `
     <svg width="200px" height="200px" viewBox="100,100,500,300" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -788,3 +868,175 @@ var logoSVG = `
         </g>
     </svg>
 `
+
+func parseStructForm(vals url.Values, x interface{}) {
+	xv := reflect.ValueOf(x).Elem()
+
+	if xv.Kind() == reflect.Ptr {
+		if xv.IsNil() {
+			// If the field is a pointer, and is currently nil, fill it with a new empty struct
+			xv.Set(reflect.New(xv.Type().Elem()))
+		}
+		xv = xv.Elem()
+	} else if xv.Kind() != reflect.Ptr {
+		// If the field is a plain struct (not a pointer), get an addressable (mutable) pointer to it
+		xv = xv.Addr().Elem()
+	}
+
+	xt := xv.Type()
+	numFields := xt.NumField()
+
+	for i := 0; i < numFields; i++ {
+		field := xt.Field(i)
+
+		if !xv.Field(i).CanSet() {
+			continue
+		}
+
+		switch field.Type.Kind() {
+		case reflect.String:
+			strVal := vals.Get(field.Name)
+			xv.Field(i).SetString(strVal)
+
+		case reflect.Int,
+			reflect.Int8,
+			reflect.Int16,
+			reflect.Int32,
+			reflect.Int64:
+			strVal := vals.Get(field.Name)
+			intVal, err := strconv.ParseInt(strVal, 10, 64)
+			if err != nil {
+				log.Errorf("[http] error parsing form field %v: %v", field.Name, err)
+				continue
+			}
+			xv.Field(i).SetInt(intVal)
+
+		case reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64:
+			strVal := vals.Get(field.Name)
+			intVal, err := strconv.ParseUint(strVal, 10, 64)
+			if err != nil {
+				log.Errorf("[http] error parsing form field %v: %v", field.Name, err)
+				continue
+			}
+			xv.Field(i).SetUint(intVal)
+
+		case reflect.Float32,
+			reflect.Float64:
+			strVal := vals.Get(field.Name)
+			floatVal, err := strconv.ParseFloat(strVal, 64)
+			if err != nil {
+				log.Errorf("[http] error parsing form field %v: %v", field.Name, err)
+				continue
+			}
+			xv.Field(i).SetFloat(floatVal)
+
+		case reflect.Slice:
+			rawVals := vals[field.Name+"[]"]
+			var sliceVals []string
+			for i := range rawVals {
+				rawVals[i] = strings.TrimSpace(rawVals[i])
+				if len(rawVals[i]) > 0 {
+					sliceVals = append(sliceVals, rawVals[i])
+				}
+			}
+
+			switch field.Type.Elem().Kind() {
+			case reflect.String:
+				xv.Field(i).Set(reflect.ValueOf(sliceVals))
+			default:
+				log.Errorf("[http] error while parsing form: can only parse slices of strings")
+				continue
+			}
+
+		case reflect.Bool:
+			var b bool
+			if vals.Get(field.Name) == "true" {
+				b = true
+			}
+			xv.Field(i).SetBool(b)
+		}
+	}
+}
+
+func generateStructForm(x interface{}) string {
+	out := ""
+
+	xt := reflect.TypeOf(x)
+	xv := reflect.ValueOf(x)
+	numFields := xt.NumField()
+	for i := 0; i < numFields; i++ {
+		field := xt.Field(i)
+
+		if !xv.Field(i).CanInterface() {
+			continue
+		}
+
+		switch field.Type.Kind() {
+		case reflect.Int,
+			reflect.Int8,
+			reflect.Int16,
+			reflect.Int32,
+			reflect.Int64,
+			reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Float32,
+			reflect.Float64,
+			reflect.String:
+			out += `
+                <tr>
+                    <td>` + field.Name + `</td>
+                    <td><input name="` + field.Name + `" value="` + fmt.Sprintf("%v", xv.Field(i).Interface()) + `" /></td>
+                </tr>
+            `
+
+		case reflect.Bool:
+			isTrue := xv.Field(i).Interface().(bool)
+			var trueSelected string
+			var falseSelected string
+			if isTrue {
+				trueSelected = `selected="selected"`
+				falseSelected = ``
+			} else {
+				trueSelected = ``
+				falseSelected = `selected="selected"`
+			}
+
+			out += `
+                <tr>
+                    <td>` + field.Name + `</td>
+                    <td>
+                        <select name="` + field.Name + `">
+                            <option value="true" ` + trueSelected + `>true</option>
+                            <option value="false" ` + falseSelected + `>false</option>
+                        </select>
+                    </td>
+                </tr>
+            `
+
+		case reflect.Slice:
+			slice := xv.Field(i)
+			out += `
+                <tr>
+                    <td>` + field.Name + `</td>
+                    <td>`
+
+			for j := 0; j < slice.Len(); j++ {
+				out += `<input name="` + field.Name + `[]" value="` + fmt.Sprintf("%v", slice.Index(j).Interface()) + `" />`
+			}
+
+			out += `    <button class="btn-add-item" data-input-name="` + field.Name + `">Add</button>
+                    </td>
+                </tr>
+            `
+		}
+	}
+
+	return out
+}
