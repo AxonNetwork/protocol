@@ -45,7 +45,7 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 				TransferProgressCallback: func(stats git.TransferProgress) git.ErrorCode {
 					select {
 					case <-ctx.Done():
-						innerErr = ctx.Err()
+						innerErr = errors.WithStack(ctx.Err())
 						return git.ErrGeneric
 					default:
 					}
@@ -62,32 +62,32 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 	if innerErr != nil {
 		return nil, innerErr
 	} else if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	r := &repo.Repo{Repository: cRepo}
 
 	err = r.SetupConfig(opts.RepoID)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	if opts.UserName != "" {
 		err = r.AddUserToConfig(opts.UserName, opts.UserEmail)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 
 	r, err = opts.Node.TrackRepo(r.Path(), true)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	if !opts.Bare {
 		err = decodeFiles(r.Path())
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 
@@ -211,7 +211,8 @@ type FetchOptions struct {
 	ProgressCb func(done, total uint64) error
 }
 
-func FetchConscienceRemote(ctx context.Context, opts *FetchOptions) ([]string, error) {
+// Perform a fetch on the first Axon remote found in the given repo's config.
+func FetchAxonRemote(ctx context.Context, opts *FetchOptions) ([]string, error) {
 	if opts.ProgressCb == nil {
 		opts.ProgressCb = func(done, total uint64) error { return nil }
 	}
@@ -232,7 +233,7 @@ func FetchConscienceRemote(ctx context.Context, opts *FetchOptions) ([]string, e
 			TransferProgressCallback: func(stats git.TransferProgress) git.ErrorCode {
 				select {
 				case <-ctx.Done():
-					innerErr = ctx.Err()
+					innerErr = errors.WithStack(ctx.Err())
 					return git.ErrGeneric
 				default:
 				}
@@ -249,30 +250,34 @@ func FetchConscienceRemote(ctx context.Context, opts *FetchOptions) ([]string, e
 	if innerErr != nil {
 		return nil, innerErr
 	} else if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return updatedRefs, nil
 }
 
+// Fetches refs and objects from an Axon remote and then updates local refs that are tracking those
+// remote refs.
 func FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error) {
-	updatedRefs, err := FetchConscienceRemote(ctx, opts)
+	updatedRefs, err := FetchAxonRemote(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 
+	// @@TODO: don't assume that a local ref is tracking a remote simply because of its name.  Check
+	// the .git/config setup first.
 	repo := opts.Repo
 	for _, name := range updatedRefs {
 		if strings.HasPrefix(name, "refs/remotes/origin") {
 			ref, err := repo.References.Lookup(name)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 
 			oid := ref.Target()
 			localRefName := strings.Replace(name, "refs/remotes/origin", "refs/heads", 1)
 			_, err = repo.References.Create(localRefName, oid, true, "")
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
 	}
@@ -364,7 +369,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 				TransferProgressCallback: func(stats git.TransferProgress) git.ErrorCode {
 					select {
 					case <-ctx.Done():
-						innerErr = ctx.Err()
+						innerErr = errors.WithStack(ctx.Err())
 						return git.ErrGeneric
 					default:
 					}
@@ -379,7 +384,7 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 			},
 		}, "")
 		if innerErr != nil {
-			return nil, errors.WithStack(innerErr)
+			return nil, innerErr
 		} else if err != nil {
 			return nil, errors.WithStack(err)
 		}

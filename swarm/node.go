@@ -399,12 +399,12 @@ func (n *Node) Push(ctx context.Context, opts *nodep2p.PushOptions) (string, err
 func (n *Node) FetchAndSetRef(ctx context.Context, opts *nodep2p.FetchOptions) ([]string, error) {
 	repoID, err := opts.Repo.RepoID()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	updatedRefs, err := nodep2p.FetchAndSetRef(ctx, opts)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	n.EventBus.NotifyWatchers(MaybeEvent{
@@ -422,12 +422,12 @@ func (n *Node) FetchAndSetRef(ctx context.Context, opts *nodep2p.FetchOptions) (
 func (n *Node) Pull(ctx context.Context, opts *nodep2p.PullOptions) ([]string, error) {
 	repoID, err := opts.Repo.RepoID()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	updatedRefs, err := nodep2p.Pull(ctx, opts)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	n.EventBus.NotifyWatchers(MaybeEvent{
@@ -494,7 +494,7 @@ func (n *Node) RepoAtPathOrID(path string, repoID string) (*repo.Repo, error) {
 func (n *Node) TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error) {
 	r, err := n.repoManager.TrackRepo(repoPath, forceReload)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	repoID, err := r.RepoID()

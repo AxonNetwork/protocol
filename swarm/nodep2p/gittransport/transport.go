@@ -16,7 +16,7 @@ import (
 	"github.com/Conscience/protocol/swarm/wire"
 )
 
-type ConscienceTransport struct {
+type AxonTransport struct {
 	repoID string
 	remote *git.Remote
 	node   INode
@@ -31,21 +31,21 @@ type INode interface {
 
 func Register(node INode) error {
 	return git.RegisterTransport("axon", func(remote *git.Remote) (git.Transport, error) {
-		return &ConscienceTransport{remote: remote, node: node}, nil
+		return &AxonTransport{remote: remote, node: node}, nil
 	})
 }
 
-func (t *ConscienceTransport) SetCustomHeaders(headers []string) error {
+func (t *AxonTransport) SetCustomHeaders(headers []string) error {
 	return nil
 }
 
-func (t *ConscienceTransport) Connect(url string) error {
+func (t *AxonTransport) Connect(url string) error {
 	log.Warnln("TRANSPORT Connect", t.repoID)
 	t.repoID = strings.Replace(url, "axon://", "", -1)
 	return nil
 }
 
-func (t *ConscienceTransport) Ls() ([]git.RemoteHead, error) {
+func (t *AxonTransport) Ls() ([]git.RemoteHead, error) {
 	log.Warnln("TRANSPORT Ls", t.repoID)
 	// Enumerate the refs from the smart contract
 	var headCommitHash string
@@ -54,7 +54,7 @@ func (t *ConscienceTransport) Ls() ([]git.RemoteHead, error) {
 	err := t.node.ForEachRemoteRef(context.TODO(), t.repoID, func(ref wire.Ref) (bool, error) {
 		oid, err := git.NewOid(ref.CommitHash)
 		if err != nil {
-			return false, err
+			return false, errors.WithStack(err)
 		}
 		refsList = append(refsList, git.RemoteHead{Id: oid, Name: ref.RefName})
 
@@ -67,9 +67,10 @@ func (t *ConscienceTransport) Ls() ([]git.RemoteHead, error) {
 	if err != nil {
 		return nil, err
 	} else if len(refsList) == 0 {
+		log.Errorf("TRANSPORT err: repo %v has no refs", t.repoID)
 		return []git.RemoteHead{}, nil
 	} else if headCommitHash == "" {
-		return nil, errors.Errorf("ConscienceTransport.Ls: repo %v has no refs/heads/master", t.repoID)
+		return nil, errors.Errorf("AxonTransport.Ls: repo %v has no refs/heads/master", t.repoID)
 	}
 
 	// Before emitting the concrete refs, we have to emit the symbolic ref for HEAD
@@ -82,14 +83,14 @@ func (t *ConscienceTransport) Ls() ([]git.RemoteHead, error) {
 	return refsList, nil
 }
 
-func (t *ConscienceTransport) NegotiateFetch(r *git.Repository, wants []git.RemoteHead) error {
+func (t *AxonTransport) NegotiateFetch(r *git.Repository, wants []git.RemoteHead) error {
 	log.Warnln("TRANSPORT NegotiateFetch", t.repoID)
 	t.repo = &repo.Repo{Repository: r}
 	t.wants = wants
 	return nil
 }
 
-func (t *ConscienceTransport) DownloadPack(r *git.Repository, progress *git.TransferProgress, progressCb git.TransferProgressCallback) error {
+func (t *AxonTransport) DownloadPack(r *git.Repository, progress *git.TransferProgress, progressCb git.TransferProgressCallback) error {
 	log.Warnln("TRANSPORT DownloadPack", t.repoID)
 	err := t.fetchFromCommit(t.repoID, t.repo, t.wants[0].Id.String(), progressCb)
 	if err != nil {
@@ -98,25 +99,25 @@ func (t *ConscienceTransport) DownloadPack(r *git.Repository, progress *git.Tran
 	return nil
 }
 
-func (t *ConscienceTransport) IsConnected() (bool, error) {
+func (t *AxonTransport) IsConnected() (bool, error) {
 	log.Warnln("TRANSPORT IsConnected", t.repoID)
 	return true, nil
 }
 
-func (t *ConscienceTransport) Cancel() {
+func (t *AxonTransport) Cancel() {
 	log.Warnln("TRANSPORT Cancel", t.repoID)
 }
 
-func (t *ConscienceTransport) Close() error {
+func (t *AxonTransport) Close() error {
 	log.Warnln("TRANSPORT Close", t.repoID)
 	return nil
 }
 
-func (t *ConscienceTransport) Free() {
+func (t *AxonTransport) Free() {
 	log.Warnln("TRANSPORT Free", t.repoID)
 }
 
-func (t *ConscienceTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashStr string, progressCb git.TransferProgressCallback) error {
+func (t *AxonTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashStr string, progressCb git.TransferProgressCallback) error {
 	commitHash, err := git.NewOid(commitHashStr)
 	if err != nil {
 		return nil
