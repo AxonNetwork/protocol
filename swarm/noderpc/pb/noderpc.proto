@@ -44,6 +44,8 @@ service NodeRPC {
 
   rpc SetFileChunking(SetFileChunkingRequest) returns (SetFileChunkingResponse) {}
   rpc Watch(WatchRequest) returns (stream WatchResponse) {}
+
+  rpc CreateCommit(stream CreateCommitRequest) returns (CreateCommitResponse) {}
 }
 
 message SetUsernameRequest {
@@ -476,5 +478,54 @@ message WatchResponse {
         PushedRepoEvent pushedRepoEvent = 3;
         UpdatedRefEvent updatedRefEvent = 4;
     }
+}
+
+message CreateCommitRequest {
+    message Header {
+        string repoID = 1;
+        bytes parentCommitHash = 2;
+        string refName = 3;
+        string authorName = 4;
+        string authorEmail = 5;
+        string commitMessage = 6;
+    }
+
+    message FileOperation {
+        message UpsertHeader {
+            string filename = 1;
+            uint64 uncompressedSize = 2;
+            uint64 ctime = 3;
+            uint64 mtime = 4;
+        }
+        message UpsertData {
+            bytes data = 1;
+            bool end = 2;
+        }
+
+        message Delete {
+            string filename = 1;
+        }
+
+        // @@TODO: Rename
+
+        oneof operation {
+            UpsertHeader upsertHeader = 1;
+            UpsertData upsertData = 2;
+            Delete delete = 3;
+        }
+    }
+
+    message Done {}
+
+    oneof payload {
+        Header header = 1;
+        FileOperation fileOperation = 2;
+        Done done = 3;
+    }
+}
+
+message CreateCommitResponse {
+    bool success = 1;
+    bytes commitHash = 2;
 }
 

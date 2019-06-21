@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -971,5 +973,269 @@ func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) erro
 		}
 	}
 
+	return nil
+}
+
+func (s *Server) CreateCommit(server pb.NodeRPC_CreateCommitServer) error {
+	// @@TODO: per-repo mutex
+
+	pkt, err := server.Recv()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	pktHeader := pkt.GetHeader()
+	if pktHeader == nil {
+		return errors.New("[noderpc] CreateCommit protocol error: did not receive a header packet")
+	}
+	fmt.Printf("PACKET (header): %+v\n", pktHeader)
+
+	r := s.node.RepoManager().Repo(pktHeader.RepoID)
+	if r == nil {
+		return errors.Wrapf(repo.Err404, "[noderpc] CreateCommit bad request:")
+	}
+
+	if len(pktHeader.ParentCommitHash) != 20 {
+		return errors.New("[noderpc] CreateCommit bad request: ParentCommitHash must be 20 bytes")
+	}
+
+	//
+	// Create a blank index.  If a parent commit was specified, copy it into the index as our
+	// initial index state.
+	//
+	idx, err := git.NewIndex()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	var parentCommit *git.Commit
+	if parentCommitHash := util.OidFromBytes(pktHeader.ParentCommitHash); !parentCommitHash.IsZero() {
+		parentCommit, err = r.LookupCommit(parentCommitHash)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		parentCommitTree, err := parentCommit.Tree()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		err = idx.ReadTree(parentCommitTree)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	branch, err := r.LookupBranch(pktHeader.RefName, git.BranchLocal)
+	if git.IsErrorCode(err, git.ErrNotFound) == false {
+		if parentCommit == nil {
+			return errors.New("[noderpc] CreateCommit bad request: that branch already exists.  You must specify its current HEAD as the ParentCommitHash if you want to add a new commit to it.")
+		}
+
+		branchHeadObj, err := branch.Peel(git.ObjectCommit)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		branchHeadCommit, err := branchHeadObj.AsCommit()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		if branchHeadCommit.Id().Equal(parentCommit.Id()) == false {
+			return errors.New("[noderpc] CreateCommit bad request: the parent commit you specified is not the current HEAD of the branch you specified")
+		}
+	}
+
+	//
+	// Stream the updates into the new index and the ODB
+	//
+	odb, err := r.Odb()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	var (
+		receivingUpsertData bool
+		upsertHeader        *pb.CreateCommitRequest_FileOperation_UpsertHeader
+		writeStream         *git.OdbWriteStream
+	)
+	defer func() {
+		if writeStream != nil {
+			writeStream.Close()
+		}
+	}()
+	for {
+		pkt, err = server.Recv()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		// If we receive a 'Done' packet, break out of the read loop
+		if pkt.GetDone() != nil {
+			break
+		}
+
+		// Otherwise, we read a stream of FileOperation packets that build the commit
+		payload := pkt.GetFileOperation()
+		if payload == nil {
+			return errors.New("[noderpc] CreateCommit protocol error: unexpected packet")
+		}
+
+		if _upsertHeader := payload.GetUpsertHeader(); _upsertHeader != nil {
+			upsertHeader = _upsertHeader
+			fmt.Printf("PACKET (upsert header): %+v\n", upsertHeader)
+
+			if receivingUpsertData {
+				return errors.New("[noderpc] CreateCommit protocol error: unexpected packet")
+			} else if upsertHeader.Filename == "" {
+				return errors.New("[noderpc] CreateCommit bad request: missing filename")
+			} else if upsertHeader.UncompressedSize == 0 {
+				return errors.New("[noderpc] CreateCommit bad request: uncompressedSize must be > 0")
+			} else if upsertHeader.Ctime == 0 {
+				return errors.New("[noderpc] CreateCommit bad request: ctime must be > 0")
+			} else if upsertHeader.Mtime == 0 {
+				return errors.New("[noderpc] CreateCommit bad request: mtime must be > 0")
+			}
+			if upsertHeader.Ctime > upsertHeader.Mtime {
+				log.Warnln("[noderpc] CreateCommit: ctime > mtime")
+			}
+
+			receivingUpsertData = true
+
+			writeStream, err = odb.NewWriteStream(int64(upsertHeader.UncompressedSize), git.ObjectBlob)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+
+		} else if upsertData := payload.GetUpsertData(); upsertData != nil {
+			fmt.Printf("PACKET (upsert data): {End: %v, Len: %v}\n", upsertData.End, len(upsertData.Data))
+
+			if upsertData.End == false {
+				// This is a 'data' packet
+				n, err := writeStream.Write(upsertData.Data)
+				if err != nil {
+					return errors.WithStack(err)
+				} else if n < len(upsertData.Data) {
+					return errors.New("[noderpc] CreateCommit i/o error: did not finish writing")
+				}
+				log.Infof("[noderpc] (%v) got %v bytes", upsertHeader.Filename, len(upsertData.Data))
+
+			} else if upsertData.End == true {
+				// This is an 'end of data' packet
+				receivingUpsertData = false
+
+				err = writeStream.Close()
+				if err != nil {
+					return errors.WithStack(err)
+				}
+
+				oid := writeStream.Id
+				writeStream = nil
+
+				entry, err := idx.EntryByPath(upsertHeader.Filename, int(git.IndexStageNormal))
+				if err != nil && git.IsErrorCode(err, git.ErrNotFound) == false {
+					return errors.WithStack(err)
+
+				} else if git.IsErrorCode(err, git.ErrNotFound) {
+					// Adding a new entry
+					idx.Add(&git.IndexEntry{
+						Ctime: git.IndexTime{
+							Seconds: int32(upsertHeader.Ctime),
+							// Nanoseconds: uint32(time.Now().UnixNano()),
+						},
+						Mtime: git.IndexTime{
+							Seconds: int32(upsertHeader.Mtime),
+						},
+						Mode: git.FilemodeBlob,
+						Uid:  uint32(os.Getuid()),
+						Gid:  uint32(os.Getgid()),
+						Size: uint32(upsertHeader.UncompressedSize),
+						Id:   &oid,
+						Path: upsertHeader.Filename,
+					})
+
+				} else {
+					// Updating an existing entry
+					entry.Id = &oid
+					entry.Size = uint32(upsertHeader.UncompressedSize)
+					entry.Ctime.Seconds = int32(upsertHeader.Ctime)
+					entry.Mtime.Seconds = int32(upsertHeader.Mtime)
+				}
+			}
+
+		} else if delete := payload.GetDelete(); delete != nil {
+			if delete.Filename == "" {
+				return errors.New("[noderpc] CreateCommit bad request: missing filename")
+			}
+
+			err = idx.RemoveByPath(delete.Filename)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+
+		} else {
+			return errors.New("[noderpc] CreateCommit protocol error: received empty packet")
+		}
+	}
+
+	log.Debugln("[noderpc] CreateCommit: finished update packets")
+
+	//
+	// Write the new tree object to disk
+	//
+	treeOid, err := idx.WriteTreeTo(r.Repository)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	log.Debugln("[noderpc] CreateCommit: wrote tree to disk", treeOid)
+
+	tree, err := r.LookupTree(treeOid)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	//
+	// Create a commit based on the new tree
+	//
+	var (
+		now       = time.Now()
+		message   = pktHeader.CommitMessage
+		author    = &git.Signature{Name: pktHeader.AuthorName, Email: pktHeader.AuthorEmail, When: now}
+		committer = &git.Signature{Name: pktHeader.AuthorName, Email: pktHeader.AuthorEmail, When: now}
+	)
+
+	var parentCommits []*git.Commit
+	if parentCommit != nil {
+		parentCommits = append(parentCommits, parentCommit)
+	}
+
+	newCommitHash, err := r.CreateCommit("refs/heads/"+pktHeader.RefName, author, committer, message, tree, parentCommits...)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	log.Debugln("[noderpc] CreateCommit: created commit", newCommitHash)
+
+	//
+	// Send an Ethereum transaction updating the ref to the new commit
+	//
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second) // @@TODO: make this configurable
+	_, err = s.node.Push(ctx, &nodep2p.PushOptions{
+		Node:       s.node,
+		Repo:       r,
+		BranchName: pktHeader.RefName,
+		ProgressCb: func(percent int) {
+			// @@TODO: stream progress over RPC
+		},
+	})
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	log.Debugln("[noderpc] CreateCommit: pushed to network")
+
+	err = server.SendAndClose(&pb.CreateCommitResponse{Success: true, CommitHash: newCommitHash[:]})
+	if err != nil {
+		return errors.WithStack(err)
+	}
 	return nil
 }
