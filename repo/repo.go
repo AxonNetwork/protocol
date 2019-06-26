@@ -380,7 +380,7 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 	return nil
 }
 
-func (r *Repo) ConscienceRemote() (*git.Remote, error) {
+func (r *Repo) AxonRemote() (*git.Remote, error) {
 	remoteNames, err := r.Remotes.List()
 	if err != nil {
 		return nil, errors.WithStack(err)

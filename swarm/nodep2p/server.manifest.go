@@ -23,17 +23,22 @@ import (
 func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	defer stream.Close()
 
+	var err error
+	defer func() {
+		if err != nil {
+			log.Errorf("[manifest server] %+v", errors.WithStack(err))
+		}
+	}()
+
 	// Read the request packet
 	var req GetManifestRequest
-	err := ReadStructPacket(stream, &req)
+	err = ReadStructPacket(stream, &req)
 	if err != nil {
-		log.Errorf("[manifest server] %+v", errors.WithStack(err))
 		return
 	}
 
 	addr, err := s.node.AddrFromSignedHash(req.Commit[:], req.Signature)
 	if err != nil {
-		log.Errorf("[manifest server] %+v", errors.WithStack(err))
 		return
 	}
 
@@ -42,15 +47,13 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 
 	hasAccess, err := s.node.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
-		log.Errorf("[manifest server] %+v", errors.WithStack(err))
 		return
 	}
 
 	if hasAccess == false {
 		log.Warnf("[manifest server] address 0x%0x does not have pull access to repo %v", addr.Bytes(), req.RepoID)
-		err := WriteStructPacket(stream, &GetManifestResponse{ErrUnauthorized: true})
+		err = WriteStructPacket(stream, &GetManifestResponse{ErrUnauthorized: true})
 		if err != nil {
-			log.Errorf("[manifest server] %+v", errors.WithStack(err))
 			return
 		}
 		return
@@ -59,9 +62,8 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	r := s.node.Repo(req.RepoID)
 	if r == nil || !r.HasObject(req.Commit[:]) {
 		log.Warnf("[manifest server] cannot find repo %v: %v", req.RepoID, req.Commit.String())
-		err := WriteStructPacket(stream, &GetManifestResponse{ErrMissingCommit: true})
+		err = WriteStructPacket(stream, &GetManifestResponse{ErrMissingCommit: true})
 		if err != nil {
-			log.Errorf("[manifest server] %+v", errors.WithStack(err))
 			return
 		}
 		return
@@ -69,25 +71,21 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 
 	err = WriteStructPacket(stream, &GetManifestResponse{SendingManifest: true})
 	if err != nil {
-		log.Errorf("[manifest server] %+v", errors.WithStack(err))
 		return
 	}
 
 	manifestStream, err := getManifestStream(r, req.Commit, CheckoutType(req.CheckoutType))
 	if err != nil {
-		log.Errorf("[manifest server] %+v", errors.WithStack(err))
 		return
 	}
 
 	_, err = io.Copy(stream, manifestStream)
 	if err != nil {
-		log.Errorf("[manifest server] %+v", errors.WithStack(err))
 		return
 	}
 
 	err = WriteStructPacket(stream, &ManifestObject{End: true})
 	if err != nil {
-		log.Errorf("[manifest server] %+v", errors.WithStack(err))
 		return
 	}
 

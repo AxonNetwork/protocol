@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/libgit2/git2go"
-	peer "github.com/libp2p/go-libp2p-peer"
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/config"
@@ -18,12 +17,6 @@ type Client struct {
 	config *config.Config
 	repo   *repo.Repo
 	repoID string
-}
-
-type job struct {
-	objectID    []byte
-	size        int64
-	failedPeers map[peer.ID]bool
 }
 
 type MaybeFetchFromCommitPacket struct {
@@ -58,16 +51,44 @@ func NewClient(node INode, repoID string, repoPath string, config *config.Config
 	return sc
 }
 
-func (sc *Client) FetchFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) (<-chan MaybeFetchFromCommitPacket, int64, int64) {
+func (sc *Client) FetchFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType, remote *git.Remote) (<-chan MaybeFetchFromCommitPacket, *Manifest, error) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 
-	gitObjects, chunkObjects, uncompressedSize, err := sc.GetManifest(ctx, commitID, checkoutType)
+	manifest, err := sc.requestManifestFromSwarm(ctx, commitID, checkoutType)
 	if err != nil {
-		go func() {
-			defer close(chOut)
-			chOut <- MaybeFetchFromCommitPacket{Error: err}
-		}()
-		return chOut, 0, 0
+		return nil, nil, err
+	}
+
+	// Filter objects we already have out of the manifest
+	var missingGitObjects ManifestObjectSet
+	var missingChunkObjects ManifestObjectSet
+	if sc.repo != nil {
+		for i := range manifest.GitObjects {
+			if !sc.repo.HasObject(manifest.GitObjects[i].Hash) {
+				missingGitObjects = append(missingGitObjects, manifest.GitObjects[i])
+			}
+		}
+		for i := range manifest.ChunkObjects {
+			if !sc.repo.HasObject(manifest.ChunkObjects[i].Hash) {
+				missingChunkObjects = append(missingChunkObjects, manifest.ChunkObjects[i])
+			}
+		}
+	} else {
+		missingGitObjects = manifest.GitObjects
+		missingChunkObjects = manifest.ChunkObjects
+	}
+	manifest.GitObjects = missingGitObjects
+	manifest.ChunkObjects = missingChunkObjects
+
+	// Allow the caller to respond to the contents of the manifest prior to initiating the download.
+	// This is how we implement replication policies.
+	if remote != nil {
+		if cb := GetCheckManifestCallback(remote); cb != nil {
+			err = cb(manifest)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 
 	wg := &sync.WaitGroup{}
@@ -75,22 +96,31 @@ func (sc *Client) FetchFromCommit(ctx context.Context, commitID git.Oid, checkou
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		gitCh := sc.FetchGitPackfiles(ctx, gitObjects)
-		for packet := range gitCh {
-			chOut <- packet
+		for pkt := range sc.FetchGitPackfiles(ctx, manifest.GitObjects) {
+			select {
+			case chOut <- pkt:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		chunks := ManifestObjectsToHashes(chunkObjects)
-		chunkCh := sc.FetchChunks(ctx, chunks)
-		for packet := range chunkCh {
-			if packet.Error != nil {
-				chOut <- MaybeFetchFromCommitPacket{Error: err}
+		chunks := ManifestObjectsToHashes(manifest.ChunkObjects)
+		for pkt := range sc.FetchChunks(ctx, chunks) {
+			var toSend MaybeFetchFromCommitPacket
+			if pkt.Error != nil {
+				toSend.Error = pkt.Error
 			} else {
-				chOut <- MaybeFetchFromCommitPacket{Chunk: packet.Chunk}
+				toSend.Chunk = pkt.Chunk
+			}
+
+			select {
+			case chOut <- toSend:
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
@@ -100,11 +130,10 @@ func (sc *Client) FetchFromCommit(ctx context.Context, commitID git.Oid, checkou
 		close(chOut)
 	}()
 
-	return chOut, uncompressedSize, int64(len(chunkObjects))
-
+	return chOut, manifest, nil
 }
 
-func ManifestObjectsToHashes(objects []ManifestObject) [][]byte {
+func ManifestObjectsToHashes(objects ManifestObjectSet) [][]byte {
 	hashes := make([][]byte, 0)
 	for _, obj := range objects {
 		hashes = append(hashes, obj.Hash)
@@ -112,26 +141,48 @@ func ManifestObjectsToHashes(objects []ManifestObject) [][]byte {
 	return hashes
 }
 
-func (sc *Client) FetchChunksFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) (<-chan MaybeChunk, int64) {
+func (sc *Client) FetchChunksFromCommit(ctx context.Context, commitID git.Oid, checkoutType CheckoutType, remote *git.Remote) (<-chan MaybeChunk, *Manifest, error) {
 	chOut := make(chan MaybeChunk)
 
-	_, chunkObjects, _, err := sc.GetManifest(ctx, commitID, checkoutType)
+	manifest, err := sc.requestManifestFromSwarm(ctx, commitID, checkoutType)
 	if err != nil {
-		go func() {
-			defer close(chOut)
-			chOut <- MaybeChunk{Error: err}
-		}()
-		return chOut, 0
+		return nil, nil, err
 	}
 
-	chunks := ManifestObjectsToHashes(chunkObjects)
-	go func() {
-		chunkCh := sc.FetchChunks(ctx, chunks)
-		for packet := range chunkCh {
-			chOut <- packet
+	// Filter objects we already have out of the manifest
+	var missingChunkObjects ManifestObjectSet
+	if sc.repo != nil {
+		for i := range manifest.ChunkObjects {
+			if !sc.repo.HasObject(manifest.ChunkObjects[i].Hash) {
+				missingChunkObjects = append(missingChunkObjects, manifest.ChunkObjects[i])
+			}
 		}
-		close(chOut)
+	} else {
+		missingChunkObjects = manifest.ChunkObjects
+	}
+	manifest.ChunkObjects = missingChunkObjects
+
+	// Allow the caller to respond to the contents of the manifest prior to initiating the download.
+	// This is how we implement replication policies.
+	if cb := GetCheckManifestCallback(remote); cb != nil {
+		err = cb(manifest)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	go func() {
+		defer close(chOut)
+
+		chunks := ManifestObjectsToHashes(manifest.ChunkObjects)
+		for packet := range sc.FetchChunks(ctx, chunks) {
+			select {
+			case chOut <- packet:
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
-	return chOut, int64(len(chunkObjects))
+	return chOut, manifest, nil
 }

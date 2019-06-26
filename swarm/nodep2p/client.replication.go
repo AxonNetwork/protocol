@@ -5,72 +5,39 @@ import (
 	"sync"
 	"time"
 
-	peer "github.com/libp2p/go-libp2p-peer"
 	"github.com/pkg/errors"
+
+	"github.com/ipfs/go-cid"
+	netp2p "github.com/libp2p/go-libp2p-net"
+	"github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-peerstore"
+	"github.com/libp2p/go-libp2p-protocol"
 
 	"github.com/Conscience/protocol/log"
 	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
-func RequestBecomeReplicator(ctx context.Context, n INode, repoID string) error {
-	cfg := n.GetConfig()
-	for _, pubkeyStr := range cfg.Node.KnownReplicators {
-		peerID, err := peer.IDB58Decode(pubkeyStr)
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: bad pubkey string '%v': %v", pubkeyStr, err)
-			continue
-		}
-
-		stream, err := n.NewStream(ctx, peerID, BECOME_REPLICATOR_PROTO)
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: error connecting to peer %v: %v", peerID, err)
-			continue
-		}
-
-		err = WriteStructPacket(stream, &BecomeReplicatorRequest{RepoID: repoID})
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: error writing request: %v", err)
-			continue
-		}
-
-		resp := BecomeReplicatorResponse{}
-		err = ReadStructPacket(stream, &resp)
-		if err != nil {
-			log.Errorf("RequestBecomeReplicator: error reading response: %v", err)
-			continue
-		}
-
-		if resp.Error == "" {
-			log.Infof("RequestBecomeReplicator: peer %v agreed to replicate %v", peerID, repoID)
-		} else {
-			log.Infof("RequestBecomeReplicator: peer %v refused to replicate %v (err: %v)", peerID, repoID, resp.Error)
-		}
-	}
-	return nil
+type replicationNode interface {
+	ID() peer.ID
+	FindProvidersAsync(ctx context.Context, key cid.Cid, count int) <-chan peerstore.PeerInfo
+	NewStream(ctx context.Context, peerID peer.ID, pids ...protocol.ID) (netp2p.Stream, error)
 }
 
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
-func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Progress {
-	progressCh := make(chan Progress)
+func RequestReplication(ctx context.Context, n replicationNode, repoID string) (<-chan Progress, error) {
 	c, err := util.CidForString("replicate:" + repoID)
 	if err != nil {
-		go func() {
-			defer close(progressCh)
-			progressCh <- Progress{Error: err}
-		}()
-		return progressCh
+		return nil, err
 	}
 
 	// @@TODO: configurable timeout
 	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	chProviders := n.FindProvidersAsync(ctxTimeout, c, 8)
-
 	peerChs := make(map[peer.ID]chan Progress)
-	for provider := range chProviders {
+	for provider := range n.FindProvidersAsync(ctxTimeout, c, 8) {
 		if provider.ID == n.ID() {
 			continue
 		}
@@ -80,12 +47,13 @@ func RequestReplication(ctx context.Context, n INode, repoID string) <-chan Prog
 		peerChs[provider.ID] = peerCh
 	}
 
-	go combinePeerChs(peerChs, progressCh)
+	chProgress := make(chan Progress)
+	go combinePeerChs(peerChs, chProgress)
 
-	return progressCh
+	return chProgress, nil
 }
 
-func requestPeerReplication(ctx context.Context, n INode, repoID string, peerID peer.ID, peerCh chan Progress) {
+func requestPeerReplication(ctx context.Context, n replicationNode, repoID string, peerID peer.ID, peerCh chan Progress) {
 	var err error
 
 	defer func() {

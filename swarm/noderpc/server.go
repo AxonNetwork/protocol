@@ -117,12 +117,6 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 
 	log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
 
-	// Ping other nodes in the swarm to ask them to replicate this repo
-	err = s.node.RequestBecomeReplicator(ctx, req.RepoID)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
 	// If no path was specified, create the repo in the ReplicationRoot
 	path := req.Path
 	if path == "" {
@@ -279,12 +273,20 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, totalChunks := s.node.FetchFromCommit(context.TODO(), req.RepoID, req.Path, *util.OidFromBytes(req.Commit), wire.CheckoutType(req.CheckoutType))
+	ctx := server.Context()
+	cfg := s.node.GetConfig()
+	ch, manifest, err := nodep2p.NewClient(s.node, req.RepoID, req.Path, &cfg).FetchFromCommit(ctx, *util.OidFromBytes(req.Commit), wire.CheckoutType(req.CheckoutType), nil)
+	if err != nil {
+		return err
+	}
 
-	err := server.Send(&pb.FetchFromCommitResponse{
+	uncompressedSize := manifest.GitObjects.UncompressedSize() + manifest.ChunkObjects.UncompressedSize()
+	totalChunks := len(manifest.ChunkObjects)
+
+	err = server.Send(&pb.FetchFromCommitResponse{
 		Payload: &pb.FetchFromCommitResponse_Header_{&pb.FetchFromCommitResponse_Header{
 			UncompressedSize: uncompressedSize,
-			TotalChunks:      totalChunks,
+			TotalChunks:      int64(totalChunks),
 		}},
 	})
 	if err != nil {
@@ -406,7 +408,7 @@ func (s *Server) GetLocalRepos(req *pb.GetLocalReposRequest, server pb.NodeRPC_G
 }
 
 func (s *Server) SetReplicationPolicy(ctx context.Context, req *pb.SetReplicationPolicyRequest) (*pb.SetReplicationPolicyResponse, error) {
-	err := s.node.SetReplicationPolicy(req.RepoID, req.ShouldReplicate)
+	err := s.node.SetReplicationPolicy(req.RepoID, req.MaxBytes)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -414,7 +416,7 @@ func (s *Server) SetReplicationPolicy(ctx context.Context, req *pb.SetReplicatio
 }
 
 func (s *Server) AnnounceRepoContent(ctx context.Context, req *pb.AnnounceRepoContentRequest) (*pb.AnnounceRepoContentResponse, error) {
-	err := s.node.AnnounceRepoContent(ctx, req.RepoID)
+	err := s.node.AnnounceRepo(ctx, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
@@ -551,7 +553,10 @@ func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRP
 	ctx, cancel := context.WithCancel(server.Context())
 	defer cancel()
 
-	ch := s.node.RequestReplication(ctx, req.RepoID)
+	ch, err := nodep2p.RequestReplication(ctx, s.node, req.RepoID)
+	if err != nil {
+		return err
+	}
 
 	for progress := range ch {
 		select {
@@ -569,7 +574,7 @@ func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRP
 		}
 	}
 
-	err := server.Send(&pb.ProgressPacket{Current: 100, Total: 100, Done: true})
+	err = server.Send(&pb.ProgressPacket{Current: 100, Total: 100, Done: true})
 	if err != nil {
 		return errors.WithStack(err)
 	}

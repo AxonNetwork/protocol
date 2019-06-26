@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
@@ -19,17 +20,18 @@ import (
 type AxonTransport struct {
 	repoID string
 	remote *git.Remote
-	node   INode
+	node   nodep2p.INode
 	repo   *repo.Repo
 	wants  []git.RemoteHead
 }
 
-type INode interface {
-	FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType wire.CheckoutType) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64, int64)
-	ForEachRemoteRef(ctx context.Context, repoID string, fn func(wire.Ref) (bool, error)) error
-}
+// type INode interface {
+// 	FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType wire.CheckoutType) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64, int64)
+// 	ForEachRemoteRef(ctx context.Context, repoID string, fn func(wire.Ref) (bool, error)) error
+// 	GetConfig() config.Config
+// }
 
-func Register(node INode) error {
+func Register(node nodep2p.INode) error {
 	return git.RegisterTransport("axon", func(remote *git.Remote) (git.Transport, error) {
 		return &AxonTransport{remote: remote, node: node}, nil
 	})
@@ -120,13 +122,22 @@ func (t *AxonTransport) Free() {
 func (t *AxonTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashStr string, progressCb git.TransferProgressCallback) error {
 	commitHash, err := git.NewOid(commitHashStr)
 	if err != nil {
-		return nil
+		return err
 	} else if r.HasObject(commitHash[:]) {
 		return nil
 	}
 
-	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, totalChunks := t.node.FetchFromCommit(context.TODO(), repoID, r.Path(), *commitHash, wire.CheckoutTypeWorking)
+	// @@TODO: make context timeout configurable
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	cfg := t.node.GetConfig()
+	ch, manifest, err := nodep2p.NewClient(t.node, repoID, r.Path(), &cfg).FetchFromCommit(ctx, *commitHash, wire.CheckoutTypeWorking, t.remote)
+	if err != nil {
+		return err
+	}
+
+	totalUncompressedSize := uint(manifest.GitObjects.UncompressedSize() + manifest.ChunkObjects.UncompressedSize())
 
 	type PackfileDownload struct {
 		repo.PackfileWriter
@@ -238,9 +249,7 @@ func (t *AxonTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashS
 			log.Errorln("bad packet")
 		}
 
-		log.Infoln("@@TODO: gittransport totalChunks => totalChunkBytes", totalChunks)
-
-		progressCb(git.TransferProgress{TotalObjects: uint(uncompressedSize), ReceivedObjects: uint(written), ReceivedBytes: uint(written)})
+		progressCb(git.TransferProgress{TotalObjects: totalUncompressedSize, ReceivedObjects: uint(written), ReceivedBytes: uint(written)})
 	}
 
 	return nil

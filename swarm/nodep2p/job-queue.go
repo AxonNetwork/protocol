@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/libp2p/go-libp2p-peer"
 )
 
 type jobQueue struct {
@@ -18,6 +20,12 @@ type jobQueue struct {
 	batchTimeout       time.Duration
 	batchSizeUncapped  bool
 	uncapBatchSizeOnce *sync.Once
+}
+
+type job struct {
+	objectID    []byte
+	size        int64
+	failedPeers map[peer.ID]bool
 }
 
 func newJobQueue(ctx context.Context, jobs []job, batchSize uint, batchTimeout time.Duration) *jobQueue {

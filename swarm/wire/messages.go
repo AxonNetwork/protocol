@@ -49,9 +49,12 @@ type GetChunkResponsePacket struct {
 type CheckoutType int
 
 const (
-	CheckoutTypeSparse  CheckoutType = 0
+	// A 'sparse' checkout includes no large file chunks.  Chunked files are left un-decoded.
+	CheckoutTypeSparse CheckoutType = 0
+	// A 'working' checkout includes all normal git objects, but only the large file chunks associated with the current HEAD commit
 	CheckoutTypeWorking CheckoutType = 1
-	CheckoutTypeFull    CheckoutType = 2
+	// A 'full' checkout includes all normal git objects and all large file chunks.
+	CheckoutTypeFull CheckoutType = 2
 )
 
 type GetManifestRequest struct {
@@ -98,14 +101,4 @@ type LocalRepo struct {
 type Ref struct {
 	RefName    string
 	CommitHash string
-}
-
-type BecomeReplicatorRequest struct {
-	RepoIDLen int `struc:"sizeof=RepoID"`
-	RepoID    string
-}
-
-type BecomeReplicatorResponse struct {
-	ErrorLen int64 `struc:"sizeof=Error"`
-	Error    string
 }

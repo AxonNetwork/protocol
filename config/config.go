@@ -1,52 +1,57 @@
 package config
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/log"
 )
 
 type Config struct {
-	Node      *NodeConfig      `toml:"node"`
-	RPCClient *RPCClientConfig `toml:"rpcclient"`
+	Node      *NodeConfig      `yaml:"Node"`
+	RPCClient *RPCClientConfig `yaml:"RPCClient"`
 
-	configPath string
-	mu         sync.Mutex
+	configPath string     `yaml:"-"`
+	mu         sync.Mutex `yaml:"-"`
 }
 
 type NodeConfig struct {
-	PrivateKeyFile          string
-	P2PListenAddr           string
-	P2PListenPort           int
-	BootstrapPeers          []string
-	RPCListenNetwork        string
-	RPCListenHost           string
-	HTTPListenAddr          string
-	HTTPUsername            string
-	HTTPPassword            string
-	EthereumHost            string
-	ProtocolContract        string
-	EthereumBIP39Seed       string
-	ContentAnnounceInterval Duration
-	ContentRequestInterval  Duration
-	FindProviderTimeout     Duration
-	LocalRepos              []string
-	ReplicationRoot         string
-	ReplicateRepos          []string
-	KnownReplicators        []string
-	ReplicateEverything     bool
-	MaxConcurrentPeers      uint
+	PrivateKeyFile          string                       `yaml:"PrivateKeyFile"`
+	P2PListenAddr           string                       `yaml:"P2PListenAddr"`
+	P2PListenPort           int                          `yaml:"P2PListenPort"`
+	BootstrapPeers          []string                     `yaml:"BootstrapPeers"`
+	RPCListenNetwork        string                       `yaml:"RPCListenNetwork"`
+	RPCListenHost           string                       `yaml:"RPCListenHost"`
+	HTTPListenAddr          string                       `yaml:"HTTPListenAddr"`
+	HTTPUsername            string                       `yaml:"HTTPUsername"`
+	HTTPPassword            string                       `yaml:"HTTPPassword"`
+	EthereumHost            string                       `yaml:"EthereumHost"`
+	ProtocolContract        string                       `yaml:"ProtocolContract"`
+	EthereumBIP39Seed       string                       `yaml:"EthereumBIP39Seed"`
+	ContentAnnounceInterval Duration                     `yaml:"ContentAnnounceInterval"`
+	ContentRequestInterval  Duration                     `yaml:"ContentRequestInterval"`
+	FindProviderTimeout     Duration                     `yaml:"FindProviderTimeout"`
+	LocalRepos              []string                     `yaml:"LocalRepos"`
+	ReplicationRoot         string                       `yaml:"ReplicationRoot"`
+	ReplicationPolicies     map[string]ReplicationPolicy `yaml:"ReplicationPolicies"`
+	MaxConcurrentPeers      uint                         `yaml:"MaxConcurrentPeers"`
 }
 
 type RPCClientConfig struct {
-	Host string
+	Host string `yaml:"Host"`
+}
+
+type ReplicationPolicy struct {
+	MaxBytes int64 `yaml:"MaxBytes"`
+	Bare     bool  `yaml:"Bare"`
+	// Shallow  bool
 }
 
 var DefaultConfig = Config{
@@ -61,7 +66,7 @@ var DefaultConfig = Config{
 		HTTPListenAddr:          ":8081",
 		HTTPUsername:            "admin",
 		HTTPPassword:            "password",
-		EthereumHost:            "http://geth.conscience.network:80",
+		EthereumHost:            "http://hera.axon.science:8545",
 		ProtocolContract:        "0x80e1E5bC2d6933a4C7F832036e140c0609dDC997",
 		EthereumBIP39Seed:       "",
 		ContentAnnounceInterval: Duration(15 * time.Second),
@@ -69,16 +74,11 @@ var DefaultConfig = Config{
 		FindProviderTimeout:     Duration(10 * time.Second),
 		LocalRepos:              []string{},
 		ReplicationRoot:         filepath.Join(env.HOME, "axon"),
-		ReplicateRepos:          []string{},
 		BootstrapPeers: []string{
 			"/dns4/jupiter.axon.science/tcp/1337/p2p/16Uiu2HAm4cL1W1yHcsQuDp9R19qeyAewekCdqyVM39WMykjVL2mt",
 			"/dns4/saturn.axon.science/tcp/1337/p2p/16Uiu2HAkvVjg6mskzSQc6RKYY9YKFd1NQyTmWA8Cif7x5DAtAkFb",
 		},
-		KnownReplicators: []string{
-			"16Uiu2HAm4cL1W1yHcsQuDp9R19qeyAewekCdqyVM39WMykjVL2mt",
-			"16Uiu2HAkvVjg6mskzSQc6RKYY9YKFd1NQyTmWA8Cif7x5DAtAkFb",
-		},
-		ReplicateEverything: false,
+		ReplicationPolicies: map[string]ReplicationPolicy{},
 		MaxConcurrentPeers:  4,
 	},
 	RPCClient: &RPCClientConfig{
@@ -102,10 +102,20 @@ func ReadConfigAtPath(configPath string) (*Config, error) {
 	// Copy the default config
 	cfg := DefaultConfig
 
-	// Decode the config file on top of the defaults
-	_, err := toml.DecodeFile(configPath, &cfg)
+	bs, err := ioutil.ReadFile(configPath)
 	// If the file can't be found, we ignore the error.  Otherwise, return it.
 	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	// Decode the config file on top of the defaults
+	err = yaml.Unmarshal(bs, &cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	bs, err = yaml.Marshal(cfg)
+	if err != nil {
 		return nil, err
 	}
 
@@ -130,9 +140,7 @@ func AttachToLogger(cfg *Config) {
 	log.SetField("config.Node.FindProviderTimeout", cfg.Node.FindProviderTimeout)
 	log.SetField("config.Node.LocalRepos", cfg.Node.LocalRepos)
 	log.SetField("config.Node.ReplicationRoot", cfg.Node.ReplicationRoot)
-	log.SetField("config.Node.ReplicateRepos", cfg.Node.ReplicateRepos)
-	log.SetField("config.Node.KnownReplicators", cfg.Node.KnownReplicators)
-	log.SetField("config.Node.ReplicateEverything", cfg.Node.ReplicateEverything)
+	log.SetField("config.Node.ReplicationPolicies", cfg.Node.ReplicationPolicies)
 	log.SetField("config.RPCClient.Host", cfg.RPCClient.Host)
 }
 
@@ -155,7 +163,10 @@ func (c *Config) save() error {
 	}
 	defer f.Close()
 
-	err = toml.NewEncoder(f).Encode(c)
+	encoder := yaml.NewEncoder(f)
+	encoder.SetIndent(2)
+
+	err = encoder.Encode(c)
 	if err != nil {
 		return err
 	}

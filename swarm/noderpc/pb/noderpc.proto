@@ -187,7 +187,7 @@ message GetLocalReposResponsePacket {
 
 message SetReplicationPolicyRequest {
     string repoID = 1;
-    bool shouldReplicate = 2;
+    int64 maxBytes = 2;
 }
 
 message SetReplicationPolicyResponse {}

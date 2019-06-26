@@ -15,46 +15,22 @@ import (
 	"github.com/Conscience/protocol/util"
 )
 
-func (sc *Client) GetManifest(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, []ManifestObject, int64, error) {
-	manifest, err := sc.requestManifestFromSwarm(ctx, commitID, checkoutType)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-
-	// If we're pulling (instead of cloning), filter objects we already have
-	if sc.repo != nil {
-		filteredManifest := []ManifestObject{}
-		for i := range manifest {
-			if !sc.repo.HasObject(manifest[i].Hash) {
-				filteredManifest = append(filteredManifest, manifest[i])
-			}
-		}
-		manifest = filteredManifest
-	}
-
-	// Split the manifest into git objects and axon chunks
-	var (
-		gitObjects   = []ManifestObject{}
-		chunkObjects = []ManifestObject{}
-	)
-
-	// Calculate the uncompressed size of the entire tree of commits & chunks that will be transferred.
-	var uncompressedSize int64
-	for _, obj := range manifest {
-		uncompressedSize += obj.UncompressedSize
-		if len(obj.Hash) == repo.GIT_HASH_LENGTH {
-			gitObjects = append(gitObjects, obj)
-		} else if len(obj.Hash) == repo.CONSCIENCE_HASH_LENGTH {
-			chunkObjects = append(chunkObjects, obj)
-		} else {
-			log.Errorln("[manifest client] received an oddly sized hash from peer:", obj.Hash)
-		}
-	}
-
-	return gitObjects, chunkObjects, uncompressedSize, nil
+type Manifest struct {
+	GitObjects   ManifestObjectSet
+	ChunkObjects ManifestObjectSet
 }
 
-func (sc *Client) requestManifestFromSwarm(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, error) {
+type ManifestObjectSet []ManifestObject
+
+func (s ManifestObjectSet) UncompressedSize() int64 {
+	var size int64
+	for i := range s {
+		size += s[i].UncompressedSize
+	}
+	return size
+}
+
+func (sc *Client) requestManifestFromSwarm(ctx context.Context, commitID git.Oid, checkoutType CheckoutType) (*Manifest, error) {
 	c, err := util.CidForString(sc.repoID)
 	if err != nil {
 		return nil, err
@@ -77,7 +53,7 @@ func (sc *Client) requestManifestFromSwarm(ctx context.Context, commitID git.Oid
 	return nil, errors.Errorf("could not find provider for repo '%v'", sc.repoID)
 }
 
-func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, commitID git.Oid, checkoutType CheckoutType) ([]ManifestObject, error) {
+func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, commitID git.Oid, checkoutType CheckoutType) (*Manifest, error) {
 	log.Debugf("[manifest client] requesting manifest %v/%v from peer %v", sc.repoID, commitID.String(), peerID.Pretty())
 
 	// Open the stream
@@ -115,7 +91,7 @@ func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, c
 
 	log.Debugf("[manifest client] got manifest header %+v", resp)
 
-	manifest := make([]ManifestObject, 0)
+	manifest := &Manifest{}
 	for {
 		var obj ManifestObject
 		err = ReadStructPacket(stream, &obj)
@@ -129,7 +105,13 @@ func (sc *Client) requestManifestFromPeer(ctx context.Context, peerID peer.ID, c
 			break
 		}
 
-		manifest = append(manifest, obj)
+		if len(obj.Hash) == repo.GIT_HASH_LENGTH {
+			manifest.GitObjects = append(manifest.GitObjects, obj)
+		} else if len(obj.Hash) == repo.CONSCIENCE_HASH_LENGTH {
+			manifest.ChunkObjects = append(manifest.ChunkObjects, obj)
+		} else {
+			log.Errorln("[manifest client] received an oddly sized hash from peer:", obj.Hash)
+		}
 	}
 
 	return manifest, nil

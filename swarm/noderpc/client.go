@@ -191,8 +191,8 @@ func (c *Client) GetLocalRepos(ctx context.Context) (chan MaybeLocalRepo, error)
 	return ch, nil
 }
 
-func (c *Client) SetReplicationPolicy(ctx context.Context, repoID string, shouldReplicate bool) error {
-	_, err := c.client.SetReplicationPolicy(ctx, &pb.SetReplicationPolicyRequest{RepoID: repoID, ShouldReplicate: shouldReplicate})
+func (c *Client) SetReplicationPolicy(ctx context.Context, repoID string, maxBytes int64) error {
+	_, err := c.client.SetReplicationPolicy(ctx, &pb.SetReplicationPolicyRequest{RepoID: repoID, MaxBytes: maxBytes})
 	return errors.WithStack(err)
 }
 

@@ -1,6 +1,7 @@
 package nodehttp
 
 import (
+	// "bytes"
 	"context"
 	"expvar"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/brynbellomy/debugcharts"
 	git "github.com/libgit2/git2go"
+	"gopkg.in/yaml.v3"
 
 	peer "github.com/libp2p/go-libp2p-peer"
 
@@ -39,7 +41,6 @@ func New(node *swarm.Node) *Server {
 
 	router := http.NewServeMux()
 	router.HandleFunc("/", s.handleIndex())
-	router.HandleFunc("/set-replication-policy", s.handleAddReplicatedRepo())
 	router.HandleFunc("/add-peer", s.handleAddPeer())
 	router.HandleFunc("/remove-peer", s.handleRemovePeer())
 	router.HandleFunc("/untrack-repo", s.handleUntrackRepo())
@@ -156,34 +157,13 @@ func (s *Server) handleUntrackRepo() http.HandlerFunc {
 			return
 		}
 
-		err = s.node.SetReplicationPolicy(repoID, false)
+		err = s.node.SetReplicationPolicy(repoID, 0)
 		if err != nil {
 			die500(w, err)
 			return
 		}
 
 		http.Redirect(w, req, "/", http.StatusFound)
-	}
-}
-
-func (s *Server) handleAddReplicatedRepo() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := r.ParseForm()
-		if err != nil {
-			die500(w, err)
-			return
-		}
-
-		repoID := r.Form.Get("repo")
-		shouldReplicate := r.Form.Get("should_replicate") == "true"
-
-		err = s.node.SetReplicationPolicy(repoID, shouldReplicate)
-		if err != nil {
-			die500(w, err)
-			return
-		}
-
-		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
 
@@ -195,16 +175,28 @@ func (s *Server) handleSetConfig() http.HandlerFunc {
 			return
 		}
 
-		// repoPath := req.Form.Get("repoPath")
-		// if repoPath == "" {
-		//     die500(w, err)
-		//     return
-		// }
+		configText := strings.TrimSpace(req.Form.Get("config"))
+		configText = strings.Replace(configText, "\r\n", "\n", -1) // go-yaml shits the bed when it encounters CRLF line endings
+
+		var cfg config.Config
+		err = yaml.Unmarshal([]byte(configText), &cfg)
+		if err != nil {
+			die500(w, err)
+			return
+		}
 
 		s.node.Config.Update(func() error {
-			parseStructForm(req.Form, &s.node.Config.Node)
+			// Have to manually assign these.  Otherwise, go-yaml simply merges map values with
+			// existing map values (which causes problems when trying to delete entries from
+			// .ReplictationPolicies)
+			s.node.Config.Node = cfg.Node
+			s.node.Config.RPCClient = cfg.RPCClient
 			return nil
 		})
+		if err != nil {
+			die500(w, err)
+			return
+		}
 
 		http.Redirect(w, req, "/", http.StatusFound)
 	}
@@ -238,13 +230,13 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		ConfigPath string
 		Username   string
 
-		Config config.Config
+		ConfigText string
+		Config     config.Config
 
 		EthAddress           string
 		ProtocolContractAddr string
 		RPCListenAddr        string
 		LocalRepos           []RepoInfo
-		ReplicateRepos       []string
 
 		Addrs           []string
 		Peers           []Peer
@@ -277,6 +269,13 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 		var state State
 
+		configText, err := yaml.Marshal(s.node.Config)
+		if err != nil {
+			die500(w, err)
+			return
+		}
+		state.ConfigText = string(configText)
+
 		state.ConfigPath = s.node.Config.Path()
 		state.Config = s.node.Config
 		state.Username = username
@@ -295,7 +294,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 		state.PeersConnected = len(s.node.Conns())
 
-		err := s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
+		err = s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
 			if err != nil {
 				return err
@@ -362,8 +361,6 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			return
 		}
 
-		state.ReplicateRepos = s.node.Config.Node.ReplicateRepos
-
 		state.Logs = logger.GetLogs()
 
 		for _, x := range os.Environ() {
@@ -383,6 +380,12 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			return
 		}
 	}
+}
+
+func die400(w http.ResponseWriter, err error) {
+	log.Errorln("[http]", err)
+	w.WriteHeader(400)
+	w.Write([]byte("Bad request: " + err.Error()))
 }
 
 func die500(w http.ResponseWriter, err error) {
@@ -540,6 +543,10 @@ func tplIndex(cfg config.Config) *template.Template {
                 border-left: 0;
                 border-right: 0;
             }
+
+            form#config-form textarea {
+                width: 100%;
+            }
         </style>
     </head>
     <body>
@@ -563,10 +570,11 @@ func tplIndex(cfg config.Config) *template.Template {
 
             <div class="body">
                 <form action="/set-config" method="POST" id="config-form">
-                <table>
-                    ` + generateStructForm(*cfg.Node) + `
-                </table>
-                <button type="submit">Save</button>
+                    <textarea name="config">{{ .ConfigText }}</textarea>` +
+		/*<table>
+		    ` + generateStructForm(*cfg.Node, "", "") + `
+		</table>*/
+		`<button type="submit">Save</button>
                 </form>
             </div>
         </section>
@@ -629,20 +637,6 @@ func tplIndex(cfg config.Config) *template.Template {
             <header>Repos</header>
 
             <div class="body">
-                <label>Replicating repos:</label>
-                <ul>
-                    {{ range .ReplicateRepos }}
-                        <li>{{ . }}</li>
-                    {{ end }}
-                </ul>
-
-                <div><label>Set replication policy</label></div>
-                <form action="/set-replication-policy" method="post">
-                    <div>Repo ID: <input type="text" name="repo" /></div>
-                    <div>Should replicate: <input type="checkbox" name="should_replicate" value="true" /></div>
-                    <div><input type="submit" value="Set" /></div>
-                </form>
-
                 <div><label>Untrack repo</label></div>
                 <form action="/untrack-repo" method="post">
                     <div>Repo path: <input type="text" name="repoPath" /></div>
@@ -817,6 +811,11 @@ func tplIndex(cfg config.Config) *template.Template {
 
             updateLogs()
             attachListeners()
+
+            var configTextarea = document.querySelector('#config-form textarea')
+            configTextarea.style.height = ''
+            configTextarea.style.height = (configTextarea.scrollHeight + 3) + 'px'
+
         </script>
     </body>
     </html>
@@ -962,7 +961,7 @@ func parseStructForm(vals url.Values, x interface{}) {
 	}
 }
 
-func generateStructForm(x interface{}) string {
+func generateStructForm(x interface{}, fieldNamePrefix, fieldNameSuffix string) string {
 	out := ""
 
 	xt := reflect.TypeOf(x)
@@ -970,6 +969,8 @@ func generateStructForm(x interface{}) string {
 	numFields := xt.NumField()
 	for i := 0; i < numFields; i++ {
 		field := xt.Field(i)
+
+		fieldName := fieldNamePrefix + field.Name + fieldNameSuffix
 
 		if !xv.Field(i).CanInterface() {
 			continue
@@ -991,8 +992,8 @@ func generateStructForm(x interface{}) string {
 			reflect.String:
 			out += `
                 <tr>
-                    <td>` + field.Name + `</td>
-                    <td><input name="` + field.Name + `" value="` + fmt.Sprintf("%v", xv.Field(i).Interface()) + `" /></td>
+                    <td>` + fieldName + `</td>
+                    <td><input name="` + fieldName + `" value="` + fmt.Sprintf("%v", xv.Field(i).Interface()) + `" /></td>
                 </tr>
             `
 
@@ -1010,9 +1011,9 @@ func generateStructForm(x interface{}) string {
 
 			out += `
                 <tr>
-                    <td>` + field.Name + `</td>
+                    <td>` + fieldName + `</td>
                     <td>
-                        <select name="` + field.Name + `">
+                        <select name="` + fieldName + `">
                             <option value="true" ` + trueSelected + `>true</option>
                             <option value="false" ` + falseSelected + `>false</option>
                         </select>
@@ -1024,17 +1025,46 @@ func generateStructForm(x interface{}) string {
 			slice := xv.Field(i)
 			out += `
                 <tr>
-                    <td>` + field.Name + `</td>
+                    <td>` + fieldName + `</td>
                     <td>`
 
 			for j := 0; j < slice.Len(); j++ {
-				out += `<input name="` + field.Name + `[]" value="` + fmt.Sprintf("%v", slice.Index(j).Interface()) + `" />`
+				out += `<input name="` + fieldName + `[]" value="` + fmt.Sprintf("%v", slice.Index(j).Interface()) + `" />`
 			}
 
-			out += `    <button class="btn-add-item" data-input-name="` + field.Name + `">Add</button>
+			out += `    <button class="btn-add-item" data-input-name="` + fieldName + `">Add</button>
                     </td>
                 </tr>
             `
+
+			// case reflect.Map:
+			// 	// @@TODO: we're assuming that maps only have structs as their elements
+
+			// 	theMap := xv.Field(i)
+			// 	keys := theMap.MapKeys()
+
+			// 	out += `
+			//               <tr>
+			//                   <td>` + fieldName + `</td>
+			//                   <td>`
+
+			// 	// ReplicationPolicies[conscience-drive][MaxBytes]
+
+			// 	for j := 0; j < len(keys); j++ {
+			// 		keyStr := keys[j].Interface().(string)
+			// 		out += `<input name="` + fieldName + `[` + keyStr + `]" value="` + keyStr + `" />`
+
+			// 		val := theMap.MapIndex(keys[j]).Interface()
+
+			// 		out += `<table>`
+			// 		out += generateStructForm(val, fieldName+"[", "]")
+			// 		out += `</table>`
+			// 	}
+
+			// 	out += `    <button class="btn-add-item" data-input-name="` + fieldName + `">Add</button>
+			//                   </td>
+			//               </tr>
+			//           `
 		}
 	}
 

@@ -13,23 +13,74 @@ import (
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
 
+	"github.com/ipfs/go-cid"
+	netp2p "github.com/libp2p/go-libp2p-net"
+	"github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-peerstore"
+	"github.com/libp2p/go-libp2p-protocol"
+
 	"github.com/Conscience/protocol/filters/decode"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
-	"github.com/Conscience/protocol/swarm/wire"
 )
+
+// var remoteIsReplicating = make(map[*git.Remote]bool)
+// var remoteIsReplicatingMu = &sync.Mutex{}
+
+// func setRemoteIsReplicating(remote *git.Remote, is bool) {
+// 	remoteIsReplicatingMu.Lock()
+// 	defer remoteIsReplicatingMu.Unlock()
+// 	if is {
+// 		remoteIsReplicating[remote] = is
+// 	} else {
+// 		delete(remoteIsReplicating, remote)
+// 	}
+// }
+
+// func RemoteIsReplicating(remote *git.Remote) bool {
+// 	return remoteIsReplicating[remote]
+// }
+
+// func RemoteIsReplicating(remote *git.Remote) bool {
+//     remoteIsReplicatingMu.Lock()
+//     defer remoteIsReplicatingMu.Unlock()
+//     return remoteIsReplicating[remote]
+// }
+
+type CheckManifestCallback func(manifest *Manifest) error
+
+var checkManifestCallback = make(map[*git.Remote]CheckManifestCallback)
+var checkManifestCallbackMu = &sync.Mutex{}
+
+func setCheckManifestCallback(remote *git.Remote, cb CheckManifestCallback) {
+	checkManifestCallbackMu.Lock()
+	defer checkManifestCallbackMu.Unlock()
+	if cb != nil {
+		checkManifestCallback[remote] = cb
+	} else {
+		delete(checkManifestCallback, remote)
+	}
+}
+
+func GetCheckManifestCallback(remote *git.Remote) CheckManifestCallback {
+	checkManifestCallbackMu.Lock()
+	defer checkManifestCallbackMu.Unlock()
+	return checkManifestCallback[remote]
+}
 
 type CloneOptions struct {
 	Node interface {
 		TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error)
 	}
-	RepoID     string
-	RepoRoot   string
-	Bare       bool
-	ProgressCb func(done, total uint64) error
-	UserName   string
-	UserEmail  string
+	RepoID        string
+	RepoRoot      string
+	Bare          bool
+	ProgressCb    func(done, total uint64) error
+	UserName      string
+	UserEmail     string
+	CheckManifest CheckManifestCallback
+	IsReplication bool
 }
 
 func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
@@ -38,8 +89,27 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 	}
 
 	var innerErr error
+	var innerRemote *git.Remote
+
+	if opts.CheckManifest != nil {
+		defer func() { setCheckManifestCallback(innerRemote, nil) }()
+	}
+
 	cRepo, err := git.Clone("axon://"+opts.RepoID, opts.RepoRoot, &git.CloneOptions{
 		Bare: opts.Bare,
+		RemoteCreateCallback: func(r *git.Repository, name, url string) (*git.Remote, git.ErrorCode) {
+			remote, err := r.Remotes.Create("origin", "axon://"+opts.RepoID)
+			if err != nil {
+				return nil, git.ErrGeneric
+			}
+
+			innerRemote = remote
+			if opts.CheckManifest != nil {
+				setCheckManifestCallback(remote, opts.CheckManifest)
+			}
+
+			return remote, git.ErrOk
+		},
 		FetchOptions: &git.FetchOptions{
 			RemoteCallbacks: git.RemoteCallbacks{
 				TransferProgressCallback: func(stats git.TransferProgress) git.ErrorCode {
@@ -99,7 +169,9 @@ type PushOptions struct {
 		AnnounceRepo(ctx context.Context, repoID string) error
 		GetRef(ctx context.Context, repoID string, refName string) (git.Oid, error)
 		UpdateRef(ctx context.Context, repoID string, branchRefName string, oldCommitID, newCommitID git.Oid) (*nodeeth.Transaction, error)
-		RequestReplication(ctx context.Context, repoID string) <-chan wire.Progress
+		ID() peer.ID
+		FindProvidersAsync(ctx context.Context, key cid.Cid, count int) <-chan peerstore.PeerInfo
+		NewStream(ctx context.Context, peerID peer.ID, pids ...protocol.ID) (netp2p.Stream, error)
 	}
 	Repo       *repo.Repo
 	BranchName string
@@ -195,7 +267,11 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	ctx3, cancel3 := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel3()
 
-	ch := node.RequestReplication(ctx3, repoID)
+	ch, err := RequestReplication(ctx3, node, repoID)
+	if err != nil {
+		return "", err
+	}
+
 	for progress := range ch {
 		if progress.Error != nil {
 			return "", errors.WithStack(progress.Error)
@@ -207,8 +283,9 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 }
 
 type FetchOptions struct {
-	Repo       *repo.Repo
-	ProgressCb func(done, total uint64) error
+	Repo          *repo.Repo
+	ProgressCb    func(done, total uint64) error
+	CheckManifest CheckManifestCallback
 }
 
 // Perform a fetch on the first Axon remote found in the given repo's config.
@@ -217,10 +294,13 @@ func FetchAxonRemote(ctx context.Context, opts *FetchOptions) ([]string, error) 
 		opts.ProgressCb = func(done, total uint64) error { return nil }
 	}
 
-	remote, err := opts.Repo.ConscienceRemote()
+	remote, err := opts.Repo.AxonRemote()
 	if err != nil {
 		return nil, err
 	}
+
+	setCheckManifestCallback(remote, opts.CheckManifest)
+	defer setCheckManifestCallback(remote, nil)
 
 	var innerErr error
 	var updatedRefs []string

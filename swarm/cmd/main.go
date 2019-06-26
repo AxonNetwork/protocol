@@ -212,11 +212,11 @@ var replCommands = map[string]struct {
 				return fmt.Errorf("not enough args")
 			}
 			repoID := args[0]
-			shouldReplicate, err := strconv.ParseBool(args[1])
+			maxBytes, err := strconv.ParseInt(args[1], 10, 64)
 			if err != nil {
 				return err
 			}
-			err = n.SetReplicationPolicy(repoID, shouldReplicate)
+			err = n.SetReplicationPolicy(repoID, maxBytes)
 			return err
 		},
 	},

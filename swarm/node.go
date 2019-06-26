@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -54,7 +52,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		cfg = &config.DefaultConfig
 	}
 
-	privkey, err := obtainKey(cfg)
+	privkey, err := obtainP2PKey(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +111,7 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 		return nil, errors.Wrap(err, "could not register axon:// git transport")
 	}
 
-	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this Node can provide
+	go n.periodicallyAnnounceContent(ctx) // Start a goroutine for announcing which repos and objects this node can provide
 	go n.periodicallyRequestContent(ctx)  // Start a goroutine for pulling content from repos we are replicating
 
 	ns := nodep2p.NewServer(n)
@@ -121,7 +119,6 @@ func NewNode(ctx context.Context, cfg *config.Config) (*Node, error) {
 	n.host.SetStreamHandler(nodep2p.PACKFILE_PROTO, ns.HandlePackfileStreamRequest)
 	n.host.SetStreamHandler(nodep2p.CHUNK_PROTO, ns.HandleChunkStreamRequest)
 	n.host.SetStreamHandler(nodep2p.REPLICATION_PROTO, ns.HandleReplicationRequest)
-	n.host.SetStreamHandler(nodep2p.BECOME_REPLICATOR_PROTO, ns.HandleBecomeReplicatorRequest)
 
 	// Connect to our list of bootstrap peers
 	go func() {
@@ -141,7 +138,7 @@ type blankValidator struct{}
 func (blankValidator) Validate(_ string, _ []byte) error        { return nil }
 func (blankValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil }
 
-func obtainKey(cfg *config.Config) (crypto.PrivKey, error) {
+func obtainP2PKey(cfg *config.Config) (crypto.PrivKey, error) {
 	f, err := os.Open(cfg.Node.PrivateKeyFile)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -205,42 +202,17 @@ func (n *Node) periodicallyRequestContent(ctx context.Context) {
 
 		log.Debugf("[content request] starting content request")
 
-		for _, repoID := range n.Config.Node.ReplicateRepos {
+		for repoID, policy := range n.Config.Node.ReplicationPolicies {
 			log.Debugf("[content request] requesting repo '%v'", repoID)
 
-			r := n.Repo(repoID)
-			if r == nil {
-				_, err := nodep2p.Clone(context.TODO(), &nodep2p.CloneOptions{
-					Node:     n,
-					RepoID:   repoID,
-					RepoRoot: filepath.Join(n.Config.Node.ReplicationRoot, repoID),
-					Bare:     false,
-				})
-				if err != nil {
-					log.Warnf("[content request] error cloning axon://%v remote: %v", repoID, err)
-				} else {
-					log.Debugf("[content request] cloned axon://%v remote", repoID)
-				}
-				continue
-			}
+			// @@TODO: make context timeout configurable
+			innerCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 
-			r, err := n.repoManager.EnsureLocalCheckoutExists(repoID)
+			err := nodep2p.Replicate(innerCtx, repoID, n, policy, func(current, total uint64) error { return nil })
 			if err != nil {
-				log.Warnf("[content request] error ensuring repo exists (%v): %v", repoID, err)
-				continue
+				log.Errorf("[content request]")
 			}
-
-			updatedRemotes, err := n.FetchAndSetRef(context.TODO(), &nodep2p.FetchOptions{
-				Repo: r,
-			})
-			if err != nil {
-				log.Warnf("[content request] error pulling axon://%v remote: %v", repoID, err)
-				continue
-			}
-
-			if len(updatedRemotes) > 0 {
-				log.Debugf("[content request] fetched %v with updated remotes %v", strings.Join(updatedRemotes, " "))
-			}
+			cancel()
 		}
 
 		time.Sleep(time.Duration(n.Config.Node.ContentRequestInterval))
@@ -259,16 +231,22 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 		log.Debugf("[content announce] starting content announce")
 
 		// Announce what we're willing to replicate.
-		for _, repoID := range n.Config.Node.ReplicateRepos {
+		for repoID, policy := range n.Config.Node.ReplicationPolicies {
+			if policy.MaxBytes <= 0 {
+				continue
+			}
+
 			log.Debugf("[content announce] i'm a replicator for '%v'", repoID)
 
-			ctxInner, _ := context.WithTimeout(ctx, 10*time.Second)
+			ctxInner, cancel := context.WithTimeout(ctx, 10*time.Second)
 
 			err := n.announceRepoReplicator(ctxInner, repoID)
 			if err != nil {
 				log.Warnf("[content announce] %+v", err)
 				continue
 			}
+
+			cancel()
 		}
 
 		// Announce the repos we have locally
@@ -278,7 +256,8 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 				return err
 			}
 
-			ctxInner, _ := context.WithTimeout(ctx, 10*time.Second)
+			ctxInner, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
 
 			err = n.AnnounceRepo(ctxInner, repoID)
 			if err != nil {
@@ -289,24 +268,6 @@ func (n *Node) periodicallyAnnounceContent(ctx context.Context) {
 
 		time.Sleep(time.Duration(n.Config.Node.ContentAnnounceInterval))
 	}
-}
-
-// This method is called via the RPC connection when a user git-pushes new content to the network.
-// A push is actually a request to be pulled from, and in order for peers to pull from us, they need
-// to know that we have the content in question.  The content is new, and therefore hasn't been
-// announced before; hence, the reason for this.
-func (n *Node) AnnounceRepoContent(ctx context.Context, repoID string) error {
-	repo := n.repoManager.Repo(repoID)
-	if repo == nil {
-		return errors.Errorf("repo '%v' not found", repoID)
-	}
-
-	err := n.AnnounceRepo(ctx, repoID)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // Announce to the swarm that this Node can provide objects from the given repository.
@@ -442,30 +403,16 @@ func (n *Node) Pull(ctx context.Context, opts *nodep2p.PullOptions) ([]string, e
 	return updatedRefs, nil
 }
 
-func (n *Node) FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType CheckoutType) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64, int64) {
-	c := nodep2p.NewClient(n, repoID, repoPath, &n.Config)
-	return c.FetchFromCommit(ctx, commit, checkoutType)
-}
-
 func (n *Node) FetchChunks(ctx context.Context, repoID string, repoPath string, chunkObjects [][]byte) <-chan nodep2p.MaybeChunk {
 	c := nodep2p.NewClient(n, repoID, repoPath, &n.Config)
 	return c.FetchChunks(ctx, chunkObjects)
 }
 
-func (n *Node) RequestBecomeReplicator(ctx context.Context, repoID string) error {
-	return nodep2p.RequestBecomeReplicator(ctx, n, repoID)
-}
-
-func (n *Node) RequestReplication(ctx context.Context, repoID string) <-chan Progress {
-	return nodep2p.RequestReplication(ctx, n, repoID)
-}
-
-func (n *Node) SetReplicationPolicy(repoID string, shouldReplicate bool) error {
+func (n *Node) SetReplicationPolicy(repoID string, maxBytes int64) error {
 	return n.Config.Update(func() error {
-		if shouldReplicate {
-			n.Config.Node.ReplicateRepos = util.StringSetAdd(n.Config.Node.ReplicateRepos, repoID)
-		} else {
-			n.Config.Node.ReplicateRepos = util.StringSetRemove(n.Config.Node.ReplicateRepos, repoID)
+		n.Config.Node.ReplicationPolicies[repoID] = config.ReplicationPolicy{
+			MaxBytes: maxBytes,
+			Bare:     true,
 		}
 		return nil
 	})
