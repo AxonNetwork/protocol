@@ -30,8 +30,9 @@ type NodeConfig struct {
 	RPCListenNetwork        string                       `yaml:"RPCListenNetwork"`
 	RPCListenHost           string                       `yaml:"RPCListenHost"`
 	HTTPListenAddr          string                       `yaml:"HTTPListenAddr"`
-	HTTPUsername            string                       `yaml:"HTTPUsername"`
-	HTTPPassword            string                       `yaml:"HTTPPassword"`
+	HTTPAdminListenAddr     string                       `yaml:"HTTPAdminListenAddr"`
+	HTTPAdminUsername       string                       `yaml:"HTTPAdminUsername"`
+	HTTPAdminPassword       string                       `yaml:"HTTPAdminPassword"`
 	EthereumHost            string                       `yaml:"EthereumHost"`
 	ProtocolContract        string                       `yaml:"ProtocolContract"`
 	EthereumBIP39Seed       string                       `yaml:"EthereumBIP39Seed"`
@@ -63,9 +64,10 @@ var DefaultConfig = Config{
 		// RPCListenHost:           "/tmp/axon.sock",
 		RPCListenNetwork:        "tcp",
 		RPCListenHost:           "0.0.0.0:1338",
-		HTTPListenAddr:          ":8081",
-		HTTPUsername:            "admin",
-		HTTPPassword:            "password",
+		HTTPListenAddr:          ":80",
+		HTTPAdminListenAddr:     ":8081",
+		HTTPAdminUsername:       "admin",
+		HTTPAdminPassword:       "password",
 		EthereumHost:            "http://hera.axon.science:8545",
 		ProtocolContract:        "0x80e1E5bC2d6933a4C7F832036e140c0609dDC997",
 		EthereumBIP39Seed:       "",
@@ -114,11 +116,6 @@ func ReadConfigAtPath(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	bs, err = yaml.Marshal(cfg)
-	if err != nil {
-		return nil, err
-	}
-
 	cfg.configPath = configPath
 	return &cfg, nil
 }
@@ -131,7 +128,7 @@ func AttachToLogger(cfg *Config) {
 	log.SetField("config.Node.BootstrapPeers", cfg.Node.BootstrapPeers)
 	log.SetField("config.Node.RPCListenNetwork", cfg.Node.RPCListenNetwork)
 	log.SetField("config.Node.RPCListenHost", cfg.Node.RPCListenHost)
-	log.SetField("config.Node.HTTPListenAddr", cfg.Node.HTTPListenAddr)
+	log.SetField("config.Node.HTTPAdminListenAddr", cfg.Node.HTTPAdminListenAddr)
 	log.SetField("config.Node.EthereumHost", cfg.Node.EthereumHost)
 	log.SetField("config.Node.ProtocolContract", cfg.Node.ProtocolContract)
 	log.SetField("config.Node.EthereumBIP39Seed", cfg.Node.EthereumBIP39Seed)
@@ -164,7 +161,7 @@ func (c *Config) save() error {
 	defer f.Close()
 
 	encoder := yaml.NewEncoder(f)
-	encoder.SetIndent(2)
+	encoder.SetIndent(4)
 
 	err = encoder.Encode(c)
 	if err != nil {

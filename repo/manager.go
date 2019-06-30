@@ -1,33 +1,41 @@
-package swarm
+package repo
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/repo"
+	"github.com/Conscience/protocol/swarm/nodeevents"
 	"github.com/Conscience/protocol/util"
 )
 
-type RepoManager struct {
-	repos       map[string]*repo.Repo
-	reposByPath map[string]*repo.Repo
+type Manager struct {
+	repos       map[string]*Repo
+	reposByPath map[string]*Repo
 	config      *config.Config
+	eventBus    *nodeevents.EventBus
 }
 
-func NewRepoManager(config *config.Config) *RepoManager {
-	rm := &RepoManager{
-		repos:       map[string]*repo.Repo{},
-		reposByPath: map[string]*repo.Repo{},
-		config:      config,
+func NewManager(eventBus *nodeevents.EventBus, cfg *config.Config) (*Manager, error) {
+	err := os.MkdirAll(cfg.Node.ReplicationRoot, os.ModePerm)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	rm := &Manager{
+		repos:       map[string]*Repo{},
+		reposByPath: map[string]*Repo{},
+		config:      cfg,
+		eventBus:    eventBus,
 	}
 
 	foundRepos := []string{}
 	for _, path := range rm.config.Node.LocalRepos {
 		_, err := rm.openRepo(path, false)
-		if errors.Cause(err) == repo.Err404 {
+		if errors.Cause(err) == Err404 {
 			log.Errorf("[repo manager] removing missing repo: %v", path)
 			continue
 		} else if err != nil {
@@ -39,24 +47,19 @@ func NewRepoManager(config *config.Config) *RepoManager {
 	}
 
 	if len(foundRepos) != len(rm.config.Node.LocalRepos) {
-		rm.config.Update(func() error {
+		err = rm.config.Update(func() error {
 			rm.config.Node.LocalRepos = foundRepos
 			return nil
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// for _, repoID := range rm.config.Node.ReplicateRepos {
-	//     _, err := rm.EnsureLocalCheckoutExists(repoID)
-	//     if err != nil {
-	//         log.Errorf("[repo manager] %v", err)
-	//         continue
-	//     }
-	// }
-
-	return rm
+	return rm, nil
 }
 
-func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, error) {
+func (rm *Manager) EnsureLocalCheckoutExists(repoID string) (*Repo, error) {
 	if r, known := rm.repos[repoID]; known {
 		// @@TODO: test whether it physically exists on-disk?  and if not, recreate it?
 		return r, nil
@@ -64,9 +67,9 @@ func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, err
 
 	defaultPath := filepath.Join(rm.config.Node.ReplicationRoot, repoID)
 
-	r, err := repo.Open(defaultPath)
-	if errors.Cause(err) == repo.Err404 {
-		r, err = repo.Init(&repo.InitOptions{RepoID: repoID, RepoRoot: defaultPath})
+	r, err := Open(defaultPath)
+	if errors.Cause(err) == Err404 {
+		r, err = Init(&InitOptions{RepoID: repoID, RepoRoot: defaultPath})
 		if err != nil {
 			return nil, err
 		}
@@ -93,7 +96,7 @@ func (rm *RepoManager) EnsureLocalCheckoutExists(repoID string) (*repo.Repo, err
 	return r, nil
 }
 
-func (rm *RepoManager) TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error) {
+func (rm *Manager) TrackRepo(repoPath string, forceReload bool) (*Repo, error) {
 	r, err := rm.openRepo(repoPath, forceReload)
 	if r == nil {
 		return nil, err
@@ -106,10 +109,24 @@ func (rm *RepoManager) TrackRepo(repoPath string, forceReload bool) (*repo.Repo,
 	if err != nil {
 		return nil, err
 	}
+
+	repoID, err := r.RepoID()
+	if err != nil {
+		return nil, err
+	}
+
+	rm.eventBus.NotifyWatchers(nodeevents.MaybeEvent{
+		EventType: nodeevents.EventType_AddedRepo,
+		AddedRepoEvent: &nodeevents.AddedRepoEvent{
+			RepoRoot: repoPath,
+			RepoID:   repoID,
+		},
+	})
+
 	return r, nil
 }
 
-func (rm *RepoManager) openRepo(repoPath string, forceReload bool) (*repo.Repo, error) {
+func (rm *Manager) openRepo(repoPath string, forceReload bool) (*Repo, error) {
 	if !forceReload {
 		if r, exists := rm.reposByPath[repoPath]; exists {
 			log.Warnf("[repo manager] already opened repo at path '%v' (doing nothing)", repoPath)
@@ -117,7 +134,7 @@ func (rm *RepoManager) openRepo(repoPath string, forceReload bool) (*repo.Repo, 
 		}
 	}
 
-	r, err := repo.Open(repoPath)
+	r, err := Open(repoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +150,8 @@ func (rm *RepoManager) openRepo(repoPath string, forceReload bool) (*repo.Repo, 
 	return r, nil
 }
 
-func (rm *RepoManager) UntrackRepo(repoPath string) error {
-	r, err := repo.Open(repoPath)
+func (rm *Manager) UntrackRepo(repoPath string) error {
+	r, err := Open(repoPath)
 	if err != nil {
 		return err
 	}
@@ -150,14 +167,14 @@ func (rm *RepoManager) UntrackRepo(repoPath string) error {
 	return rm.removeLocalRepoFromConfig(repoPath)
 }
 
-func (rm *RepoManager) removeLocalRepoFromConfig(repoPath string) error {
+func (rm *Manager) removeLocalRepoFromConfig(repoPath string) error {
 	return rm.config.Update(func() error {
 		rm.config.Node.LocalRepos = util.StringSetRemove(rm.config.Node.LocalRepos, repoPath)
 		return nil
 	})
 }
 
-func (rm *RepoManager) Repo(repoID string) *repo.Repo {
+func (rm *Manager) Repo(repoID string) *Repo {
 	repo, ok := rm.repos[repoID]
 	if !ok {
 		return nil
@@ -165,7 +182,7 @@ func (rm *RepoManager) Repo(repoID string) *repo.Repo {
 	return repo
 }
 
-func (rm *RepoManager) RepoAtPath(repoPath string) *repo.Repo {
+func (rm *Manager) RepoAtPath(repoPath string) *Repo {
 	repo, ok := rm.reposByPath[repoPath]
 	if !ok {
 		return nil
@@ -173,7 +190,7 @@ func (rm *RepoManager) RepoAtPath(repoPath string) *repo.Repo {
 	return repo
 }
 
-func (rm *RepoManager) RepoAtPathOrID(path string, repoID string) (*repo.Repo, error) {
+func (rm *Manager) RepoAtPathOrID(path string, repoID string) (*Repo, error) {
 	if len(path) > 0 {
 		r := rm.RepoAtPath(path)
 		if r == nil {
@@ -194,7 +211,7 @@ func (rm *RepoManager) RepoAtPathOrID(path string, repoID string) (*repo.Repo, e
 	return nil, errors.Errorf("must provide either 'path' or 'repoID'")
 }
 
-func (rm *RepoManager) RepoIDList() []string {
+func (rm *Manager) RepoIDList() []string {
 	repoIDs := make([]string, 0)
 	for repoID := range rm.repos {
 		repoIDs = append(repoIDs, repoID)
@@ -202,7 +219,7 @@ func (rm *RepoManager) RepoIDList() []string {
 	return repoIDs
 }
 
-func (rm *RepoManager) ForEachRepo(fn func(*repo.Repo) error) error {
+func (rm *Manager) ForEachRepo(fn func(*Repo) error) error {
 	for _, entry := range rm.reposByPath {
 		err := fn(entry)
 		if err != nil {

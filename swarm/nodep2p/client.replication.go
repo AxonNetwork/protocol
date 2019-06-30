@@ -7,26 +7,15 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/ipfs/go-cid"
-	netp2p "github.com/libp2p/go-libp2p-net"
 	"github.com/libp2p/go-libp2p-peer"
-	"github.com/libp2p/go-libp2p-peerstore"
-	"github.com/libp2p/go-libp2p-protocol"
 
 	"github.com/Conscience/protocol/log"
-	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
-type replicationNode interface {
-	ID() peer.ID
-	FindProvidersAsync(ctx context.Context, key cid.Cid, count int) <-chan peerstore.PeerInfo
-	NewStream(ctx context.Context, peerID peer.ID, pids ...protocol.ID) (netp2p.Stream, error)
-}
-
 // Finds replicator nodes on the network that are hosting the given repository and issues requests
 // to them to pull from our local copy.
-func RequestReplication(ctx context.Context, n replicationNode, repoID string) (<-chan Progress, error) {
+func (h *Host) RequestReplication(ctx context.Context, repoID string) (<-chan Progress, error) {
 	c, err := util.CidForString("replicate:" + repoID)
 	if err != nil {
 		return nil, err
@@ -37,13 +26,13 @@ func RequestReplication(ctx context.Context, n replicationNode, repoID string) (
 	defer cancel()
 
 	peerChs := make(map[peer.ID]chan Progress)
-	for provider := range n.FindProvidersAsync(ctxTimeout, c, 8) {
-		if provider.ID == n.ID() {
+	for provider := range h.FindProvidersAsync(ctxTimeout, c, 8) {
+		if provider.ID == h.ID() {
 			continue
 		}
 
 		peerCh := make(chan Progress)
-		go requestPeerReplication(ctx, n, repoID, provider.ID, peerCh)
+		go h.requestPeerReplication(ctx, repoID, provider.ID, peerCh)
 		peerChs[provider.ID] = peerCh
 	}
 
@@ -53,7 +42,7 @@ func RequestReplication(ctx context.Context, n replicationNode, repoID string) (
 	return chProgress, nil
 }
 
-func requestPeerReplication(ctx context.Context, n replicationNode, repoID string, peerID peer.ID, peerCh chan Progress) {
+func (h *Host) requestPeerReplication(ctx context.Context, repoID string, peerID peer.ID, peerCh chan Progress) {
 	var err error
 
 	defer func() {
@@ -64,13 +53,13 @@ func requestPeerReplication(ctx context.Context, n replicationNode, repoID strin
 		}
 	}()
 
-	stream, err := n.NewStream(ctx, peerID, REPLICATION_PROTO)
+	stream, err := h.NewStream(ctx, peerID, REPLICATION_PROTO)
 	if err != nil {
 		return
 	}
 	defer stream.Close()
 
-	err = WriteStructPacket(stream, &ReplicationRequest{RepoID: repoID})
+	err = WriteMsg(stream, &ReplicationRequest{RepoID: repoID})
 	if err != nil {
 		return
 	}
@@ -84,7 +73,7 @@ func requestPeerReplication(ctx context.Context, n replicationNode, repoID strin
 		}
 
 		p := Progress{}
-		err = ReadStructPacket(stream, &p)
+		err = ReadMsg(stream, &p)
 		if err != nil {
 			return
 		}

@@ -14,7 +14,6 @@ import (
 	"github.com/libgit2/git2go"
 
 	"github.com/Conscience/protocol/repo"
-	. "github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -37,7 +36,7 @@ func main() {
 	stream := getManifestStream(r, *head.Target(), CheckoutTypeFull)
 	for {
 		obj := ManifestObject{}
-		err = ReadStructPacket(stream, &obj)
+		err = ReadMsg(stream, &obj)
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -184,7 +183,7 @@ func writeGitOid(stream io.Writer, r *repo.Repo, odb *git.Odb, oid git.Oid, seen
 		UncompressedSize: int64(size),
 	}
 
-	return WriteStructPacket(stream, &object)
+	return WriteMsg(stream, &object)
 }
 
 func writeChunkIDsIfChunked(r *repo.Repo, oid git.Oid, seenChunks map[string]bool, stream io.Writer) error {
@@ -248,7 +247,7 @@ func writeChunkIDsIfChunked(r *repo.Repo, oid git.Oid, seenChunks map[string]boo
 			UncompressedSize: stat.Size(),
 		}
 
-		err = WriteStructPacket(stream, &object)
+		err = WriteMsg(stream, &object)
 		if err != nil {
 			return err
 		}

@@ -11,10 +11,9 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/wire"
 )
 
-func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.ManifestObject) <-chan MaybeFetchFromCommitPacket {
+func (h *Host) FetchGitPackfiles(ctx context.Context, repoID string, gitObjects []ManifestObject) <-chan MaybeFetchFromCommitPacket {
 	chOut := make(chan MaybeFetchFromCommitPacket)
 
 	// Load the job queue up with everything in the manifest
@@ -28,7 +27,7 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 	}
 
 	var (
-		maxPeers     = sc.config.Node.MaxConcurrentPeers
+		maxPeers     = h.Config.Node.MaxConcurrentPeers
 		batchSize    = uint(len(gitObjects)) / maxPeers
 		batchTimeout = 3 * time.Second
 		jobQueue     = newJobQueue(ctx, jobs, batchSize, batchTimeout)
@@ -39,7 +38,7 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 		defer close(chOut)
 		defer jobQueue.Close()
 
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, PACKFILE_PROTO, true)
+		pool, err := newPeerPool(ctx, h, repoID, maxPeers, PACKFILE_PROTO, true)
 		if err != nil {
 			chOut <- MaybeFetchFromCommitPacket{Error: err}
 			return
@@ -77,7 +76,7 @@ func (sc *Client) FetchGitPackfiles(ctx context.Context, gitObjects []wire.Manif
 				var strike bool
 				defer func() { pool.ReturnConn(conn, strike) }()
 
-				err := sc.fetchPackfile(ctx, conn, batch, chOut, jobQueue)
+				err := h.fetchPackfile(ctx, conn, repoID, batch, chOut, jobQueue)
 				if err != nil {
 					if errors.Cause(err) == ErrFetchingFromPeer {
 						// @@TODO: mark failed peer on job{}
@@ -117,37 +116,37 @@ func determineMissingIDs(desired, available [][]byte) [][]byte {
 	return missing
 }
 
-func (sc *Client) packfileHandshake(conn *peerConn, objectIDs [][]byte) ([][]byte, netp2p.Stream, error) {
-	sig, err := sc.node.SignHash([]byte(sc.repoID))
+func (h *Host) packfileHandshake(conn *peerConn, repoID string, objectIDs [][]byte) ([][]byte, netp2p.Stream, error) {
+	sig, err := h.ethClient.SignHash([]byte(repoID))
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// Write the request packet to the stream
-	err = wire.WriteStructPacket(conn, &wire.GetPackfileRequest{
-		RepoID:    sc.repoID,
+	err = WriteMsg(conn, &GetPackfileRequest{
+		RepoID:    repoID,
 		Signature: sig,
-		ObjectIDs: wire.FlattenObjectIDs(objectIDs),
+		ObjectIDs: FlattenObjectIDs(objectIDs),
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	log.Debugf("[packfile client] sent packfile request: %v (%v objects)", sc.repoID, len(objectIDs))
+	log.Debugf("[packfile client] sent packfile request: %v (%v objects)", repoID, len(objectIDs))
 
-	resp := wire.GetPackfileResponseHeader{}
-	err = wire.ReadStructPacket(conn, &resp)
+	var resp GetPackfileResponseHeader
+	err = ReadMsg(conn, &resp)
 	if err != nil {
 		return nil, nil, err
 	} else if resp.ErrUnauthorized {
-		return nil, nil, errors.Wrapf(wire.ErrUnauthorized, "%v", sc.repoID)
+		return nil, nil, errors.Wrapf(ErrUnauthorized, "%v", repoID)
 	} else if len(resp.ObjectIDs) == 0 {
-		return nil, nil, errors.Wrapf(wire.ErrObjectNotFound, "%v", sc.repoID)
+		return nil, nil, errors.Wrapf(ErrObjectNotFound, "%v", repoID)
 	}
-	log.Debugf("[packfile client] got packfile response header: %v objects", len(wire.UnflattenObjectIDs(resp.ObjectIDs)))
-	return wire.UnflattenObjectIDs(resp.ObjectIDs), conn, nil
+	log.Debugf("[packfile client] got packfile response header: %v objects", len(UnflattenObjectIDs(resp.ObjectIDs)))
+	return UnflattenObjectIDs(resp.ObjectIDs), conn, nil
 }
 
-func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue *jobQueue) error {
+func (h *Host) fetchPackfile(ctx context.Context, conn *peerConn, repoID string, batch []job, chOut chan MaybeFetchFromCommitPacket, jobQueue *jobQueue) error {
 	log.Infof("[packfile client] requesting packfile with %v objects", len(batch))
 
 	desiredObjectIDs := make([][]byte, len(batch))
@@ -157,7 +156,7 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 		jobMap[string(batch[i].objectID)] = batch[i]
 	}
 
-	availableObjectIDs, packfileStream, err := sc.packfileHandshake(conn, desiredObjectIDs)
+	availableObjectIDs, packfileStream, err := h.packfileHandshake(conn, repoID, desiredObjectIDs)
 	if err != nil {
 		err = errors.Wrapf(ErrFetchingFromPeer, "tried requesting packfile from peer %v: %v", conn.peerID, err)
 		log.Errorf("[packfile client]", err)
@@ -195,8 +194,8 @@ func (sc *Client) fetchPackfile(ctx context.Context, conn *peerConn, batch []job
 	}
 
 	for {
-		var packet wire.GetPackfileResponsePacket
-		err = wire.ReadStructPacket(packfileStream, &packet)
+		var packet GetPackfileResponsePacket
+		err = ReadMsg(packfileStream, &packet)
 		if err != nil {
 			log.Errorln("[packfile client] error reading GetPackfileResponsePacket:", err)
 			break

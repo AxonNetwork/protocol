@@ -135,8 +135,8 @@ var replCommands = map[string]struct {
 	"addrs": {
 		"list the p2p addresses this node is using to communicate with its swarm",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			for _, addr := range n.Addrs() {
-				log.Println(addr.String() + "/p2p/" + n.ID().Pretty())
+			for _, addr := range n.P2PHost().Addrs() {
+				log.Println(addr.String() + "/p2p/" + n.P2PHost().ID().Pretty())
 			}
 			return nil
 		},
@@ -162,9 +162,9 @@ var replCommands = map[string]struct {
 	"peers": {
 		"list the peers this node is currently connected to",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
-			log.Printf("total connected peers: %v", len(n.Conns()))
+			log.Printf("total connected peers: %v", len(n.P2PHost().Conns()))
 
-			for _, pinfo := range n.Peers() {
+			for _, pinfo := range n.P2PHost().Peers() {
 				log.Printf("  - %v (%v)", pinfo.ID.String(), peer.IDB58Encode(pinfo.ID))
 				for _, addr := range pinfo.Addrs {
 					log.Printf("      - %v", addr)
@@ -182,6 +182,10 @@ var replCommands = map[string]struct {
 			var doLog func(interface{})
 			doLog = func(x interface{}) {
 				s := reflect.ValueOf(x) //.Elem()
+				if s.Type().Kind() == reflect.Ptr && s.Type().Elem().Kind() == reflect.Struct {
+					s = reflect.Indirect(s)
+				}
+
 				configType := s.Type()
 
 				for i := 0; i < s.NumField(); i++ {
@@ -216,7 +220,7 @@ var replCommands = map[string]struct {
 			if err != nil {
 				return err
 			}
-			err = n.SetReplicationPolicy(repoID, maxBytes)
+			err = n.P2PHost().SetReplicationPolicy(repoID, maxBytes)
 			return err
 		},
 	},
@@ -227,7 +231,7 @@ var replCommands = map[string]struct {
 			if len(args) < 1 {
 				return fmt.Errorf("not enough args")
 			}
-			_, err := n.TrackRepo(args[0], true)
+			_, err := n.RepoManager().TrackRepo(args[0], true)
 			return err
 		},
 	},
@@ -238,7 +242,7 @@ var replCommands = map[string]struct {
 			if len(args) < 1 {
 				return fmt.Errorf("not enough args")
 			}
-			_, err := n.TrackRepo(args[0], true)
+			_, err := n.RepoManager().TrackRepo(args[0], true)
 			return err
 		},
 	},
@@ -249,7 +253,7 @@ var replCommands = map[string]struct {
 			if len(args) < 1 {
 				return fmt.Errorf("not enough args")
 			}
-			return n.AddPeer(ctx, args[0])
+			return n.P2PHost().AddPeer(ctx, args[0])
 		},
 	},
 
@@ -261,7 +265,7 @@ var replCommands = map[string]struct {
 				return errors.New("unknown repo")
 			}
 
-			_, err := nodep2p.FetchAndSetRef(ctx, &nodep2p.FetchOptions{Repo: r})
+			_, err := n.P2PHost().FetchAndSetRef(ctx, &nodep2p.FetchOptions{Repo: r})
 			return err
 		},
 	},
@@ -282,7 +286,7 @@ var replCommands = map[string]struct {
 				return err
 			}
 
-			tx, err := n.UpdateRef(ctx, args[0], args[1], *oid1, *oid2)
+			tx, err := n.EthereumClient().UpdateRemoteRef(ctx, args[0], args[1], *oid1, *oid2)
 			if err != nil {
 				return err
 			}
@@ -313,7 +317,7 @@ var replCommands = map[string]struct {
 				return err
 			}
 
-			refs, total, err := n.GetRemoteRefs(ctx, args[0], pageSize, page)
+			refs, total, err := n.EthereumClient().GetRemoteRefs(ctx, args[0], pageSize, page)
 			if err != nil {
 				return err
 			}
@@ -335,7 +339,7 @@ var replCommands = map[string]struct {
 
 			username := args[0]
 
-			tx, err := n.EnsureUsername(ctx, username)
+			tx, err := n.EthereumClient().EnsureUsername(ctx, username)
 			if err != nil {
 				return err
 			} else if tx == nil && err == nil {
@@ -365,8 +369,7 @@ var replCommands = map[string]struct {
 			repoID := args[0]
 			repoRoot := args[1]
 
-			_, err := nodep2p.Clone(context.TODO(), &nodep2p.CloneOptions{
-				Node:      n,
+			_, err := n.P2PHost().Clone(context.TODO(), &nodep2p.CloneOptions{
 				RepoID:    repoID,
 				RepoRoot:  repoRoot,
 				Bare:      false,
@@ -394,13 +397,12 @@ var replCommands = map[string]struct {
 				return fmt.Errorf("not enough args")
 			}
 			repoID := args[0]
-			r := n.Repo(repoID)
+			r := n.RepoManager().Repo(repoID)
 			if r == nil {
 				return errors.New("repo not found")
 			}
 
-			_, err := nodep2p.Push(context.TODO(), &nodep2p.PushOptions{
-				Node:       n,
+			_, err := n.P2PHost().Push(context.TODO(), &nodep2p.PushOptions{
 				Repo:       r,
 				BranchName: "master",
 				ProgressCb: func(percent int) {

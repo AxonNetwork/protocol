@@ -439,10 +439,15 @@ message SetFileChunkingRequest {
 message SetFileChunkingResponse {}
 
 message WatchRequest {
-    repeated uint64 eventTypes = 1;
+    message UpdatedRefEventParams {
+        uint64 fromBlock = 1;
+        repeated string repoIDs = 2;
+    }
 
-    uint64 updatedRefStart = 2;
+    repeated uint64 eventTypes = 1;
+    UpdatedRefEventParams updatedRefEventParams = 2;
 }
+
 
 message WatchResponse {
 

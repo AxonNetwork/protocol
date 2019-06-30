@@ -380,6 +380,34 @@ func (r *Repo) AddUserToConfig(name string, email string) error {
 	return nil
 }
 
+func (r *Repo) ForEachLocalRef(fn func(*git.Reference) error) error {
+	rIter, err := r.NewReferenceIterator()
+	if err != nil {
+		return err
+	}
+	defer rIter.Free()
+
+	for {
+		ref, err := rIter.Next()
+		if git.IsErrorCode(err, git.ErrIterOver) {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		ref, err = ref.Resolve()
+		if err != nil {
+			return err
+		}
+
+		err = fn(ref)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *Repo) AxonRemote() (*git.Remote, error) {
 	remoteNames, err := r.Remotes.List()
 	if err != nil {

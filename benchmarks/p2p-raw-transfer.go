@@ -27,7 +27,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/config"
-	. "github.com/Conscience/protocol/swarm/wire"
 )
 
 const MB = 1024 * 1024
@@ -163,7 +162,7 @@ func testStructServer(stream netp2p.Stream) {
 	var total int
 	for {
 		chunk := StreamChunk{}
-		err := ReadStructPacket(stream, &chunk)
+		err := ReadMsg(stream, &chunk)
 		if err != nil {
 			fmt.Println("err: ", err)
 			return
@@ -282,7 +281,7 @@ func testStructClient(host host.Host, id peer.ID) (time.Duration, error) {
 		} else if err != nil {
 			return 0, err
 		}
-		err = WriteStructPacket(stream, &StreamChunk{End: end, Data: data})
+		err = WriteMsg(stream, &StreamChunk{End: end, Data: data})
 		if err != nil {
 			return 0, err
 		}

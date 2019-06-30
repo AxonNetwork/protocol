@@ -1,11 +1,9 @@
-package swarm
+package nodeevents
 
 import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/Conscience/protocol/swarm/nodeeth"
 )
 
 type EventBus struct {
@@ -14,20 +12,15 @@ type EventBus struct {
 	chAddWatcher    chan *Watcher
 	chRemoveWatcher chan *Watcher
 	chDone          chan struct{}
-
-	eth         *nodeeth.Client
-	repoManager *RepoManager
 }
 
-func NewEventBus(repoManager *RepoManager, eth *nodeeth.Client) *EventBus {
+func NewEventBus() *EventBus {
 	bus := &EventBus{
 		watchers:        make(map[*Watcher]struct{}),
 		chIncoming:      make(chan MaybeEvent, 100),
 		chAddWatcher:    make(chan *Watcher),
 		chRemoveWatcher: make(chan *Watcher),
 		chDone:          make(chan struct{}),
-		eth:             eth,
-		repoManager:     repoManager,
 	}
 
 	go bus.runLoop()
@@ -71,7 +64,7 @@ func (bus *EventBus) runLoop() {
 }
 
 func (bus *EventBus) Watch(settings *WatcherSettings) *Watcher {
-	w := NewWatcher(settings, bus.eth, bus.repoManager.RepoIDList())
+	w := NewWatcher(settings)
 	bus.chAddWatcher <- w
 	return w
 }
@@ -117,8 +110,8 @@ type (
 		AddedRepoEvent  *AddedRepoEvent
 		PulledRepoEvent *PulledRepoEvent
 		PushedRepoEvent *PushedRepoEvent
-		UpdatedRefEvent *nodeeth.UpdatedRefEvent
-		Error           error
+		// UpdatedRefEvent *nodeeth.UpdatedRefEvent
+		Error error
 	}
 
 	AddedRepoEvent struct {
@@ -140,34 +133,36 @@ type (
 	}
 
 	WatcherSettings struct {
-		EventTypes      EventType
-		UpdatedRefStart uint64
+		EventTypes EventType
+
+		// UpdatedRefEventParams struct {
+		// 	FromBlock uint64
+		// 	RepoIDs   []string
+		// }
 	}
 
 	Watcher struct {
 		EventTypes EventType
 		chOut      chan MaybeEvent
-		refWatcher *nodeeth.UpdatedRefEventWatcher
 		ctx        context.Context
 		cancel     func()
 	}
 )
 
-func NewWatcher(settings *WatcherSettings, eth *nodeeth.Client, repoIDList []string) *Watcher {
+func NewWatcher(settings *WatcherSettings) *Watcher {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w := &Watcher{
 		EventTypes: settings.EventTypes,
 		chOut:      make(chan MaybeEvent),
-		refWatcher: nil,
 		ctx:        ctx,
 		cancel:     cancel,
 	}
 
-	if w.IsWatching(EventType_UpdatedRef) {
-		w.refWatcher = nodeeth.NewUpdatedRefEventWatcher(ctx, eth, repoIDList, settings.UpdatedRefStart)
-		go w.passthroughUpdatedRefEvents()
-	}
+	// if w.IsWatching(EventType_UpdatedRef) {
+	// 	w.refWatcher = nodeeth.NewUpdatedRefEventWatcher(ctx, eth, settings.UpdatedRefEventParams.RepoIDs, settings.UpdatedRefEventParams.FromBlock)
+	// 	go w.passthroughUpdatedRefEvents()
+	// }
 
 	return w
 }
@@ -177,9 +172,9 @@ func (w *Watcher) Events() <-chan MaybeEvent {
 }
 
 func (w *Watcher) Notify(ctx context.Context, event MaybeEvent) {
-	if event.AddedRepoEvent != nil && w.refWatcher != nil {
-		w.refWatcher.AddRepo(ctx, event.AddedRepoEvent.RepoID)
-	}
+	// if event.AddedRepoEvent != nil && w.refWatcher != nil {
+	// 	w.refWatcher.AddRepo(ctx, event.AddedRepoEvent.RepoID)
+	// }
 
 	select {
 	case w.chOut <- event:
@@ -198,20 +193,20 @@ func (w *Watcher) close() {
 	w.cancel()
 }
 
-func (w *Watcher) passthroughUpdatedRefEvents() {
-	for maybeEvt := range w.refWatcher.Events() {
-		if maybeEvt.Error != nil {
-			select {
-			case w.chOut <- MaybeEvent{Error: maybeEvt.Error}:
-			case <-w.ctx.Done():
-			}
-			return
-		}
+// func (w *Watcher) passthroughUpdatedRefEvents() {
+// 	for maybeEvt := range w.refWatcher.Events() {
+// 		if maybeEvt.Error != nil {
+// 			select {
+// 			case w.chOut <- MaybeEvent{Error: maybeEvt.Error}:
+// 			case <-w.ctx.Done():
+// 			}
+// 			return
+// 		}
 
-		select {
-		case w.chOut <- MaybeEvent{EventType: EventType_UpdatedRef, UpdatedRefEvent: &maybeEvt.Event}:
-		case <-w.ctx.Done():
-			return
-		}
-	}
-}
+// 		select {
+// 		case w.chOut <- MaybeEvent{EventType: EventType_UpdatedRef, UpdatedRefEvent: &maybeEvt.Event}:
+// 		case <-w.ctx.Done():
+// 			return
+// 		}
+// 	}
+// }

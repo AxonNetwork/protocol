@@ -16,7 +16,7 @@ import (
 
 type peerPool struct {
 	keepalive bool
-	node      INode
+	host      *Host
 
 	chPeers       chan *peerConn
 	chNeedNewPeer chan struct{}
@@ -26,7 +26,7 @@ type peerPool struct {
 	foundPeers    map[peer.ID]bool
 }
 
-func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns uint, protocolID protocol.ID, keepalive bool) (*peerPool, error) {
+func newPeerPool(ctx context.Context, host *Host, repoID string, concurrentConns uint, protocolID protocol.ID, keepalive bool) (*peerPool, error) {
 	cid, err := util.CidForString(repoID)
 	if err != nil {
 		return nil, err
@@ -37,10 +37,10 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 
 	p := &peerPool{
 		keepalive:     keepalive,
-		node:          node,
+		host:          host,
 		chPeers:       make(chan *peerConn, concurrentConns),
 		chNeedNewPeer: make(chan struct{}, concurrentConns),
-		chProviders:   node.FindProvidersAsync(ctxInner, cid, 999),
+		chProviders:   host.FindProvidersAsync(ctxInner, cid, 999),
 		ctx:           ctxInner,
 		cancel:        cancel,
 	}
@@ -64,11 +64,11 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				select {
 				case peerInfo, open := <-p.chProviders:
 					if !open {
-						p.chProviders = node.FindProvidersAsync(p.ctx, cid, 999)
+						p.chProviders = host.FindProvidersAsync(p.ctx, cid, 999)
 						continue FindPeerLoop
 					}
 					// if self
-					if peerInfo.ID == node.ID() {
+					if peerInfo.ID == host.ID() {
 						continue FindPeerLoop
 					} else if foundPeers[peerInfo.ID] {
 						continue FindPeerLoop
@@ -81,7 +81,7 @@ func newPeerPool(ctx context.Context, node INode, repoID string, concurrentConns
 				}
 
 				log.Infof("[peer pool] found peer %v (repoID: %v, protocolID: %v)", peerID.String(), repoID, protocolID)
-				conn = newPeerConn(ctxInner, p.node, peerID, repoID, protocolID)
+				conn = newPeerConn(ctxInner, p.host, peerID, repoID, protocolID)
 
 				break
 			}
@@ -155,7 +155,7 @@ func (p *peerPool) ReturnConn(conn *peerConn, strike bool) {
 
 type peerConn struct {
 	netp2p.Stream
-	node       INode
+	host       *Host
 	peerID     peer.ID
 	repoID     string
 	protocolID protocol.ID
@@ -164,9 +164,9 @@ type peerConn struct {
 	done       bool
 }
 
-func newPeerConn(ctx context.Context, node INode, peerID peer.ID, repoID string, protocolID protocol.ID) *peerConn {
+func newPeerConn(ctx context.Context, host *Host, peerID peer.ID, repoID string, protocolID protocol.ID) *peerConn {
 	conn := &peerConn{
-		node:       node,
+		host:       host,
 		peerID:     peerID,
 		repoID:     repoID,
 		protocolID: protocolID,
@@ -200,7 +200,7 @@ func (conn *peerConn) Open() error {
 		ctxConnect, cancel := context.WithTimeout(conn.ctx, 15*time.Second)
 		defer cancel()
 
-		stream, err := conn.node.NewStream(ctxConnect, conn.peerID, conn.protocolID)
+		stream, err := conn.host.NewStream(ctxConnect, conn.peerID, conn.protocolID)
 		if err != nil {
 			return err
 		}

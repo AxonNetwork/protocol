@@ -3,12 +3,15 @@ package nodehttp
 import (
 	// "bytes"
 	"context"
+	"encoding/hex"
 	"expvar"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -30,8 +33,9 @@ import (
 )
 
 type Server struct {
-	server *http.Server
-	node   *swarm.Node
+	adminServer *http.Server
+	fileServer  *http.Server
+	node        *swarm.Node
 }
 
 func New(node *swarm.Node) *Server {
@@ -39,44 +43,141 @@ func New(node *swarm.Node) *Server {
 		node: node,
 	}
 
-	router := http.NewServeMux()
-	router.HandleFunc("/", s.handleIndex())
-	router.HandleFunc("/add-peer", s.handleAddPeer())
-	router.HandleFunc("/remove-peer", s.handleRemovePeer())
-	router.HandleFunc("/untrack-repo", s.handleUntrackRepo())
-	router.HandleFunc("/set-config", s.handleSetConfig())
-	router.Handle("/debug/vars", expvar.Handler())
-	debugcharts.RegisterHandlers(router)
+	// Admin server
+	{
+		adminRouter := http.NewServeMux()
+		adminRouter.HandleFunc("/", s.handleIndex())
+		adminRouter.HandleFunc("/add-peer", s.handleAddPeer())
+		adminRouter.HandleFunc("/remove-peer", s.handleRemovePeer())
+		adminRouter.HandleFunc("/untrack-repo", s.handleUntrackRepo())
+		adminRouter.HandleFunc("/set-config", s.handleSetConfig())
+		adminRouter.Handle("/debug/vars", expvar.Handler())
+		debugcharts.RegisterHandlers(adminRouter)
 
-	username := node.Config.Node.HTTPUsername
-	password := node.Config.Node.HTTPPassword
-	handler := BasicAuth(username, password, router)
+		username := node.Config.Node.HTTPAdminUsername
+		password := node.Config.Node.HTTPAdminPassword
+		handler := BasicAuth(username, password, adminRouter)
 
-	s.server = &http.Server{Addr: node.Config.Node.HTTPListenAddr, Handler: handler}
+		s.adminServer = &http.Server{Addr: node.Config.Node.HTTPAdminListenAddr, Handler: handler}
+	}
+
+	// File server
+	{
+		router := http.NewServeMux()
+		router.HandleFunc("/", s.handleServeFile())
+		s.fileServer = &http.Server{Addr: node.Config.Node.HTTPListenAddr, Handler: router}
+	}
 
 	return s
 }
 
 func (s *Server) Start() {
-	err := s.server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		panic(err)
-	}
+	go func() {
+		err := s.adminServer.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
+
+	go func() {
+		err := s.fileServer.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
 }
 
 func (s *Server) Close() error {
-	return s.server.Close()
+	err := s.adminServer.Close()
+	if err != nil {
+		log.Errorln("[http server] error shutting down adminServer:", err)
+	}
+	err = s.fileServer.Close()
+	if err != nil {
+		log.Errorln("[http server] error shutting down fileServer:", err)
+	}
+	return err
+}
+
+func (s *Server) handleServeFile() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		urlParts := strings.Split(req.URL.Path, "/")
+		urlParts = urlParts[1:]
+
+		if len(urlParts) < 2 {
+			http.NotFound(w, req)
+			return
+		}
+
+		repoID := urlParts[0]
+
+		r := s.node.RepoManager().Repo(repoID)
+		if r == nil {
+			http.NotFound(w, req)
+			return
+		}
+
+		var obj repo.ObjectReader
+
+		if len(urlParts) == 2 {
+			objectID := urlParts[1]
+
+			oid, err := hex.DecodeString(objectID)
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+
+			obj, err = r.OpenObject(oid)
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+			defer obj.Close()
+
+		} else if len(urlParts) > 2 {
+			commitIDStr := urlParts[1]
+			filename := filepath.Join(urlParts[2:]...)
+
+			var err error
+
+			var commitID repo.CommitID
+			if commitIDStr == "HEAD" || commitIDStr == "working" {
+				commitID.Ref = "HEAD"
+			} else {
+				commitID.Hash, err = git.NewOid(commitIDStr)
+				if err != nil {
+					die400(w, err)
+					return
+				}
+			}
+
+			obj, err = r.OpenFileAtCommit(filename, commitID)
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+			defer obj.Close()
+		}
+
+		_, err := io.Copy(w, obj)
+		if err != nil {
+			log.Errorf("[http server] error serving file (%v): %v", req.URL.Path, err)
+			die500(w, err)
+			return
+		}
+	}
 }
 
 func (s *Server) handleAddPeer() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := r.ParseForm()
+	return func(w http.ResponseWriter, req *http.Request) {
+		err := req.ParseForm()
 		if err != nil {
 			die500(w, err)
 			return
 		}
 
-		addr := r.Form.Get("addr")
+		addr := req.Form.Get("addr")
 		if addr == "" {
 			die500(w, fmt.Errorf("no addr supplied"))
 			return
@@ -85,25 +186,25 @@ func (s *Server) handleAddPeer() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		err = s.node.AddPeer(ctx, addr)
+		err = s.node.P2PHost().AddPeer(ctx, addr)
 		if err != nil {
 			die500(w, err)
 			return
 		}
 
-		http.Redirect(w, r, "/", http.StatusFound)
+		http.Redirect(w, req, "/", http.StatusFound)
 	}
 }
 
 func (s *Server) handleRemovePeer() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := r.ParseForm()
+	return func(w http.ResponseWriter, req *http.Request) {
+		err := req.ParseForm()
 		if err != nil {
 			die500(w, err)
 			return
 		}
 
-		peerIDStr := r.Form.Get("peerid")
+		peerIDStr := req.Form.Get("peerid")
 		if peerIDStr == "" {
 			die500(w, err)
 			return
@@ -115,13 +216,13 @@ func (s *Server) handleRemovePeer() http.HandlerFunc {
 			return
 		}
 
-		err = s.node.RemovePeer(peerID)
+		err = s.node.P2PHost().RemovePeer(peerID)
 		if err != nil {
 			die500(w, err)
 			return
 		}
 
-		http.Redirect(w, r, "/", http.StatusFound)
+		http.Redirect(w, req, "/", http.StatusFound)
 	}
 }
 
@@ -157,7 +258,7 @@ func (s *Server) handleUntrackRepo() http.HandlerFunc {
 			return
 		}
 
-		err = s.node.SetReplicationPolicy(repoID, 0)
+		err = s.node.P2PHost().SetReplicationPolicy(repoID, 0)
 		if err != nil {
 			die500(w, err)
 			return
@@ -231,7 +332,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		Username   string
 
 		ConfigText string
-		Config     config.Config
+		Config     *config.Config
 
 		EthAddress           string
 		ProtocolContractAddr string
@@ -253,15 +354,15 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		addrs := make([]string, 0)
-		for _, addr := range s.node.Addrs() {
-			addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), s.node.ID().Pretty()))
+		for _, addr := range s.node.P2PHost().Addrs() {
+			addrs = append(addrs, fmt.Sprintf("%v/p2p/%v", addr.String(), s.node.P2PHost().ID().Pretty()))
 		}
 
 		var username string
 		{
 			var err error
 			ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-			username, err = s.node.GetUsername(ctx)
+			username, err = s.node.EthereumClient().GetUsername(ctx)
 			if err != nil {
 				username = "<error fetching username>"
 			}
@@ -279,12 +380,12 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		state.ConfigPath = s.node.Config.Path()
 		state.Config = s.node.Config
 		state.Username = username
-		state.EthAddress = s.node.EthAddress().Hex()
+		state.EthAddress = s.node.EthereumClient().Address().Hex()
 		state.ProtocolContractAddr = s.node.Config.Node.ProtocolContract
 		state.RPCListenAddr = s.node.Config.Node.RPCListenNetwork + ":" + s.node.Config.Node.RPCListenHost
 		state.Addrs = addrs
 
-		for _, pinfo := range s.node.Peers() {
+		for _, pinfo := range s.node.P2PHost().Peers() {
 			p := Peer{PrettyName: pinfo.ID.String(), Name: peer.IDB58Encode(pinfo.ID)}
 			for _, addr := range pinfo.Addrs {
 				p.Addrs = append(p.Addrs, addr.String())
@@ -292,7 +393,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			state.Peers = append(state.Peers, p)
 		}
 
-		state.PeersConnected = len(s.node.Conns())
+		state.PeersConnected = len(s.node.P2PHost().Conns())
 
 		err = s.node.RepoManager().ForEachRepo(func(r *repo.Repo) error {
 			repoID, err := r.RepoID()
@@ -306,7 +407,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			}
 			defer rIter.Free()
 
-			remoteRefs, _, err := s.node.GetRemoteRefs(context.TODO(), repoID, 50, 0)
+			remoteRefs, _, err := s.node.EthereumClient().GetRemoteRefs(context.TODO(), repoID, 50, 0)
 			if err != nil {
 				return err
 			}
@@ -368,13 +469,13 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			state.Env = append(state.Env, EnvVar{parts[0], parts[1]})
 		}
 
-		stats := s.node.GetBandwidthTotals()
+		stats := s.node.P2PHost().GetBandwidthTotals()
 		state.GlobalConnStats.TotalIn = util.HumanizeBytes(float64(stats.TotalIn))
 		state.GlobalConnStats.TotalOut = util.HumanizeBytes(float64(stats.TotalOut))
 		state.GlobalConnStats.RateIn = util.HumanizeBytes(stats.RateIn)
 		state.GlobalConnStats.RateOut = util.HumanizeBytes(stats.RateOut)
 
-		err = tplIndex(s.node.Config).Execute(w, state)
+		err = tplIndex(*s.node.Config).Execute(w, state)
 		if err != nil {
 			die500(w, err)
 			return
@@ -384,14 +485,16 @@ func (s *Server) handleIndex() http.HandlerFunc {
 
 func die400(w http.ResponseWriter, err error) {
 	log.Errorln("[http]", err)
-	w.WriteHeader(400)
-	w.Write([]byte("Bad request: " + err.Error()))
+	// w.WriteHeader(400)
+	// w.Write([]byte("Bad request: " + err.Error()))
+	http.Error(w, "Bad request: "+err.Error(), 400)
 }
 
 func die500(w http.ResponseWriter, err error) {
 	log.Errorln("[http]", err)
-	w.WriteHeader(500)
-	w.Write([]byte("Internal server error: " + err.Error()))
+	// w.WriteHeader(500)
+	// w.Write([]byte("Internal server error: " + err.Error()))
+	http.Error(w, "Internal server error: "+err.Error(), 500)
 }
 
 func tplIndex(cfg config.Config) *template.Template {

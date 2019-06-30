@@ -7,16 +7,8 @@ import (
 	"github.com/Conscience/protocol/log"
 )
 
-type Server struct {
-	node INode
-}
-
-func NewServer(node INode) *Server {
-	return &Server{node}
-}
-
-func (s *Server) isAuthorised(repoID string, sig []byte) (bool, error) {
-	addr, err := s.node.AddrFromSignedHash([]byte(repoID), sig)
+func (h *Host) isAuthorised(repoID string, sig []byte) (bool, error) {
+	addr, err := h.ethClient.AddrFromSignedHash([]byte(repoID), sig)
 	if err != nil {
 		return false, err
 	}
@@ -24,7 +16,7 @@ func (s *Server) isAuthorised(repoID string, sig []byte) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	isAuth, err := s.node.AddressHasPullAccess(ctx, addr, repoID)
+	isAuth, err := h.ethClient.AddressHasPullAccess(ctx, addr, repoID)
 	if err != nil {
 		return false, err
 	}

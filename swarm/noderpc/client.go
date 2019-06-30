@@ -9,10 +9,10 @@ import (
 
 	"github.com/libgit2/git2go"
 
-	// "github.com/Conscience/protocol/swarm"
+	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
-	"github.com/Conscience/protocol/swarm/wire"
 )
 
 type Client struct {
@@ -60,7 +60,7 @@ type MaybeFetchFromCommitPacket struct {
 	Error          error
 }
 
-func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit git.Oid, checkoutType wire.CheckoutType) (chan MaybeFetchFromCommitPacket, int64, int64, error) {
+func (c *Client) FetchFromCommit(ctx context.Context, repoID string, path string, commit git.Oid, checkoutType nodep2p.CheckoutType) (chan MaybeFetchFromCommitPacket, int64, int64, error) {
 	fetchFromCommitClient, err := c.client.FetchFromCommit(ctx, &pb.FetchFromCommitRequest{
 		RepoID:       repoID,
 		Path:         path,
@@ -164,7 +164,7 @@ func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string, forceReloa
 }
 
 type MaybeLocalRepo struct {
-	wire.LocalRepo
+	nodep2p.LocalRepo
 	Error error
 }
 
@@ -184,7 +184,7 @@ func (c *Client) GetLocalRepos(ctx context.Context) (chan MaybeLocalRepo, error)
 			} else if err != nil {
 				ch <- MaybeLocalRepo{Error: errors.WithStack(err)}
 			} else {
-				ch <- MaybeLocalRepo{LocalRepo: wire.LocalRepo{RepoID: item.RepoID, Path: item.Path}}
+				ch <- MaybeLocalRepo{LocalRepo: nodep2p.LocalRepo{RepoID: item.RepoID, Path: item.Path}}
 			}
 		}
 	}()
@@ -201,15 +201,15 @@ func (c *Client) AnnounceRepoContent(ctx context.Context, repoID string) error {
 	return errors.WithStack(err)
 }
 
-func (c *Client) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]wire.Ref, uint64, error) {
+func (c *Client) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint64, page uint64) (map[string]repo.Ref, uint64, error) {
 	resp, err := c.client.GetRemoteRefs(ctx, &pb.GetRemoteRefsRequest{RepoID: repoID, PageSize: pageSize, Page: page})
 	if err != nil {
 		return nil, 0, errors.WithStack(err)
 	}
 
-	refMap := make(map[string]wire.Ref)
+	refMap := make(map[string]repo.Ref)
 	for _, ref := range resp.Refs {
-		refMap[ref.RefName] = wire.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
+		refMap[ref.RefName] = repo.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash}
 	}
 	return refMap, resp.Total, nil
 }
@@ -226,15 +226,15 @@ const (
 	REF_PAGE_SIZE = 10 // @@TODO: make configurable
 )
 
-func (c *Client) GetAllRemoteRefs(ctx context.Context, repoID string) (map[string]wire.Ref, error) {
+func (c *Client) GetAllRemoteRefs(ctx context.Context, repoID string) (map[string]repo.Ref, error) {
 	var page uint64
 	var numRefs uint64
 	var err error
 
-	refMap := make(map[string]wire.Ref)
+	refMap := make(map[string]repo.Ref)
 
 	for {
-		var refs map[string]wire.Ref
+		var refs map[string]repo.Ref
 		refs, numRefs, err = c.GetRemoteRefs(ctx, repoID, REF_PAGE_SIZE, page)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -262,13 +262,13 @@ func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodee
 	return resp.Users, resp.Total, nil
 }
 
-func (c *Client) PushRepo(ctx context.Context, repoRoot string, branchName string, force bool) (<-chan wire.Progress, error) {
+func (c *Client) PushRepo(ctx context.Context, repoRoot string, branchName string, force bool) (<-chan nodep2p.Progress, error) {
 	pushRepoClient, err := c.client.PushRepo(ctx, &pb.PushRepoRequest{RepoRoot: repoRoot, BranchName: branchName, Force: force})
 	if err != nil {
 		return nil, err
 	}
 
-	ch := make(chan wire.Progress)
+	ch := make(chan nodep2p.Progress)
 
 	go func() {
 		defer close(ch)
@@ -277,24 +277,24 @@ func (c *Client) PushRepo(ctx context.Context, repoRoot string, branchName strin
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				ch <- wire.Progress{Error: err}
+				ch <- nodep2p.Progress{Error: err}
 				return
 			}
 
-			ch <- wire.Progress{Current: pkt.Current, Total: pkt.Total, Done: pkt.Done}
+			ch <- nodep2p.Progress{Current: pkt.Current, Total: pkt.Total, Done: pkt.Done}
 		}
 	}()
 
 	return ch, nil
 }
 
-func (c *Client) RequestReplication(ctx context.Context, repoID string) (<-chan wire.Progress, error) {
+func (c *Client) RequestReplication(ctx context.Context, repoID string) (<-chan nodep2p.Progress, error) {
 	requestReplicationClient, err := c.client.RequestReplication(ctx, &pb.ReplicationRequest{RepoID: repoID})
 	if err != nil {
 		return nil, err
 	}
 
-	ch := make(chan wire.Progress)
+	ch := make(chan nodep2p.Progress)
 
 	go func() {
 		defer close(ch)
@@ -303,11 +303,11 @@ func (c *Client) RequestReplication(ctx context.Context, repoID string) (<-chan 
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				ch <- wire.Progress{Error: err}
+				ch <- nodep2p.Progress{Error: err}
 				return
 			}
 
-			ch <- wire.Progress{Current: pkt.Current, Total: pkt.Total, Done: pkt.Done}
+			ch <- nodep2p.Progress{Current: pkt.Current, Total: pkt.Total, Done: pkt.Done}
 		}
 	}()
 

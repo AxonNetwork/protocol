@@ -15,7 +15,7 @@ import (
 	"github.com/Conscience/protocol/config/env"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/wire"
+	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -31,7 +31,7 @@ func fetchFromCommit_packfile(commitHashStr string) error {
 	copy(commitHash[:], commitHashSlice)
 
 	// @@TODO: give context a timeout and make it configurable
-	ch, uncompressedSize, totalChunks, err := client.FetchFromCommit(context.TODO(), repoID, Repo.Path(), commitHash, wire.CheckoutTypeWorking)
+	ch, uncompressedSize, totalChunks, err := client.FetchFromCommit(context.TODO(), repoID, Repo.Path(), commitHash, nodep2p.CheckoutTypeWorking)
 	if err != nil {
 		return err
 	}

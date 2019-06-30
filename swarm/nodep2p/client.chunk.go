@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
-	"github.com/Conscience/protocol/swarm/wire"
 )
 
 type Chunk struct {
@@ -22,7 +21,7 @@ type MaybeChunk struct {
 	Error error
 }
 
-func (sc *Client) FetchChunks(ctx context.Context, chunkObjects [][]byte) <-chan MaybeChunk {
+func (h *Host) FetchChunks(ctx context.Context, repoID string, chunkObjects [][]byte) <-chan MaybeChunk {
 	chOut := make(chan MaybeChunk)
 	wg := &sync.WaitGroup{}
 
@@ -43,10 +42,10 @@ func (sc *Client) FetchChunks(ctx context.Context, chunkObjects [][]byte) <-chan
 		close(jobQueue)
 	}()
 
-	maxPeers := sc.config.Node.MaxConcurrentPeers
+	maxPeers := h.Config.Node.MaxConcurrentPeers
 
 	go func() {
-		pool, err := newPeerPool(ctx, sc.node, sc.repoID, maxPeers, CHUNK_PROTO, true)
+		pool, err := newPeerPool(ctx, h, repoID, maxPeers, CHUNK_PROTO, true)
 		if err != nil {
 			chOut <- MaybeChunk{Error: err}
 			return
@@ -64,7 +63,7 @@ func (sc *Client) FetchChunks(ctx context.Context, chunkObjects [][]byte) <-chan
 			}
 
 			go func(chunk job) {
-				err := sc.fetchDataChunk(ctx, conn, chunk, chOut, jobQueue, wg)
+				err := h.fetchDataChunk(ctx, conn, repoID, chunk, chOut, jobQueue, wg)
 				if err != nil {
 					log.Errorln("[chunk client] fetchObject:", err)
 					if errors.Cause(err) == ErrFetchingFromPeer {
@@ -83,7 +82,7 @@ func (sc *Client) FetchChunks(ctx context.Context, chunkObjects [][]byte) <-chan
 	return chOut
 }
 
-func (sc *Client) fetchDataChunk(ctx context.Context, conn *peerConn, j job, chOut chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
+func (h *Host) fetchDataChunk(ctx context.Context, conn *peerConn, repoID string, j job, chOut chan MaybeChunk, jobQueue chan job, wg *sync.WaitGroup) error {
 	defer wg.Done()
 
 	log.Infof("[chunk client] requesting data chunk %0x", j.objectID)
@@ -91,13 +90,13 @@ func (sc *Client) fetchDataChunk(ctx context.Context, conn *peerConn, j job, chO
 	var totalBytes int64
 	var readBytes int64
 	{
-		sig, err := sc.node.SignHash([]byte(sc.repoID))
+		sig, err := h.ethClient.SignHash([]byte(repoID))
 		if err != nil {
 			return errors.WithStack(err)
 		}
 
-		err = wire.WriteStructPacket(conn, &wire.GetChunkRequest{
-			RepoID:    sc.repoID,
+		err = WriteMsg(conn, &GetChunkRequest{
+			RepoID:    repoID,
 			ChunkID:   j.objectID,
 			Signature: sig,
 		})
@@ -105,22 +104,22 @@ func (sc *Client) fetchDataChunk(ctx context.Context, conn *peerConn, j job, chO
 			return errors.WithStack(err)
 		}
 
-		var resp wire.GetChunkResponseHeader
-		err = wire.ReadStructPacket(conn, &resp)
+		var resp GetChunkResponseHeader
+		err = ReadMsg(conn, &resp)
 		if err != nil {
 			return err
 		} else if resp.ErrObjectNotFound {
-			return errors.Wrapf(wire.ErrObjectNotFound, "%v", conn.repoID)
+			return errors.Wrapf(ErrObjectNotFound, "%v", conn.repoID)
 		} else if resp.ErrUnauthorized {
-			return errors.Wrapf(wire.ErrUnauthorized, "%v", conn.repoID)
+			return errors.Wrapf(ErrUnauthorized, "%v", conn.repoID)
 		}
 
 		totalBytes = resp.Length
 	}
 
 	for {
-		var pkt wire.GetChunkResponsePacket
-		err := wire.ReadStructPacket(conn, &pkt)
+		var pkt GetChunkResponsePacket
+		err := ReadMsg(conn, &pkt)
 		if err != nil {
 			return errors.WithStack(err)
 		} else if pkt.End {

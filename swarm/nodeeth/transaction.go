@@ -27,9 +27,9 @@ type TxResult struct {
 	Err     error
 }
 
-func (tx Transaction) Await(ctx context.Context) chan TxResult {
+func (tx Transaction) Await(ctx context.Context) <-chan TxResult {
 	ch := make(chan TxResult)
-	hash := tx.Hash()
+
 	go func() {
 		for {
 			select {
@@ -38,7 +38,7 @@ func (tx Transaction) Await(ctx context.Context) chan TxResult {
 				return
 
 			default:
-				receipt, err := tx.c.TransactionReceipt(ctx, hash)
+				receipt, err := tx.c.TransactionReceipt(ctx, tx.Hash())
 				if err != nil && err != ethereum.NotFound {
 					ch <- TxResult{nil, errors.WithStack(err)}
 					return
@@ -53,5 +53,6 @@ func (tx Transaction) Await(ctx context.Context) chan TxResult {
 			time.Sleep(2 * time.Second)
 		}
 	}()
+
 	return ch
 }

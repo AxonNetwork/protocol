@@ -13,40 +13,11 @@ import (
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
 
-	"github.com/ipfs/go-cid"
-	netp2p "github.com/libp2p/go-libp2p-net"
-	"github.com/libp2p/go-libp2p-peer"
-	"github.com/libp2p/go-libp2p-peerstore"
-	"github.com/libp2p/go-libp2p-protocol"
-
 	"github.com/Conscience/protocol/filters/decode"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/nodeevents"
 )
-
-// var remoteIsReplicating = make(map[*git.Remote]bool)
-// var remoteIsReplicatingMu = &sync.Mutex{}
-
-// func setRemoteIsReplicating(remote *git.Remote, is bool) {
-// 	remoteIsReplicatingMu.Lock()
-// 	defer remoteIsReplicatingMu.Unlock()
-// 	if is {
-// 		remoteIsReplicating[remote] = is
-// 	} else {
-// 		delete(remoteIsReplicating, remote)
-// 	}
-// }
-
-// func RemoteIsReplicating(remote *git.Remote) bool {
-// 	return remoteIsReplicating[remote]
-// }
-
-// func RemoteIsReplicating(remote *git.Remote) bool {
-//     remoteIsReplicatingMu.Lock()
-//     defer remoteIsReplicatingMu.Unlock()
-//     return remoteIsReplicating[remote]
-// }
 
 type CheckManifestCallback func(manifest *Manifest) error
 
@@ -63,16 +34,13 @@ func setCheckManifestCallback(remote *git.Remote, cb CheckManifestCallback) {
 	}
 }
 
-func GetCheckManifestCallback(remote *git.Remote) CheckManifestCallback {
+func getCheckManifestCallback(remote *git.Remote) CheckManifestCallback {
 	checkManifestCallbackMu.Lock()
 	defer checkManifestCallbackMu.Unlock()
 	return checkManifestCallback[remote]
 }
 
 type CloneOptions struct {
-	Node interface {
-		TrackRepo(repoPath string, forceReload bool) (*repo.Repo, error)
-	}
 	RepoID        string
 	RepoRoot      string
 	Bare          bool
@@ -83,7 +51,7 @@ type CloneOptions struct {
 	IsReplication bool
 }
 
-func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
+func (h *Host) Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 	if opts.ProgressCb == nil {
 		opts.ProgressCb = func(done, total uint64) error { return nil }
 	}
@@ -149,7 +117,7 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 		}
 	}
 
-	r, err = opts.Node.TrackRepo(r.Path(), true)
+	r, err = h.repoManager.TrackRepo(r.Path(), true)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -165,14 +133,6 @@ func Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error) {
 }
 
 type PushOptions struct {
-	Node interface {
-		AnnounceRepo(ctx context.Context, repoID string) error
-		GetRef(ctx context.Context, repoID string, refName string) (git.Oid, error)
-		UpdateRef(ctx context.Context, repoID string, branchRefName string, oldCommitID, newCommitID git.Oid) (*nodeeth.Transaction, error)
-		ID() peer.ID
-		FindProvidersAsync(ctx context.Context, key cid.Cid, count int) <-chan peerstore.PeerInfo
-		NewStream(ctx context.Context, peerID peer.ID, pids ...protocol.ID) (netp2p.Stream, error)
-	}
 	Repo       *repo.Repo
 	BranchName string
 	Force      bool
@@ -181,9 +141,8 @@ type PushOptions struct {
 
 var ErrRequiresForcePush = errors.New("requires force push")
 
-func Push(ctx context.Context, opts *PushOptions) (string, error) {
+func (h *Host) Push(ctx context.Context, opts *PushOptions) (string, error) {
 	r := opts.Repo
-	node := opts.Node
 
 	repoID, err := r.RepoID()
 	if err != nil {
@@ -216,7 +175,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 		ctx0, cancel0 := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel0()
 
-		currentCommitOid, err = node.GetRef(ctx0, repoID, branch.Reference.Name())
+		currentCommitOid, err = h.ethClient.GetRemoteRef(ctx0, repoID, branch.Reference.Name())
 		if err != nil {
 			return "", errors.WithStack(err)
 		}
@@ -242,7 +201,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	defer cancel1()
 
 	// Tell the node to announce the new content so that replicator nodes can find and pull it.
-	err = node.AnnounceRepo(ctx1, repoID)
+	err = h.AnnounceRepo(ctx1, repoID)
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
@@ -251,7 +210,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	ctx2, cancel2 := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel2()
 
-	tx, err := node.UpdateRef(ctx2, repoID, branch.Reference.Name(), currentCommitOid, *localCommitOid)
+	tx, err := h.ethClient.UpdateRemoteRef(ctx2, repoID, branch.Reference.Name(), currentCommitOid, *localCommitOid)
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
@@ -267,7 +226,7 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 	ctx3, cancel3 := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel3()
 
-	ch, err := RequestReplication(ctx3, node, repoID)
+	ch, err := h.RequestReplication(ctx3, repoID)
 	if err != nil {
 		return "", err
 	}
@@ -279,6 +238,16 @@ func Push(ctx context.Context, opts *PushOptions) (string, error) {
 		opts.ProgressCb(int(progress.Current))
 	}
 
+	h.eventBus.NotifyWatchers(nodeevents.MaybeEvent{
+		EventType: nodeevents.EventType_PushedRepo,
+		PushedRepoEvent: &nodeevents.PushedRepoEvent{
+			RepoID:     repoID,
+			RepoRoot:   r.Path(),
+			BranchName: opts.BranchName,
+			Commit:     localCommitOid.String(),
+		},
+	})
+
 	return localCommitOid.String(), nil
 }
 
@@ -286,10 +255,11 @@ type FetchOptions struct {
 	Repo          *repo.Repo
 	ProgressCb    func(done, total uint64) error
 	CheckManifest CheckManifestCallback
+	EventBus      *nodeevents.EventBus
 }
 
 // Perform a fetch on the first Axon remote found in the given repo's config.
-func FetchAxonRemote(ctx context.Context, opts *FetchOptions) ([]string, error) {
+func (h *Host) fetchAxonRemote(ctx context.Context, opts *FetchOptions) ([]string, error) {
 	if opts.ProgressCb == nil {
 		opts.ProgressCb = func(done, total uint64) error { return nil }
 	}
@@ -337,8 +307,8 @@ func FetchAxonRemote(ctx context.Context, opts *FetchOptions) ([]string, error) 
 
 // Fetches refs and objects from an Axon remote and then updates local refs that are tracking those
 // remote refs.
-func FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error) {
-	updatedRefs, err := FetchAxonRemote(ctx, opts)
+func (h *Host) FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error) {
+	updatedRefs, err := h.fetchAxonRemote(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -361,6 +331,21 @@ func FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string, error) {
 			}
 		}
 	}
+
+	repoID, err := opts.Repo.RepoID()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	h.eventBus.NotifyWatchers(nodeevents.MaybeEvent{
+		EventType: nodeevents.EventType_PulledRepo,
+		PulledRepoEvent: &nodeevents.PulledRepoEvent{
+			RepoID:      repoID,
+			RepoRoot:    opts.Repo.Path(),
+			UpdatedRefs: updatedRefs,
+		},
+	})
+
 	return updatedRefs, nil
 }
 
@@ -371,7 +356,7 @@ type PullOptions struct {
 	ProgressCb func(done, total uint64) error
 }
 
-func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
+func (h *Host) Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 	var err error
 
 	r := opts.Repo
@@ -543,6 +528,20 @@ func Pull(ctx context.Context, opts *PullOptions) ([]string, error) {
 	}
 
 	err = decodeFiles(r.Path())
+
+	repoID, err := r.RepoID()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	h.eventBus.NotifyWatchers(nodeevents.MaybeEvent{
+		EventType: nodeevents.EventType_PulledRepo,
+		PulledRepoEvent: &nodeevents.PulledRepoEvent{
+			RepoID:      repoID,
+			RepoRoot:    r.Path(),
+			UpdatedRefs: updatedRefs,
+		},
+	})
 
 	return updatedRefs, nil
 }

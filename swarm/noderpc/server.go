@@ -18,9 +18,9 @@ import (
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
+	"github.com/Conscience/protocol/swarm/nodeevents"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
-	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -58,7 +58,7 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) SetUsername(ctx context.Context, req *pb.SetUsernameRequest) (*pb.SetUsernameResponse, error) {
-	tx, err := s.node.EnsureUsername(ctx, req.Username)
+	tx, err := s.node.EthereumClient().EnsureUsername(ctx, req.Username)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (s *Server) SetUsername(ctx context.Context, req *pb.SetUsernameRequest) (*
 			return nil, errors.New("transaction failed")
 		}
 	}
-	signature, err := s.node.SignHash([]byte(req.Username))
+	signature, err := s.node.EthereumClient().SignHash([]byte(req.Username))
 	if err != nil {
 		return nil, err
 	}
@@ -79,11 +79,11 @@ func (s *Server) SetUsername(ctx context.Context, req *pb.SetUsernameRequest) (*
 }
 
 func (s *Server) GetUsername(ctx context.Context, req *pb.GetUsernameRequest) (*pb.GetUsernameResponse, error) {
-	un, err := s.node.GetUsername(ctx)
+	un, err := s.node.EthereumClient().GetUsername(ctx)
 	if err != nil {
 		return nil, err
 	}
-	signature, err := s.node.SignHash([]byte(un))
+	signature, err := s.node.EthereumClient().SignHash([]byte(un))
 	if err != nil {
 		return nil, err
 	}
@@ -97,14 +97,14 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 
 	// Before anything else, try to claim the repoID in the smart contract
-	isRegistered, err := s.node.IsRepoIDRegistered(ctx, req.RepoID)
+	isRegistered, err := s.node.EthereumClient().IsRepoIDRegistered(ctx, req.RepoID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	} else if isRegistered {
 		return nil, errors.New("repoID already registered")
 	}
 
-	tx, err := s.node.RegisterRepoID(ctx, req.RepoID)
+	tx, err := s.node.EthereumClient().RegisterRepoID(ctx, req.RepoID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -149,7 +149,7 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 
 	// Have the node track the local repo
-	_, err = s.node.TrackRepo(path, true)
+	_, err = s.node.RepoManager().TrackRepo(path, true)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -157,10 +157,9 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	// if local HEAD exists, push to contract
 	_, err = r.Head()
 	if err == nil {
-		_, err = s.node.Push(ctx, &nodep2p.PushOptions{
-			Node:       s.node,
+		_, err = s.node.P2PHost().Push(ctx, &nodep2p.PushOptions{
 			Repo:       r,
-			BranchName: "master", // @@TODO: don't hard code this
+			BranchName: "master", // @@TODO: don't hard code this @@branches
 			ProgressCb: func(percent int) {
 				// @@TODO: stream progress over RPC
 			},
@@ -188,10 +187,9 @@ func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoReque
 		return nil, errors.WithStack(err)
 	}
 
-	_, err = s.node.Push(ctx, &nodep2p.PushOptions{
-		Node:       s.node,
+	_, err = s.node.P2PHost().Push(ctx, &nodep2p.PushOptions{
 		Repo:       r,
-		BranchName: "master", // @@TODO: don't hard code this
+		BranchName: "master", // @@TODO: don't hard code this @@branches
 		ProgressCb: func(percent int) {
 			// @@TODO: stream progress over RPC
 		},
@@ -210,8 +208,8 @@ func (s *Server) PullRepo(req *pb.PullRepoRequest, server pb.NodeRPC_PullRepoSer
 		return errors.Errorf("repo at path '%v' not found", req.Path)
 	}
 
-	// @@TODO: don't hardcode origin/master
-	_, err := s.node.Pull(context.TODO(), &nodep2p.PullOptions{
+	// @@TODO: don't hardcode origin/master @@branches
+	_, err := s.node.P2PHost().Pull(context.TODO(), &nodep2p.PullOptions{
 		Repo:       r,
 		RemoteName: "origin",
 		BranchName: "master",
@@ -237,8 +235,7 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 	}
 	repoRoot := filepath.Join(replDir, req.RepoID)
 
-	r, err := s.node.Clone(context.TODO(), &nodep2p.CloneOptions{
-		Node:      s.node,
+	r, err := s.node.P2PHost().Clone(context.TODO(), &nodep2p.CloneOptions{
 		RepoID:    req.RepoID,
 		RepoRoot:  repoRoot,
 		Bare:      false, // @@TODO
@@ -274,8 +271,14 @@ func (s *Server) CloneRepo(req *pb.CloneRepoRequest, server pb.NodeRPC_CloneRepo
 func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeRPC_FetchFromCommitServer) error {
 	// @@TODO: give context a timeout and make it configurable
 	ctx := server.Context()
-	cfg := s.node.GetConfig()
-	ch, manifest, err := nodep2p.NewClient(s.node, req.RepoID, req.Path, &cfg).FetchFromCommit(ctx, *util.OidFromBytes(req.Commit), wire.CheckoutType(req.CheckoutType), nil)
+
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	// ch, manifest, err := nodep2p.NewClient(s.node, req.RepoID, req.Path, &cfg).FetchFromCommit(ctx, *util.OidFromBytes(req.Commit), nodep2p.CheckoutType(req.CheckoutType), nil)
+	ch, manifest, err := s.node.P2PHost().FetchFromCommit(ctx, r, *util.OidFromBytes(req.Commit), nodep2p.CheckoutType(req.CheckoutType), nil)
 	if err != nil {
 		return err
 	}
@@ -340,7 +343,7 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 }
 
 func (s *Server) FetchChunks(req *pb.FetchChunksRequest, server pb.NodeRPC_FetchChunksServer) error {
-	ch := s.node.FetchChunks(context.TODO(), req.RepoID, req.Path, req.Chunks)
+	ch := s.node.P2PHost().FetchChunks(context.TODO(), req.RepoID, req.Chunks)
 
 	for pkt := range ch {
 		if pkt.Error != nil {
@@ -360,14 +363,14 @@ func (s *Server) FetchChunks(req *pb.FetchChunksRequest, server pb.NodeRPC_Fetch
 }
 
 func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDRequest) (*pb.RegisterRepoIDResponse, error) {
-	isRegistered, err := s.node.IsRepoIDRegistered(ctx, req.RepoID)
+	isRegistered, err := s.node.EthereumClient().IsRepoIDRegistered(ctx, req.RepoID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	} else if isRegistered {
 		return nil, errors.New("repoID already registered")
 	}
 
-	tx, err := s.node.RegisterRepoID(ctx, req.RepoID)
+	tx, err := s.node.EthereumClient().RegisterRepoID(ctx, req.RepoID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -383,7 +386,7 @@ func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDReque
 }
 
 func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoRequest) (*pb.TrackLocalRepoResponse, error) {
-	_, err := s.node.TrackRepo(req.RepoPath, req.ForceReload)
+	_, err := s.node.RepoManager().TrackRepo(req.RepoPath, req.ForceReload)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -408,7 +411,7 @@ func (s *Server) GetLocalRepos(req *pb.GetLocalReposRequest, server pb.NodeRPC_G
 }
 
 func (s *Server) SetReplicationPolicy(ctx context.Context, req *pb.SetReplicationPolicyRequest) (*pb.SetReplicationPolicyResponse, error) {
-	err := s.node.SetReplicationPolicy(req.RepoID, req.MaxBytes)
+	err := s.node.P2PHost().SetReplicationPolicy(req.RepoID, req.MaxBytes)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -416,7 +419,7 @@ func (s *Server) SetReplicationPolicy(ctx context.Context, req *pb.SetReplicatio
 }
 
 func (s *Server) AnnounceRepoContent(ctx context.Context, req *pb.AnnounceRepoContentRequest) (*pb.AnnounceRepoContentResponse, error) {
-	err := s.node.AnnounceRepo(ctx, req.RepoID)
+	err := s.node.P2PHost().AnnounceRepo(ctx, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
@@ -429,43 +432,29 @@ func (s *Server) GetLocalRefs(ctx context.Context, req *pb.GetLocalRefsRequest) 
 		return nil, err
 	}
 
-	rIter, err := r.NewReferenceIterator()
-	if err != nil {
-		return nil, err
-	}
-	defer rIter.Free()
-
-	refs := []*pb.Ref{}
-	for {
-		ref, err := rIter.Next()
-		if git.IsErrorCode(err, git.ErrIterOver) {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-
-		ref, err = ref.Resolve()
-		if err != nil {
-			return nil, err
-		}
-
+	var refs []*pb.Ref
+	err = r.ForEachLocalRef(func(ref *git.Reference) error {
 		refs = append(refs, &pb.Ref{
 			RefName:    ref.Name(),
 			CommitHash: ref.Target().String(),
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &pb.GetLocalRefsResponse{Refs: refs}, nil
 }
 
 func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest) (*pb.GetRemoteRefsResponse, error) {
-	refMap, total, err := s.node.GetRemoteRefs(ctx, req.RepoID, req.PageSize, req.Page)
+	refMap, total, err := s.node.EthereumClient().GetRemoteRefs(ctx, req.RepoID, req.PageSize, req.Page)
 	if err != nil {
 		log.Errorln("[rpc server] error fetching remote refs:", err)
 		return nil, err
 	}
 
-	refs := []*pb.Ref{}
+	var refs []*pb.Ref
 	for _, ref := range refMap {
 		refs = append(refs, &pb.Ref{RefName: ref.RefName, CommitHash: ref.CommitHash})
 	}
@@ -474,12 +463,22 @@ func (s *Server) GetRemoteRefs(ctx context.Context, req *pb.GetRemoteRefsRequest
 }
 
 func (s *Server) IsBehindRemote(ctx context.Context, req *pb.IsBehindRemoteRequest) (*pb.IsBehindRemoteResponse, error) {
-	isBehindRemote, err := s.node.IsBehindRemote(ctx, req.RepoID, req.Path)
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
 
-	return &pb.IsBehindRemoteResponse{RepoID: req.RepoID, IsBehindRemote: isBehindRemote}, nil
+	// @@TODO: don't hard code this @@branches
+	remote, err := s.node.EthereumClient().GetRemoteRef(ctx, req.RepoID, "refs/heads/master")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(remote) == 0 {
+		return nil, nil
+	}
+
+	return &pb.IsBehindRemoteResponse{RepoID: req.RepoID, IsBehindRemote: !r.HasObject(remote[:])}, nil
 }
 
 func (s *Server) PushRepo(req *pb.PushRepoRequest, server pb.NodeRPC_PushRepoServer) error {
@@ -492,8 +491,7 @@ func (s *Server) PushRepo(req *pb.PushRepoRequest, server pb.NodeRPC_PushRepoSer
 	defer cancel()
 
 	var innerErr error
-	_, err := s.node.Push(ctx, &nodep2p.PushOptions{
-		Node:       s.node,
+	_, err := s.node.P2PHost().Push(ctx, &nodep2p.PushOptions{
 		Repo:       r,
 		BranchName: req.BranchName,
 		Force:      req.Force,
@@ -519,7 +517,7 @@ func (s *Server) PushRepo(req *pb.PushRepoRequest, server pb.NodeRPC_PushRepoSer
 }
 
 func (s *Server) SetRepoPublic(ctx context.Context, req *pb.SetRepoPublicRequest) (*pb.SetRepoPublicResponse, error) {
-	tx, err := s.node.SetRepoPublic(ctx, req.RepoID, req.IsPublic)
+	tx, err := s.node.EthereumClient().SetRepoPublic(ctx, req.RepoID, req.IsPublic)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +532,7 @@ func (s *Server) SetRepoPublic(ctx context.Context, req *pb.SetRepoPublicRequest
 }
 
 func (s *Server) IsRepoPublic(ctx context.Context, req *pb.IsRepoPublicRequest) (*pb.IsRepoPublicResponse, error) {
-	isPublic, err := s.node.IsRepoPublic(ctx, req.RepoID)
+	isPublic, err := s.node.EthereumClient().IsRepoPublic(ctx, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +540,7 @@ func (s *Server) IsRepoPublic(ctx context.Context, req *pb.IsRepoPublicRequest) 
 }
 
 func (s *Server) GetRepoUsers(ctx context.Context, req *pb.GetRepoUsersRequest) (*pb.GetRepoUsersResponse, error) {
-	users, total, err := s.node.GetRepoUsers(ctx, req.RepoID, nodeeth.UserType(req.Type), req.PageSize, req.Page)
+	users, total, err := s.node.EthereumClient().GetRepoUsers(ctx, req.RepoID, nodeeth.UserType(req.Type), req.PageSize, req.Page)
 	if err != nil {
 		return nil, err
 	}
@@ -553,7 +551,7 @@ func (s *Server) RequestReplication(req *pb.ReplicationRequest, server pb.NodeRP
 	ctx, cancel := context.WithCancel(server.Context())
 	defer cancel()
 
-	ch, err := nodep2p.RequestReplication(ctx, s.node, req.RepoID)
+	ch, err := s.node.P2PHost().RequestReplication(ctx, req.RepoID)
 	if err != nil {
 		return err
 	}
@@ -600,7 +598,7 @@ func (s *Server) GetRepoHistory(ctx context.Context, req *pb.GetRepoHistoryReque
 		fromCommit = &oid
 
 	} else {
-		const branchName = "master" // @@TODO: add this field to the RPC request
+		const branchName = "master" // @@TODO: add this field to the RPC request @@branches
 
 		branch, err := r.LookupBranch(branchName, git.BranchLocal)
 		if git.IsErrorCode(err, git.ErrNotFound) {
@@ -666,7 +664,7 @@ func (s *Server) GetUpdatedRefEvents(ctx context.Context, req *pb.GetUpdatedRefE
 		end = &req.EndBlock
 	}
 
-	evts, err := s.node.GetUpdatedRefEvents(ctx, repoIDs, req.StartBlock, end)
+	evts, err := s.node.EthereumClient().GetUpdatedRefEvents(ctx, repoIDs, req.StartBlock, end)
 	if err != nil {
 		return nil, err
 	}
@@ -714,7 +712,7 @@ func (s *Server) GetRepoFiles(ctx context.Context, req *pb.GetRepoFilesRequest) 
 }
 
 func (s *Server) SignMessage(ctx context.Context, req *pb.SignMessageRequest) (*pb.SignMessageResponse, error) {
-	signature, err := s.node.SignHash(req.Message)
+	signature, err := s.node.EthereumClient().SignHash(req.Message)
 	if err != nil {
 		return nil, err
 	}
@@ -722,12 +720,11 @@ func (s *Server) SignMessage(ctx context.Context, req *pb.SignMessageRequest) (*
 }
 
 func (s *Server) EthAddress(ctx context.Context, req *pb.EthAddressRequest) (*pb.EthAddressResponse, error) {
-	addr := s.node.EthAddress()
-	return &pb.EthAddressResponse{Address: addr.String()}, nil
+	return &pb.EthAddressResponse{Address: s.node.EthereumClient().Address().String()}, nil
 }
 
 func (s *Server) SetUserPermissions(ctx context.Context, req *pb.SetUserPermissionsRequest) (*pb.SetUserPermissionsResponse, error) {
-	tx, err := s.node.SetUserPermissions(ctx, req.RepoID, req.Username, nodeeth.UserPermissions{Puller: req.Puller, Pusher: req.Pusher, Admin: req.Admin})
+	tx, err := s.node.EthereumClient().SetUserPermissions(ctx, req.RepoID, req.Username, nodeeth.UserPermissions{Puller: req.Puller, Pusher: req.Pusher, Admin: req.Admin})
 	if err != nil {
 		return nil, err
 	}
@@ -889,7 +886,7 @@ func (s *Server) GetDiff(req *pb.GetDiffRequest, server pb.NodeRPC_GetDiffServer
 }
 
 func (s *Server) SetFileChunking(ctx context.Context, req *pb.SetFileChunkingRequest) (*pb.SetFileChunkingResponse, error) {
-	r, err := s.node.RepoAtPathOrID(req.RepoRoot, req.RepoID)
+	r, err := s.node.RepoManager().RepoAtPathOrID(req.RepoRoot, req.RepoID)
 	if err != nil {
 		return nil, err
 	}
@@ -903,19 +900,27 @@ func (s *Server) SetFileChunking(ctx context.Context, req *pb.SetFileChunkingReq
 }
 
 func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) error {
-	var eventTypes swarm.EventType
+	var eventTypes nodeevents.EventType
 	for _, t := range req.EventTypes {
-		eventTypes |= swarm.EventType(t)
+		eventTypes |= nodeevents.EventType(t)
 	}
 
-	watcher := s.node.EventBus.Watch(&swarm.WatcherSettings{
-		EventTypes:      eventTypes,
-		UpdatedRefStart: req.UpdatedRefStart,
-	})
-	defer s.node.EventBus.Unwatch(watcher)
+	// settings := &nodeevents.WatcherSettings{EventTypes: eventTypes}
+
+	// if eventTypes&nodeevents.EventType_UpdatedRef != 0 {
+	// 	if req.UpdatedRefEventParams == nil {
+	// 		return errors.New("to watch UpdatedRef events, you must provide UpdatedRefEventParams")
+	// 	}
+
+	// 	settings.UpdatedRefEventParams.FromBlock = req.UpdatedRefEventParams.FromBlock
+	// 	settings.UpdatedRefEventParams.RepoIDs = req.UpdatedRefEventParams.RepoIDs
+	// }
+
+	watcher := s.node.EventBus().Watch(&nodeevents.WatcherSettings{EventTypes: eventTypes})
+	defer s.node.EventBus().Unwatch(watcher)
 
 	for {
-		var evt swarm.MaybeEvent
+		var evt nodeevents.MaybeEvent
 		var open bool
 
 		select {
@@ -960,16 +965,16 @@ func (s *Server) Watch(req *pb.WatchRequest, server pb.NodeRPC_WatchServer) erro
 				}},
 			})
 
-		case evt.UpdatedRefEvent != nil:
-			err = server.Send(&pb.WatchResponse{
-				Payload: &pb.WatchResponse_UpdatedRefEvent_{&pb.WatchResponse_UpdatedRefEvent{
-					Commit:      evt.UpdatedRefEvent.Commit,
-					RepoID:      evt.UpdatedRefEvent.RepoID,
-					TxHash:      evt.UpdatedRefEvent.TxHash,
-					Time:        evt.UpdatedRefEvent.Time,
-					BlockNumber: evt.UpdatedRefEvent.BlockNumber,
-				}},
-			})
+			// case evt.UpdatedRefEvent != nil:
+			// 	err = server.Send(&pb.WatchResponse{
+			// 		Payload: &pb.WatchResponse_UpdatedRefEvent_{&pb.WatchResponse_UpdatedRefEvent{
+			// 			Commit:      evt.UpdatedRefEvent.Commit,
+			// 			RepoID:      evt.UpdatedRefEvent.RepoID,
+			// 			TxHash:      evt.UpdatedRefEvent.TxHash,
+			// 			Time:        evt.UpdatedRefEvent.Time,
+			// 			BlockNumber: evt.UpdatedRefEvent.BlockNumber,
+			// 		}},
+			// 	})
 
 		}
 
@@ -993,7 +998,6 @@ func (s *Server) CreateCommit(server pb.NodeRPC_CreateCommitServer) error {
 	if pktHeader == nil {
 		return errors.New("[noderpc] CreateCommit protocol error: did not receive a header packet")
 	}
-	fmt.Printf("PACKET (header): %+v\n", pktHeader)
 
 	r := s.node.RepoManager().Repo(pktHeader.RepoID)
 	if r == nil {
@@ -1089,7 +1093,6 @@ func (s *Server) CreateCommit(server pb.NodeRPC_CreateCommitServer) error {
 
 		if _upsertHeader := payload.GetUpsertHeader(); _upsertHeader != nil {
 			upsertHeader = _upsertHeader
-			fmt.Printf("PACKET (upsert header): %+v\n", upsertHeader)
 
 			if receivingUpsertData {
 				return errors.New("[noderpc] CreateCommit protocol error: unexpected packet")
@@ -1114,7 +1117,6 @@ func (s *Server) CreateCommit(server pb.NodeRPC_CreateCommitServer) error {
 			}
 
 		} else if upsertData := payload.GetUpsertData(); upsertData != nil {
-			fmt.Printf("PACKET (upsert data): {End: %v, Len: %v}\n", upsertData.End, len(upsertData.Data))
 
 			if upsertData.End == false {
 				// This is a 'data' packet
@@ -1124,7 +1126,6 @@ func (s *Server) CreateCommit(server pb.NodeRPC_CreateCommitServer) error {
 				} else if n < len(upsertData.Data) {
 					return errors.New("[noderpc] CreateCommit i/o error: did not finish writing")
 				}
-				log.Infof("[noderpc] (%v) got %v bytes", upsertHeader.Filename, len(upsertData.Data))
 
 			} else if upsertData.End == true {
 				// This is an 'end of data' packet
@@ -1225,8 +1226,7 @@ func (s *Server) CreateCommit(server pb.NodeRPC_CreateCommitServer) error {
 	// Send an Ethereum transaction updating the ref to the new commit
 	//
 	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second) // @@TODO: make this configurable
-	_, err = s.node.Push(ctx, &nodep2p.PushOptions{
-		Node:       s.node,
+	_, err = s.node.P2PHost().Push(ctx, &nodep2p.PushOptions{
 		Repo:       r,
 		BranchName: pktHeader.RefName,
 		ProgressCb: func(percent int) {

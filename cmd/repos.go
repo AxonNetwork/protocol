@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Conscience/protocol/swarm/wire"
+	"github.com/Conscience/protocol/repo"
 )
 
-func getAllRefs(repoID string) (map[string]wire.Ref, error) {
+func getAllRefs(repoID string) (map[string]repo.Ref, error) {
 	client, err := getClient()
 	if err != nil {
 		return nil, err

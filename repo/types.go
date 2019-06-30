@@ -14,6 +14,11 @@ type CommitID struct {
 	Ref  string
 }
 
+type Ref struct {
+	RefName    string
+	CommitHash string
+}
+
 // const ChunkIDLen = sha256.Size
 
 // type ChunkID [ChunkIDLen]byte

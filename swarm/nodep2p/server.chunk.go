@@ -11,15 +11,14 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/wire"
 )
 
-func (s *Server) HandleChunkStreamRequest(stream netp2p.Stream) {
+func (h *Host) handleChunkStreamRequest(stream netp2p.Stream) {
 	defer stream.Close()
 
 	for {
-		req := wire.GetChunkRequest{}
-		err := wire.ReadStructPacket(stream, &req)
+		var req GetChunkRequest
+		err := ReadMsg(stream, &req)
 		if err == io.EOF {
 			log.Debugf("[packfile server] peer closed stream")
 			return
@@ -34,14 +33,14 @@ func (s *Server) HandleChunkStreamRequest(stream netp2p.Stream) {
 		//
 		var chunkPath string
 		{
-			isAuth, err := s.isAuthorised(req.RepoID, req.Signature)
+			isAuth, err := h.isAuthorised(req.RepoID, req.Signature)
 			if err != nil {
 				log.Errorf("[chunk server] %+v", errors.WithStack(err))
 				return
 			}
 
 			if isAuth == false {
-				err := wire.WriteStructPacket(stream, &wire.GetChunkResponseHeader{ErrUnauthorized: true})
+				err := WriteMsg(stream, &GetChunkResponseHeader{ErrUnauthorized: true})
 				if err != nil {
 					log.Errorf("[chunk server] %+v", errors.WithStack(err))
 					return
@@ -49,13 +48,13 @@ func (s *Server) HandleChunkStreamRequest(stream netp2p.Stream) {
 				return
 			}
 
-			r := s.node.Repo(req.RepoID)
+			r := h.repoManager.Repo(req.RepoID)
 			chunkStr := hex.EncodeToString(req.ChunkID)
 			chunkPath = filepath.Join(r.Path(), ".git", repo.CONSCIENCE_DATA_SUBDIR, chunkStr)
 
 			stat, err := os.Stat(chunkPath)
 			if err != nil {
-				err = wire.WriteStructPacket(stream, &wire.GetChunkResponseHeader{ErrObjectNotFound: true})
+				err = WriteMsg(stream, &GetChunkResponseHeader{ErrObjectNotFound: true})
 				if err != nil {
 					log.Errorf("[chunk server] %+v", errors.WithStack(err))
 					break
@@ -64,7 +63,7 @@ func (s *Server) HandleChunkStreamRequest(stream netp2p.Stream) {
 				}
 			}
 
-			err = wire.WriteStructPacket(stream, &wire.GetChunkResponseHeader{Length: stat.Size()})
+			err = WriteMsg(stream, &GetChunkResponseHeader{Length: stat.Size()})
 			if err != nil {
 				log.Errorf("[chunk server] %+v", errors.WithStack(err))
 				return
@@ -97,14 +96,14 @@ func (s *Server) HandleChunkStreamRequest(stream netp2p.Stream) {
 					return
 				}
 
-				err = wire.WriteStructPacket(stream, &wire.GetChunkResponsePacket{Data: data})
+				err = WriteMsg(stream, &GetChunkResponsePacket{Data: data})
 				if err != nil {
 					log.Errorf("[chunk server] %+v", errors.WithStack(err))
 					return
 				}
 			}
 
-			err = wire.WriteStructPacket(stream, &wire.GetChunkResponsePacket{End: true})
+			err = WriteMsg(stream, &GetChunkResponsePacket{End: true})
 			if err != nil {
 				log.Errorf("[packfile server] %+v", errors.WithStack(err))
 				return

@@ -1,4 +1,4 @@
-package gittransport
+package nodep2p
 
 import (
 	"context"
@@ -11,29 +11,32 @@ import (
 	"github.com/libgit2/git2go"
 	"github.com/pkg/errors"
 
+	"github.com/Conscience/protocol/config"
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/nodep2p"
-	"github.com/Conscience/protocol/swarm/wire"
+	"github.com/Conscience/protocol/swarm/nodeeth"
 )
 
 type AxonTransport struct {
 	repoID string
 	remote *git.Remote
-	node   nodep2p.INode
 	repo   *repo.Repo
 	wants  []git.RemoteHead
+
+	host      *Host
+	ethClient *nodeeth.Client
+	config    *config.Config
 }
 
 // type INode interface {
-// 	FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType wire.CheckoutType) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64, int64)
-// 	ForEachRemoteRef(ctx context.Context, repoID string, fn func(wire.Ref) (bool, error)) error
-// 	GetConfig() config.Config
+//  FetchFromCommit(ctx context.Context, repoID string, repoPath string, commit git.Oid, checkoutType CheckoutType) (<-chan nodep2p.MaybeFetchFromCommitPacket, int64, int64)
+//  ForEachRemoteRef(ctx context.Context, repoID string, fn func(Ref) (bool, error)) error
+//  GetConfig() config.Config
 // }
 
-func Register(node nodep2p.INode) error {
+func RegisterTransport(ethClient *nodeeth.Client, cfg *config.Config) error {
 	return git.RegisterTransport("axon", func(remote *git.Remote) (git.Transport, error) {
-		return &AxonTransport{remote: remote, node: node}, nil
+		return &AxonTransport{remote: remote, ethClient: ethClient, config: cfg}, nil
 	})
 }
 
@@ -53,7 +56,7 @@ func (t *AxonTransport) Ls() ([]git.RemoteHead, error) {
 	var headCommitHash string
 	var refsList []git.RemoteHead
 
-	err := t.node.ForEachRemoteRef(context.TODO(), t.repoID, func(ref wire.Ref) (bool, error) {
+	err := t.ethClient.ForEachRemoteRef(context.TODO(), t.repoID, func(ref repo.Ref) (bool, error) {
 		oid, err := git.NewOid(ref.CommitHash)
 		if err != nil {
 			return false, errors.WithStack(err)
@@ -131,8 +134,7 @@ func (t *AxonTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashS
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	cfg := t.node.GetConfig()
-	ch, manifest, err := nodep2p.NewClient(t.node, repoID, r.Path(), &cfg).FetchFromCommit(ctx, *commitHash, wire.CheckoutTypeWorking, t.remote)
+	ch, manifest, err := t.host.FetchFromCommit(ctx, r, *commitHash, CheckoutTypeWorking, t.remote)
 	if err != nil {
 		return err
 	}

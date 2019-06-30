@@ -1,28 +1,34 @@
 package nodep2p
 
 import (
+	"context"
 	"io"
+	"time"
 
 	netp2p "github.com/libp2p/go-libp2p-net"
 	"github.com/pkg/errors"
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	"github.com/Conscience/protocol/swarm/wire"
 	"github.com/Conscience/protocol/util"
 )
 
-func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
+func (h *Host) handlePackfileStreamRequest(stream netp2p.Stream) {
 	defer stream.Close()
 
+	var err error
+	defer func() {
+		if err != nil {
+			log.Errorf("[packfile server] %+v", errors.WithStack(err))
+		}
+	}()
+
 	for {
-		req := wire.GetPackfileRequest{}
-		err := wire.ReadStructPacket(stream, &req)
+		var req GetPackfileRequest
+		err = ReadMsg(stream, &req)
 		if err == io.EOF {
-			log.Debugf("[packfile server] peer closed stream")
 			return
 		} else if err != nil {
-			log.Errorf("[packfile server] %+v", errors.WithStack(err))
 			return
 		}
 		log.Debugf("[packfile server] incoming handshake")
@@ -31,41 +37,42 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 		var availableObjectIDs [][]byte
 		var r *repo.Repo
 		{
-			isAuth, err := s.isAuthorised(req.RepoID, req.Signature)
+			addr, err := h.ethClient.AddrFromSignedHash([]byte(req.RepoID), req.Signature)
 			if err != nil {
-				log.Errorf("[packfile server] %+v", errors.WithStack(err))
+				return
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			isAuth, err := h.ethClient.AddressHasPullAccess(ctx, addr, req.RepoID)
+			if err != nil {
 				return
 			}
 
 			if isAuth == false {
-				err := wire.WriteStructPacket(stream, &wire.GetPackfileResponseHeader{ErrUnauthorized: true})
-				if err != nil {
-					log.Errorf("[packfile server] %+v", errors.WithStack(err))
-					return
-				}
+				log.Warnf("[p2p server] address 0x%0x does not have pull access", addr.Bytes())
+
+				err = WriteMsg(stream, &GetPackfileResponseHeader{ErrUnauthorized: true})
 				return
 			}
 
-			r = s.node.Repo(req.RepoID)
+			r = h.repoManager.Repo(req.RepoID)
 			if r == nil {
 				log.Warnf("[packfile server] cannot find repo %v", req.RepoID)
-				err := wire.WriteStructPacket(stream, &wire.GetPackfileResponseHeader{ObjectIDs: []byte{}})
-				if err != nil {
-					log.Errorf("[packfile server] %+v", errors.WithStack(err))
-					return
-				}
+
+				err = WriteMsg(stream, &GetPackfileResponseHeader{ObjectIDs: []byte{}})
 				return
 			}
 
-			for _, id := range wire.UnflattenObjectIDs(req.ObjectIDs) {
+			for _, id := range UnflattenObjectIDs(req.ObjectIDs) {
 				if r.HasObject(id) {
 					availableObjectIDs = append(availableObjectIDs, id)
 				}
 			}
 
-			err = wire.WriteStructPacket(stream, &wire.GetPackfileResponseHeader{ObjectIDs: wire.FlattenObjectIDs(availableObjectIDs)})
+			err = WriteMsg(stream, &GetPackfileResponseHeader{ObjectIDs: FlattenObjectIDs(availableObjectIDs)})
 			if err != nil {
-				log.Errorf("[packfile server] %+v", errors.WithStack(err))
 				return
 			}
 
@@ -81,10 +88,7 @@ func (s *Server) HandlePackfileStreamRequest(stream netp2p.Stream) {
 			rPipe, wPipe := io.Pipe()
 
 			go generatePackfile(wPipe, r, availableObjectIDs)
-			err := pipePackfileAsPackets(rPipe, stream)
-			if err != nil {
-				return
-			}
+			err = pipePackfileAsPackets(rPipe, stream)
 		}
 	}
 }
@@ -94,7 +98,7 @@ func generatePackfile(wPipe *io.PipeWriter, r *repo.Repo, availableObjectIDs [][
 	// each object type, add most recent objects first.
 
 	var err error
-	defer func() { wPipe.CloseWithError(err) }()
+	defer func() { wPipe.CloseWithError(errors.WithStack(err)) }()
 
 	packbuilder, err := r.NewPackbuilder()
 	if err != nil {
@@ -120,7 +124,9 @@ func generatePackfile(wPipe *io.PipeWriter, r *repo.Repo, availableObjectIDs [][
 	}
 }
 
-func pipePackfileAsPackets(rPipe io.Reader, stream io.Writer) error {
+func pipePackfileAsPackets(rPipe io.Reader, stream io.Writer) (err error) {
+	defer func() { err = errors.WithStack(err) }()
+
 	data := make([]byte, OBJ_CHUNK_SIZE)
 	for {
 		n, err := io.ReadFull(rPipe, data)
@@ -133,16 +139,14 @@ func pipePackfileAsPackets(rPipe io.Reader, stream io.Writer) error {
 			return err
 		}
 
-		err = wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{Data: data})
+		err = WriteMsg(stream, &GetPackfileResponsePacket{Data: data})
 		if err != nil {
-			log.Errorf("[packfile server] %+v", errors.WithStack(err))
 			return err
 		}
 	}
 
-	err := wire.WriteStructPacket(stream, &wire.GetPackfileResponsePacket{End: true})
+	err = WriteMsg(stream, &GetPackfileResponsePacket{End: true})
 	if err != nil {
-		log.Errorf("[packfile server] %+v", errors.WithStack(err))
 		return err
 	}
 	return nil

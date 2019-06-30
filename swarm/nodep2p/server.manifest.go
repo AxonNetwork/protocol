@@ -16,11 +16,10 @@ import (
 
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
-	. "github.com/Conscience/protocol/swarm/wire"
 )
 
 // Handles incoming requests for commit manifests
-func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
+func (h *Host) handleManifestRequest(stream netp2p.Stream) {
 	defer stream.Close()
 
 	var err error
@@ -32,12 +31,12 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 
 	// Read the request packet
 	var req GetManifestRequest
-	err = ReadStructPacket(stream, &req)
+	err = ReadMsg(stream, &req)
 	if err != nil {
 		return
 	}
 
-	addr, err := s.node.AddrFromSignedHash(req.Commit[:], req.Signature)
+	addr, err := h.ethClient.AddrFromSignedHash(req.Commit[:], req.Signature)
 	if err != nil {
 		return
 	}
@@ -45,31 +44,31 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	hasAccess, err := s.node.AddressHasPullAccess(ctx, addr, req.RepoID)
+	hasAccess, err := h.ethClient.AddressHasPullAccess(ctx, addr, req.RepoID)
 	if err != nil {
 		return
 	}
 
 	if hasAccess == false {
 		log.Warnf("[manifest server] address 0x%0x does not have pull access to repo %v", addr.Bytes(), req.RepoID)
-		err = WriteStructPacket(stream, &GetManifestResponse{ErrUnauthorized: true})
+		err = WriteMsg(stream, &GetManifestResponse{ErrUnauthorized: true})
 		if err != nil {
 			return
 		}
 		return
 	}
 
-	r := s.node.Repo(req.RepoID)
+	r := h.repoManager.Repo(req.RepoID)
 	if r == nil || !r.HasObject(req.Commit[:]) {
 		log.Warnf("[manifest server] cannot find repo %v: %v", req.RepoID, req.Commit.String())
-		err = WriteStructPacket(stream, &GetManifestResponse{ErrMissingCommit: true})
+		err = WriteMsg(stream, &GetManifestResponse{ErrMissingCommit: true})
 		if err != nil {
 			return
 		}
 		return
 	}
 
-	err = WriteStructPacket(stream, &GetManifestResponse{SendingManifest: true})
+	err = WriteMsg(stream, &GetManifestResponse{SendingManifest: true})
 	if err != nil {
 		return
 	}
@@ -84,7 +83,7 @@ func (s *Server) HandleManifestRequest(stream netp2p.Stream) {
 		return
 	}
 
-	err = WriteStructPacket(stream, &ManifestObject{End: true})
+	err = WriteMsg(stream, &ManifestObject{End: true})
 	if err != nil {
 		return
 	}
@@ -249,7 +248,7 @@ func (m *ManifestWriter) writeGitOid(oid git.Oid) error {
 		return err
 	}
 
-	return WriteStructPacket(m.writeStream, &ManifestObject{
+	return WriteMsg(m.writeStream, &ManifestObject{
 		Hash:             oid[:],
 		UncompressedSize: int64(size),
 	})
@@ -291,7 +290,7 @@ func (m *ManifestWriter) writeChunkIDsForBlob(oid git.Oid) error {
 			return err
 		}
 
-		err = WriteStructPacket(m.writeStream, &ManifestObject{
+		err = WriteMsg(m.writeStream, &ManifestObject{
 			Hash:             chunkID,
 			UncompressedSize: stat.Size(),
 		})
