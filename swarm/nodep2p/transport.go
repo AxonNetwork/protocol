@@ -20,7 +20,6 @@ import (
 type AxonTransport struct {
 	repoID string
 	remote *git.Remote
-	repo   *repo.Repo
 	wants  []git.RemoteHead
 
 	host      *Host
@@ -34,9 +33,9 @@ type AxonTransport struct {
 //  GetConfig() config.Config
 // }
 
-func RegisterTransport(ethClient *nodeeth.Client, cfg *config.Config) error {
+func RegisterTransport(host *Host, ethClient *nodeeth.Client, cfg *config.Config) error {
 	return git.RegisterTransport("axon", func(remote *git.Remote) (git.Transport, error) {
-		return &AxonTransport{remote: remote, ethClient: ethClient, config: cfg}, nil
+		return &AxonTransport{host: host, remote: remote, ethClient: ethClient, config: cfg}, nil
 	})
 }
 
@@ -45,8 +44,8 @@ func (t *AxonTransport) SetCustomHeaders(headers []string) error {
 }
 
 func (t *AxonTransport) Connect(url string) error {
-	log.Warnln("TRANSPORT Connect", t.repoID)
 	t.repoID = strings.Replace(url, "axon://", "", -1)
+	log.Warnln("TRANSPORT Connect", t.repoID)
 	return nil
 }
 
@@ -90,14 +89,13 @@ func (t *AxonTransport) Ls() ([]git.RemoteHead, error) {
 
 func (t *AxonTransport) NegotiateFetch(r *git.Repository, wants []git.RemoteHead) error {
 	log.Warnln("TRANSPORT NegotiateFetch", t.repoID)
-	t.repo = &repo.Repo{Repository: r}
 	t.wants = wants
 	return nil
 }
 
 func (t *AxonTransport) DownloadPack(r *git.Repository, progress *git.TransferProgress, progressCb git.TransferProgressCallback) error {
 	log.Warnln("TRANSPORT DownloadPack", t.repoID)
-	err := t.fetchFromCommit(t.repoID, t.repo, t.wants[0].Id.String(), progressCb)
+	err := t.fetchFromCommit(r, t.wants[0].Id.String(), progressCb)
 	if err != nil {
 		return err
 	}
@@ -122,11 +120,15 @@ func (t *AxonTransport) Free() {
 	log.Warnln("TRANSPORT Free", t.repoID)
 }
 
-func (t *AxonTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashStr string, progressCb git.TransferProgressCallback) error {
+func (t *AxonTransport) fetchFromCommit(libgitRepo *git.Repository, commitHashStr string, progressCb git.TransferProgressCallback) error {
 	commitHash, err := git.NewOid(commitHashStr)
 	if err != nil {
 		return err
-	} else if r.HasObject(commitHash[:]) {
+	}
+
+	r := repo.FromLibgit(libgitRepo)
+
+	if r.HasObject(commitHash[:]) {
 		return nil
 	}
 
@@ -134,7 +136,7 @@ func (t *AxonTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashS
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	ch, manifest, err := t.host.FetchFromCommit(ctx, r, *commitHash, CheckoutTypeWorking, t.remote)
+	ch, manifest, err := t.host.FetchFromCommit(ctx, t.repoID, r, *commitHash, CheckoutTypeWorking, t.remote)
 	if err != nil {
 		return err
 	}
@@ -222,13 +224,12 @@ func (t *AxonTransport) fetchFromCommit(repoID string, r *repo.Repo, commitHashS
 			} else {
 				f := chunks[objectID]
 				if f == nil {
-					dataDir := filepath.Join(r.Path(), ".git", repo.CONSCIENCE_DATA_SUBDIR)
-					err := os.MkdirAll(dataDir, 0777)
+					err := os.MkdirAll(r.ChunkDir(), 0777)
 					if err != nil {
 						return errors.WithStack(err)
 					}
 
-					f, err = os.Create(filepath.Join(dataDir, objectID))
+					f, err = os.Create(filepath.Join(r.ChunkDir(), objectID))
 					if err != nil {
 						return errors.WithStack(err)
 					}

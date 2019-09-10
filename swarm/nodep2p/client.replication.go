@@ -95,8 +95,7 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan Progress)
 	defer close(progressCh)
 
 	if len(peerChs) == 0 {
-		err := errors.Errorf("no replicators available")
-		progressCh <- Progress{Error: err}
+		progressCh <- Progress{Error: ErrNoReplicatorsAvailable}
 		return
 	}
 
@@ -144,7 +143,6 @@ func combinePeerChs(peerChs map[peer.ID]chan Progress, progressCh chan Progress)
 	<-chDone
 
 	if !someoneFinished {
-		err := errors.Errorf("every replicator failed to replicate repo")
-		progressCh <- Progress{Error: err}
+		progressCh <- Progress{Error: ErrAllReplicatorsFailed}
 	}
 }

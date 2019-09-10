@@ -6,15 +6,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/Conscience/protocol/repo"
 )
 
-const CONSCIENCE_DATA_SUBDIR = "data"
-
-func Decode(gitDir string, r io.Reader, fetchChunks func(chunks [][]byte) error) io.ReadCloser {
+func Decode(r *repo.Repo, ioReader io.Reader, fetchChunks func(chunks [][]byte) error) io.ReadCloser {
 	rPipe, wPipe := io.Pipe()
 	chunks := make([]string, 0)
 	toFetch := make([][]byte, 0)
-	reader := bufio.NewReader(r)
+	reader := bufio.NewReader(ioReader)
 
 	go func() {
 		defer wPipe.Close()
@@ -27,8 +27,7 @@ func Decode(gitDir string, r io.Reader, fetchChunks func(chunks [][]byte) error)
 				return
 			}
 
-			dataDir := filepath.Join(gitDir, CONSCIENCE_DATA_SUBDIR)
-			p := filepath.Join(dataDir, string(line))
+			p := filepath.Join(r.ChunkDir(), string(line))
 			chunks = append(chunks, p)
 			_, err = os.Stat(p)
 			if os.IsNotExist(err) {

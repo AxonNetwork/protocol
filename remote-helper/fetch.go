@@ -194,7 +194,7 @@ func (pw *progressWriter) updatePackfile(packfileID string, packfileWritten, pac
 
 func (pw *progressWriter) updateChunks(chunksWritten, totalChunks int64) {
 	if !env.MachineOutputEnabled {
-		pw.multiLineWriter.Printf(2, "Data Chunks:      %v %v/%v = %.02f%%", getProgressBar(chunksWritten, totalChunks), chunksWritten, totalChunks, 100*(float64(chunksWritten)/float64(totalChunks)))
+		pw.multiLineWriter.Printf(2, "Data chunks: %v %v/%v = %.02f%%", getProgressBar(chunksWritten, totalChunks), chunksWritten, totalChunks, 100*(float64(chunksWritten)/float64(totalChunks)))
 	}
 }
 
@@ -202,7 +202,7 @@ func (pw *progressWriter) updateTotal(written, total int64) {
 	if env.MachineOutputEnabled {
 		pw.singleLineWriter.Printf("Progress: %d/%d ", written, total)
 	} else {
-		pw.multiLineWriter.Printf(0, "Total:      %v %v/%v = %.02f%%", getProgressBar(written, total), humanize(written), humanize(total), 100*(float64(written)/float64(total)))
+		pw.multiLineWriter.Printf(0, "Total:       %v %v/%v = %.02f%%", getProgressBar(written, total), humanize(written), humanize(total), 100*(float64(written)/float64(total)))
 	}
 }
 
@@ -214,6 +214,13 @@ func getProgressBar(done, total int64) string {
 	const barWidth = 39
 
 	percent := float64(done) / float64(total)
+	// @@TODO: For some reason, RPC is sending bad values for done, total, or both.  as a result,
+	// percent ends up > 100%, which causes numSpaces to be < 0, which causes strings.Repeat() to
+	// segfault.  We need to fix this, but now is not the time, so here's a hack.
+	if percent > 1 {
+		percent = 0.99
+	}
+
 	numDashes := int(math.Round(barWidth * percent))
 	numSpaces := int(math.Round(barWidth * (1 - percent)))
 

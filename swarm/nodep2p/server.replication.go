@@ -54,8 +54,6 @@ var ErrPolicyMaxBytesExceeded = errors.New("MaxBytes has been exceeded for this 
 
 // Handles an incoming request to replicate (pull changes from) a given repository.
 func (h *Host) Replicate(ctx context.Context, repoID string, policy config.ReplicationPolicy, progressCb func(current, total uint64) error) error {
-	var maxBytes int64
-
 	// Ensure that the repo has been whitelisted for replication.
 	if policy.MaxBytes == 0 {
 		return errors.Errorf("replication of repo '%v' not allowed", repoID)
@@ -70,16 +68,16 @@ func (h *Host) Replicate(ctx context.Context, repoID string, policy config.Repli
 			_, err := h.Clone(ctx, &CloneOptions{
 				RepoID:   repoID,
 				RepoRoot: filepath.Join(h.Config.Node.ReplicationRoot, repoID),
-				Bare:     true,
+				Bare:     policy.Bare,
 				CheckManifest: func(manifest *Manifest) error {
-					if maxBytes >= 0 && manifest.GitObjects.UncompressedSize()+manifest.ChunkObjects.UncompressedSize() > maxBytes {
-						return ErrPolicyMaxBytesExceeded
+					if policy.MaxBytes >= 0 && manifest.GitObjects.UncompressedSize()+manifest.ChunkObjects.UncompressedSize() > policy.MaxBytes {
+						return errors.WithStack(ErrPolicyMaxBytesExceeded)
 					}
 					return nil
 				},
 				ProgressCb: func(current, total uint64) error {
-					if int64(current) > maxBytes {
-						return ErrPolicyMaxBytesExceeded
+					if int64(current) > policy.MaxBytes {
+						return errors.WithStack(ErrPolicyMaxBytesExceeded)
 					}
 					if progressCb != nil {
 						return progressCb(current, total)
@@ -108,14 +106,14 @@ func (h *Host) Replicate(ctx context.Context, repoID string, policy config.Repli
 					// @@TODO: account for objects we can delete.  note that this will increase the
 					// complexity of the entire download process *significantly* given that we can't
 					// trust the node we're downloading from to be well-behaved and benevolent.
-					if maxBytes > 0 && currentRepoSize+totalDownloadSize > maxBytes {
-						return ErrPolicyMaxBytesExceeded
+					if policy.MaxBytes > 0 && currentRepoSize+totalDownloadSize > policy.MaxBytes {
+						return errors.WithStack(ErrPolicyMaxBytesExceeded)
 					}
 					return nil
 				},
 				ProgressCb: func(current, total uint64) error {
-					if int64(current) > maxBytes {
-						return ErrPolicyMaxBytesExceeded
+					if int64(current) > policy.MaxBytes {
+						return errors.WithStack(ErrPolicyMaxBytesExceeded)
 					}
 					return nil
 				},

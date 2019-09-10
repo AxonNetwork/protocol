@@ -28,7 +28,6 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
-	"github.com/Conscience/protocol/swarm/logger"
 	"github.com/Conscience/protocol/util"
 )
 
@@ -289,7 +288,7 @@ func (s *Server) handleSetConfig() http.HandlerFunc {
 		s.node.Config.Update(func() error {
 			// Have to manually assign these.  Otherwise, go-yaml simply merges map values with
 			// existing map values (which causes problems when trying to delete entries from
-			// .ReplictationPolicies)
+			// .ReplicationPolicies)
 			s.node.Config.Node = cfg.Node
 			s.node.Config.RPCClient = cfg.RPCClient
 			return nil
@@ -342,7 +341,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		Addrs           []string
 		Peers           []Peer
 		PeersConnected  int
-		Logs            []logger.Entry
+		Logs            []logEntry
 		Env             []EnvVar
 		GlobalConnStats struct {
 			TotalIn  string
@@ -462,7 +461,7 @@ func (s *Server) handleIndex() http.HandlerFunc {
 			return
 		}
 
-		state.Logs = logger.GetLogs()
+		state.Logs = getLogrusLogs()
 
 		for _, x := range os.Environ() {
 			parts := strings.Split(x, "=")

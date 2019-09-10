@@ -100,7 +100,7 @@ func (h *Host) Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error
 	if innerErr != nil {
 		return nil, innerErr
 	} else if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
 
 	r := &repo.Repo{Repository: cRepo}
@@ -117,6 +117,7 @@ func (h *Host) Clone(ctx context.Context, opts *CloneOptions) (*repo.Repo, error
 		}
 	}
 
+	log.Warnf("TRYING TO TRACK REPO <%v>", r.Path())
 	r, err = h.repoManager.TrackRepo(r.Path(), true)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -140,13 +141,22 @@ type PushOptions struct {
 }
 
 var ErrRequiresForcePush = errors.New("requires force push")
+var ErrRepoIDNotRegistered = errors.New("repo ID not registered")
 
-func (h *Host) Push(ctx context.Context, opts *PushOptions) (string, error) {
+func (h *Host) Push(superCtx context.Context, opts *PushOptions) (string, error) {
 	r := opts.Repo
 
 	repoID, err := r.RepoID()
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", err
+	}
+
+	// @@TODO: make context timeout configurable
+	ctx, cancel := context.WithTimeout(superCtx, 15*time.Second)
+	defer cancel()
+	isRegistered, err := h.ethClient.IsRepoIDRegistered(ctx, repoID)
+	if !isRegistered {
+		return "", errors.WithStack(ErrRepoIDNotRegistered)
 	}
 
 	ref, err := r.References.Dwim(opts.BranchName)
@@ -172,10 +182,10 @@ func (h *Host) Push(ctx context.Context, opts *PushOptions) (string, error) {
 	var currentCommitOid git.Oid
 	{
 		// @@TODO: make context timeout configurable
-		ctx0, cancel0 := context.WithTimeout(ctx, 15*time.Second)
-		defer cancel0()
+		ctx, cancel := context.WithTimeout(superCtx, 15*time.Second)
+		defer cancel()
 
-		currentCommitOid, err = h.ethClient.GetRemoteRef(ctx0, repoID, branch.Reference.Name())
+		currentCommitOid, err = h.ethClient.GetRemoteRef(ctx, repoID, branch.Reference.Name())
 		if err != nil {
 			return "", errors.WithStack(err)
 		}
@@ -197,20 +207,20 @@ func (h *Host) Push(ctx context.Context, opts *PushOptions) (string, error) {
 	}
 
 	// @@TODO: make context timeout configurable
-	ctx1, cancel1 := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel1()
+	ctx, cancel = context.WithTimeout(superCtx, 15*time.Second)
+	defer cancel()
 
 	// Tell the node to announce the new content so that replicator nodes can find and pull it.
-	err = h.AnnounceRepo(ctx1, repoID)
+	err = h.AnnounceRepo(ctx, repoID)
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
 
 	// @@TODO: make context timeout configurable
-	ctx2, cancel2 := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel2()
+	ctx, cancel = context.WithTimeout(superCtx, 15*time.Second)
+	defer cancel()
 
-	tx, err := h.ethClient.UpdateRemoteRef(ctx2, repoID, branch.Reference.Name(), currentCommitOid, *localCommitOid)
+	tx, err := h.ethClient.UpdateRemoteRef(ctx, repoID, branch.Reference.Name(), currentCommitOid, *localCommitOid)
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
@@ -223,10 +233,10 @@ func (h *Host) Push(ctx context.Context, opts *PushOptions) (string, error) {
 	}
 
 	// @@TODO: make context timeout configurable
-	ctx3, cancel3 := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel3()
+	ctx, cancel = context.WithTimeout(superCtx, 60*time.Second)
+	defer cancel()
 
-	ch, err := h.RequestReplication(ctx3, repoID)
+	ch, err := h.RequestReplication(ctx, repoID)
 	if err != nil {
 		return "", err
 	}
@@ -317,14 +327,14 @@ func (h *Host) FetchAndSetRef(ctx context.Context, opts *FetchOptions) ([]string
 	// the .git/config setup first.
 	repo := opts.Repo
 	for _, name := range updatedRefs {
-		if strings.HasPrefix(name, "refs/remotes/origin") {
+		if strings.HasPrefix(name, "refs/remotes/origin") { // @@TODO: don't hardcode
 			ref, err := repo.References.Lookup(name)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 
 			oid := ref.Target()
-			localRefName := strings.Replace(name, "refs/remotes/origin", "refs/heads", 1)
+			localRefName := strings.Replace(name, "refs/remotes/origin", "refs/heads", 1) // @@TODO: don't hardcode
 			_, err = repo.References.Create(localRefName, oid, true, "")
 			if err != nil {
 				return nil, errors.WithStack(err)
@@ -655,12 +665,12 @@ func doFastForward(r *repo.Repo, targetOid *git.Oid, unborn bool) error {
 }
 
 func decodeFiles(repoRoot string) error {
-	repo, err := repo.Open(repoRoot)
+	r, err := repo.Open(repoRoot)
 	if err != nil {
 		return err
 	}
 
-	head, err := repo.Head()
+	head, err := r.Head()
 	if err != nil {
 		// no head
 		return nil
@@ -681,7 +691,7 @@ func decodeFiles(repoRoot string) error {
 		return err
 	}
 
-	odb, err := repo.Odb()
+	odb, err := r.Odb()
 	if err != nil {
 		return err
 	}
@@ -696,7 +706,7 @@ func decodeFiles(repoRoot string) error {
 	errCh := make(chan error)
 	var innerErr error
 	err = tree.Walk(func(relPath string, entry *git.TreeEntry) int {
-		isChunked, err := repo.FileIsChunked(entry.Name, commitObj.Id())
+		isChunked, err := r.FileIsChunked(entry.Name, commitObj.Id())
 		if err != nil {
 			innerErr = err
 			return -1
@@ -705,7 +715,7 @@ func decodeFiles(repoRoot string) error {
 		if isChunked {
 			go func() {
 				wg.Add(1)
-				err = decodeFile(repoRoot, relPath, entry, odb)
+				err = decodeFile(r, relPath, entry, odb)
 				if err != nil {
 					errCh <- err
 				}
@@ -730,7 +740,7 @@ func decodeFiles(repoRoot string) error {
 	return nil
 }
 
-func decodeFile(repoRoot, relPath string, entry *git.TreeEntry, odb *git.Odb) error {
+func decodeFile(r *repo.Repo, relPath string, entry *git.TreeEntry, odb *git.Odb) error {
 	odbObj, err := odb.Read(entry.Id)
 	if err != nil {
 		return err
@@ -757,16 +767,15 @@ func decodeFile(repoRoot, relPath string, entry *git.TreeEntry, odb *git.Odb) er
 		}
 	}()
 
-	p := filepath.Join(repoRoot, relPath, entry.Name)
+	p := filepath.Join(r.Path(), relPath, entry.Name)
 	f, err := os.Create(p)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	gitDir := filepath.Join(repoRoot, ".git")
 	missingChunks := false
-	fileReader := decode.Decode(gitDir, rPipe, func(chunks [][]byte) error {
+	fileReader := decode.Decode(r, rPipe, func(chunks [][]byte) error {
 		// chunks should have already been pulled
 		// if missing, the user did a sparse checkout, and we write empty files
 		missingChunks = true

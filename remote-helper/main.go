@@ -36,7 +36,7 @@ func main() {
 	config.AttachToLogger(cfg)
 
 	if GIT_DIR == "" {
-		die(errors.New("error: empty GIT_DIR"))
+		die(errors.New("empty GIT_DIR"))
 	}
 
 	repoID = strings.Replace(os.Args[2], "axon://", "", -1)
@@ -154,7 +154,7 @@ func speakGit(r io.Reader, w io.Writer) error {
 }
 
 func die(err error) {
-	log.Errorf("%+v\n", err)
+	fmt.Fprintf(os.Stderr, "error: %+v\n", err)
 	os.Exit(1)
 }
 

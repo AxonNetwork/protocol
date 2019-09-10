@@ -57,11 +57,9 @@ type ReplicationPolicy struct {
 
 var DefaultConfig = Config{
 	Node: &NodeConfig{
-		PrivateKeyFile: filepath.Join(env.HOME, ".axon.key"),
-		P2PListenAddr:  "0.0.0.0",
-		P2PListenPort:  1337,
-		// RPCListenNetwork:        "unix",
-		// RPCListenHost:           "/tmp/axon.sock",
+		PrivateKeyFile:          filepath.Join(env.HOME, ".axon.key"),
+		P2PListenAddr:           "0.0.0.0",
+		P2PListenPort:           1337,
 		RPCListenNetwork:        "tcp",
 		RPCListenHost:           "0.0.0.0:1338",
 		HTTPListenAddr:          ":80",
@@ -69,7 +67,7 @@ var DefaultConfig = Config{
 		HTTPAdminUsername:       "admin",
 		HTTPAdminPassword:       "password",
 		EthereumHost:            "http://hera.axon.science:8545",
-		ProtocolContract:        "0x80e1E5bC2d6933a4C7F832036e140c0609dDC997",
+		ProtocolContract:        "0x3236352FE048B2d85E3eE8284C28072FB7941697",
 		EthereumBIP39Seed:       "",
 		ContentAnnounceInterval: Duration(15 * time.Second),
 		ContentRequestInterval:  Duration(15 * time.Second),

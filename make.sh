@@ -1,5 +1,7 @@
 #!/bin/bash
 
+__dirname="$(CDPATH= cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 function read_cli_flags {
     if [ "$#" -eq 0 ]; then
         native=1
@@ -28,7 +30,7 @@ function check_os {
 }
 
 function build_native {
-    
+
     if [[ $os == "windows" ]]; then
         PWD=$(pwd)
         GIT2GO_PATH="${PWD}/vendor/github.com/libgit2/git2go"
@@ -39,7 +41,7 @@ function build_native {
     fi
 
     mkdir -p build/native
-    cd swarm/cmd
+    cd cmd/axon-node
     GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
     mv main ../../build/native/axon-node
     cd -
@@ -78,7 +80,7 @@ function build_native {
 function build_docker {
     rm -rf ./build/docker &&
     mkdir -p build/docker &&
-    pushd swarm/cmd &&
+    pushd $__dirname/cmd/axon-node &&
     GO111MODULE=on go build --tags "static" -o main ./*.go &&
     mv main ../../build/docker/axon-node &&
     popd
@@ -158,9 +160,9 @@ echo Building:
 [[ -n $native  ]] && echo   - native \($os\)
 
 
-[[ -n $libgit ]] && build_libgit2
-[[ -n $docker ]] && build_docker
-[[ -n $native ]] && build_native
+[[ -n $libgit ]] && (build_libgit2 || exit 1;)
+[[ -n $docker ]] && (build_docker  || exit 1;)
+[[ -n $native ]] && (build_native  || exit 1;)
 
 [[ -n $copy ]] && echo Copying binaries to $DESKTOP_APP_BINARY_ROOT
 [[ -n $copy ]] && cp -R ./build/native/* $DESKTOP_APP_BINARY_ROOT/

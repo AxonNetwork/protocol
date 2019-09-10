@@ -8,8 +8,11 @@ option go_package = "pb";
 service NodeRPC {
   rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse) {}
   rpc GetUsername(GetUsernameRequest) returns (GetUsernameResponse) {}
+  rpc SetEthereumBIP39Seed(SetEthereumBIP39SeedRequest) returns (SetEthereumBIP39SeedResponse) {}
+  rpc GetEthereumBIP39Seed(GetEthereumBIP39SeedRequest) returns (GetEthereumBIP39SeedResponse) {}
 
   rpc InitRepo(InitRepoRequest) returns (InitRepoResponse) {}
+  rpc ImportRepo(ImportRepoRequest) returns (ImportRepoResponse) {}
   rpc CheckpointRepo(CheckpointRepoRequest) returns (CheckpointRepoResponse) {}
   rpc PullRepo(PullRepoRequest) returns (stream PullRepoResponsePacket) {}
   rpc CloneRepo(CloneRepoRequest) returns (stream CloneRepoResponsePacket) {}
@@ -17,6 +20,7 @@ service NodeRPC {
   rpc FetchChunks(FetchChunksRequest) returns (stream FetchChunksResponse) {}
 
   rpc RegisterRepoID(RegisterRepoIDRequest) returns (RegisterRepoIDResponse) {}
+  rpc IsRepoIDRegistered(IsRepoIDRegisteredRequest) returns (IsRepoIDRegisteredResponse) {}
   rpc TrackLocalRepo(TrackLocalRepoRequest) returns (TrackLocalRepoResponse) {}
   rpc GetLocalRepos(GetLocalReposRequest) returns (stream GetLocalReposResponsePacket) {}
   rpc SetReplicationPolicy(SetReplicationPolicyRequest) returns (SetReplicationPolicyResponse) {}
@@ -46,6 +50,8 @@ service NodeRPC {
   rpc Watch(WatchRequest) returns (stream WatchResponse) {}
 
   rpc CreateCommit(stream CreateCommitRequest) returns (CreateCommitResponse) {}
+
+  rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse) {}
 }
 
 message SetUsernameRequest {
@@ -55,6 +61,18 @@ message SetUsernameRequest {
 message SetUsernameResponse {
     bytes signature = 2;
 }
+
+message GetEthereumBIP39SeedRequest {}
+
+message GetEthereumBIP39SeedResponse {
+    string seed = 1;
+}
+
+message SetEthereumBIP39SeedRequest {
+    string seed = 1;
+}
+
+message SetEthereumBIP39SeedResponse {}
 
 message GetUsernameRequest {}
 
@@ -73,6 +91,13 @@ message InitRepoRequest {
 message InitRepoResponse {
     string path = 1;
 }
+
+message ImportRepoRequest {
+    string repoRoot = 1;
+    string repoID = 2;
+}
+
+message ImportRepoResponse {}
 
 message CheckpointRepoRequest {
     string path = 1;
@@ -157,6 +182,16 @@ message RegisterRepoIDRequest {
     string repoID = 1;
 }
 
+message RegisterRepoIDResponse {}
+
+message IsRepoIDRegisteredRequest {
+    string repoID = 1;
+}
+
+message IsRepoIDRegisteredResponse {
+    bool isRegistered = 1;
+}
+
 message FetchChunksRequest {
     string repoID = 1;
     string path = 2;
@@ -169,7 +204,6 @@ message FetchChunksResponse {
     bool end = 3;
 }
 
-message RegisterRepoIDResponse {}
 
 message TrackLocalRepoRequest {
     string repoPath = 1;
@@ -534,3 +568,21 @@ message CreateCommitResponse {
     bytes commitHash = 2;
 }
 
+message RunPipelineRequest {
+    message Stage {
+        string platform = 1;
+        string codeRepoID = 2;
+        bytes commitHash = 3;
+        string entryFilename = 4;
+        repeated string entryArgs = 5;
+    }
+
+    string inputRepoID = 1;
+    bytes inputObjectID = 2;
+    repeated Stage stages = 3;
+    string outputFilename = 4;
+}
+
+message RunPipelineResponse {
+    bytes commitHash = 1;
+}

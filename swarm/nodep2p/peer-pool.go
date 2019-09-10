@@ -10,6 +10,8 @@ import (
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
 	protocol "github.com/libp2p/go-libp2p-protocol"
 
+	"github.com/pkg/errors"
+
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/util"
 )
@@ -48,7 +50,7 @@ func newPeerPool(ctx context.Context, host *Host, repoID string, concurrentConns
 	// When a message is sent on the `needNewPeer` channel, this goroutine attempts to take a peer
 	// from the `chProviders` channel, open a peerConn to it, and add it to the pool.
 	go func() {
-		defer close(p.chPeers)
+		// defer close(p.chPeers)
 
 		for {
 			select {
@@ -109,7 +111,7 @@ func newPeerPool(ctx context.Context, host *Host, repoID string, concurrentConns
 }
 
 func (p *peerPool) Close() error {
-	p.cancel()
+	// p.cancel()
 
 	p.chNeedNewPeer = nil
 	p.chProviders = nil
@@ -119,13 +121,16 @@ func (p *peerPool) Close() error {
 
 func (p *peerPool) GetConn() (*peerConn, error) {
 	select {
-	case conn := <-p.chPeers:
+	case conn, open := <-p.chPeers:
+		if !open {
+			return nil, errors.New("connection closed")
+		}
 
 		err := conn.Open()
-		return conn, err
+		return conn, errors.WithStack(err)
 
 	case <-p.ctx.Done():
-		return nil, p.ctx.Err()
+		return nil, errors.WithStack(p.ctx.Err())
 	}
 }
 
@@ -155,25 +160,27 @@ func (p *peerPool) ReturnConn(conn *peerConn, strike bool) {
 
 type peerConn struct {
 	netp2p.Stream
-	host       *Host
-	peerID     peer.ID
-	repoID     string
-	protocolID protocol.ID
-	ctx        context.Context
-	mu         *sync.Mutex
-	done       bool
+	host          *Host
+	peerID        peer.ID
+	repoID        string
+	protocolID    protocol.ID
+	ctx           context.Context
+	mu            *sync.Mutex
+	closed        bool
+	closedForever bool
 }
 
 func newPeerConn(ctx context.Context, host *Host, peerID peer.ID, repoID string, protocolID protocol.ID) *peerConn {
 	conn := &peerConn{
-		host:       host,
-		peerID:     peerID,
-		repoID:     repoID,
-		protocolID: protocolID,
-		Stream:     nil,
-		ctx:        ctx,
-		mu:         &sync.Mutex{},
-		done:       false,
+		host:          host,
+		peerID:        peerID,
+		repoID:        repoID,
+		protocolID:    protocolID,
+		Stream:        nil,
+		ctx:           ctx,
+		mu:            &sync.Mutex{},
+		closed:        true,
+		closedForever: false,
 	}
 
 	go func() {
@@ -188,8 +195,8 @@ func (conn *peerConn) Open() error {
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
-	if conn.done {
-		log.Debugf("[peer conn] peerConn is done, refusing to reopen (repoID: %v, proto: %v)", conn.repoID, conn.protocolID)
+	if conn.closedForever {
+		log.Debugf("[peer conn] peerConn is closedForever, refusing to reopen (repoID: %v, proto: %v)", conn.repoID, conn.protocolID)
 		return nil
 	}
 
@@ -202,7 +209,7 @@ func (conn *peerConn) Open() error {
 
 		stream, err := conn.host.NewStream(ctxConnect, conn.peerID, conn.protocolID)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		log.Debugln("[peer conn] peerConn.Stream successfully opened")
@@ -213,14 +220,14 @@ func (conn *peerConn) Open() error {
 }
 
 func (conn *peerConn) close() error {
-	if conn.Stream != nil {
+	if !conn.closed {
 		log.Debugf("[peer conn] closing peerConn %v (repoID: %v, protocolID: %v)", conn.peerID, conn.repoID, conn.protocolID)
 
 		err := conn.Stream.Close()
 		if err != nil {
 			log.Warnln("[peer conn] error closing peerConn:", err)
 		}
-		conn.Stream = nil
+		conn.closed = true
 
 	} else {
 		log.Debugf("[peer conn] already closed: peerConn %v (repoID: %v, protocolID: %v)", conn.peerID, conn.repoID, conn.protocolID)
@@ -232,7 +239,7 @@ func (conn *peerConn) closeForever() error {
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
-	conn.done = true
+	conn.closedForever = true
 	return conn.close()
 }
 

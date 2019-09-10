@@ -24,7 +24,6 @@ import (
 
 type Repo struct {
 	*git.Repository
-	path string
 }
 
 const (
@@ -34,7 +33,9 @@ const (
 )
 
 var (
-	Err404 = errors.New("not found")
+	Err404        = errors.New("not found")
+	ErrNoRepoID   = errors.New("error looking up axon.repoid in .git/config")
+	ErrNotTracked = errors.New("not tracking the given repo")
 )
 
 type InitOptions struct {
@@ -50,7 +51,7 @@ func Init(opts *InitOptions) (*Repo, error) {
 		return nil, errors.Wrapf(err, "could not initialize repo at path '%v'", opts.RepoRoot)
 	}
 
-	r := &Repo{Repository: cRepo, path: opts.RepoRoot}
+	r := &Repo{Repository: cRepo}
 
 	err = r.SetupConfig(opts.RepoID)
 	if err != nil {
@@ -75,13 +76,19 @@ func Open(repoRoot string) (*Repo, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	return &Repo{Repository: gitRepo, path: repoRoot}, nil
+	return &Repo{Repository: gitRepo}, nil
+}
+
+func FromLibgit(r *git.Repository) *Repo {
+	return &Repo{r}
 }
 
 func (r *Repo) Path() string {
-	// p := strings.Replace(r.Repository.Path(), "/.git/", "", -1)
-	// return p
-	return r.path
+	return strings.Replace(r.Repository.Path(), "/.git/", "", -1)
+}
+
+func (r *Repo) ChunkDir() string {
+	return filepath.Join(r.Repository.Path(), CONSCIENCE_DATA_SUBDIR)
 }
 
 func (r *Repo) RepoID() (string, error) {
@@ -93,7 +100,7 @@ func (r *Repo) RepoID() (string, error) {
 
 	repoID, err := cfg.LookupString("axon.repoid")
 	if err != nil {
-		return "", errors.Wrapf(err, "error looking up axon.repoid in .git/config (path: %v)", r.Path())
+		return "", errors.WithStack(ErrNoRepoID)
 	}
 
 	return repoID, nil
@@ -672,7 +679,7 @@ func (r *Repo) listFilesWorktree(ctx context.Context) ([]File, error) {
 	}
 
 	// Add empty directories to the list (git doesn't recognize them)
-	emptyDirs, err := getEmptyDirs(r.path)
+	emptyDirs, err := getEmptyDirs(r.Path())
 	if err != nil {
 		return nil, err
 	}

@@ -194,7 +194,7 @@ func (rm *Manager) RepoAtPathOrID(path string, repoID string) (*Repo, error) {
 	if len(path) > 0 {
 		r := rm.RepoAtPath(path)
 		if r == nil {
-			return nil, errors.Errorf("repo at path '%v' not found", path)
+			return nil, Err404
 		} else {
 			return r, nil
 		}
@@ -202,7 +202,7 @@ func (rm *Manager) RepoAtPathOrID(path string, repoID string) (*Repo, error) {
 	if len(repoID) > 0 {
 		r := rm.Repo(repoID)
 		if r == nil {
-			return nil, errors.Errorf("repo '%v' not found", repoID)
+			return nil, Err404
 		} else {
 			return r, nil
 		}

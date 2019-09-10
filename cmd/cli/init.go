@@ -34,17 +34,17 @@ func setUsername(username string) error {
 	return nil
 }
 
-func setReplicationPolicy(repoID string, shouldReplicate bool) error {
-	client, err := getClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
+// func setReplicationPolicy(repoID string, shouldReplicate bool) error {
+// 	client, err := getClient()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer client.Close()
 
-	// @@TODO: give context a timeout and make it configurable
-	err = client.SetReplicationPolicy(context.Background(), repoID, shouldReplicate)
-	if err != nil {
-		return err
-	}
-	return nil
-}
+// 	// @@TODO: give context a timeout and make it configurable
+// 	err = client.SetReplicationPolicy(context.Background(), repoID, shouldReplicate)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }

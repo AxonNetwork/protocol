@@ -77,7 +77,7 @@ func NewHost(ctx context.Context, repoManager *repo.Manager, ethClient *nodeeth.
 		BandwidthCounter: bandwidthCounter,
 	}
 
-	err = RegisterTransport(ethClient, cfg)
+	err = RegisterTransport(h, ethClient, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not register axon:// git transport")
 	}
@@ -173,7 +173,7 @@ func (h *Host) periodicallyRequestContent(ctx context.Context) {
 
 			err := h.Replicate(innerCtx, repoID, policy, func(current, total uint64) error { return nil })
 			if err != nil {
-				log.Errorf("[content request]")
+				log.Errorf("[content request] %+v", err)
 			}
 			cancel()
 		}

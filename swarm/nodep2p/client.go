@@ -28,15 +28,14 @@ type PackfileData struct {
 	End        bool
 }
 
-var ErrFetchingFromPeer = errors.New("fetching from peer")
+var (
+	ErrFetchingFromPeer       = errors.New("fetching from peer")
+	ErrNoReplicatorsAvailable = errors.New("no replicators available")
+	ErrAllReplicatorsFailed   = errors.New("every replicator failed to replicate repo")
+)
 
-func (h *Host) FetchFromCommit(ctx context.Context, r *repo.Repo, commitID git.Oid, checkoutType CheckoutType, remote *git.Remote) (<-chan MaybeFetchFromCommitPacket, *Manifest, error) {
+func (h *Host) FetchFromCommit(ctx context.Context, repoID string, r *repo.Repo, commitID git.Oid, checkoutType CheckoutType, remote *git.Remote) (<-chan MaybeFetchFromCommitPacket, *Manifest, error) {
 	chOut := make(chan MaybeFetchFromCommitPacket)
-
-	repoID, err := r.RepoID()
-	if err != nil {
-		return nil, nil, err
-	}
 
 	manifest, err := h.requestManifestFromSwarm(ctx, repoID, commitID, checkoutType)
 	if err != nil {
@@ -92,16 +91,9 @@ func (h *Host) FetchFromCommit(ctx context.Context, r *repo.Repo, commitID git.O
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for pkt := range h.FetchChunks(ctx, repoID, manifest.ChunkObjects.ToHashes()) {
-			var toSend MaybeFetchFromCommitPacket
-			if pkt.Error != nil {
-				toSend.Error = pkt.Error
-			} else {
-				toSend.Chunk = pkt.Chunk
-			}
-
+		for pkt := range h.FetchChunks(ctx, repoID, manifest.ChunkObjects) {
 			select {
-			case chOut <- toSend:
+			case chOut <- pkt:
 			case <-ctx.Done():
 				return
 			}
@@ -116,8 +108,8 @@ func (h *Host) FetchFromCommit(ctx context.Context, r *repo.Repo, commitID git.O
 	return chOut, manifest, nil
 }
 
-func (h *Host) FetchChunksFromCommit(ctx context.Context, r *repo.Repo, commitID git.Oid, checkoutType CheckoutType, remote *git.Remote) (<-chan MaybeChunk, *Manifest, error) {
-	chOut := make(chan MaybeChunk)
+func (h *Host) FetchChunksFromCommit(ctx context.Context, r *repo.Repo, commitID git.Oid, checkoutType CheckoutType, remote *git.Remote) (<-chan MaybeFetchFromCommitPacket, *Manifest, error) {
+	chOut := make(chan MaybeFetchFromCommitPacket)
 
 	repoID, err := r.RepoID()
 	if err != nil {
@@ -154,7 +146,7 @@ func (h *Host) FetchChunksFromCommit(ctx context.Context, r *repo.Repo, commitID
 	go func() {
 		defer close(chOut)
 
-		for packet := range h.FetchChunks(ctx, repoID, manifest.ChunkObjects.ToHashes()) {
+		for packet := range h.FetchChunks(ctx, repoID, manifest.ChunkObjects) {
 			select {
 			case chOut <- packet:
 			case <-ctx.Done():

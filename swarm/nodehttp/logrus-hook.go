@@ -1,4 +1,4 @@
-package logger
+package nodehttp
 
 import (
 	"sync"
@@ -9,22 +9,22 @@ import (
 type logrusHook struct {
 	MaxEntries int
 
-	entries []Entry
+	entries []logEntry
 	mu      *sync.RWMutex
 }
 
-type Entry struct {
+type logEntry struct {
 	Level   string
 	Message string
 }
 
 var hook = &logrusHook{MaxEntries: 5000, mu: &sync.RWMutex{}}
 
-func InstallHook() {
+func InstallLogrusHook() {
 	logrus.AddHook(hook)
 }
 
-func GetLogs() []Entry {
+func getLogrusLogs() []logEntry {
 	return hook.AllEntries()
 }
 
@@ -32,7 +32,7 @@ func (t *logrusHook) Fire(e *logrus.Entry) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	entry := Entry{}
+	var entry logEntry
 	entry.Level = e.Level.String()
 	entry.Message = e.Message
 
@@ -48,12 +48,12 @@ func (t *logrusHook) Levels() []logrus.Level {
 }
 
 // AllEntries returns all entries that were logged.
-func (t *logrusHook) AllEntries() []Entry {
+func (t *logrusHook) AllEntries() []logEntry {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	// Make a copy so the returned value won't race with future log requests
-	entries := make([]Entry, len(t.entries))
+	entries := make([]logEntry, len(t.entries))
 	for i := 0; i < len(t.entries); i++ {
 		// Make a copy, for safety
 		entries[i] = t.entries[i]

@@ -3,14 +3,17 @@ FROM golang:1.10.3-stretch
 RUN \
   apt-get update && apt-get upgrade -q -y && \
   apt-get install -y --no-install-recommends git make gcc libc-dev ca-certificates && \
-  git clone --depth 1 --branch release/1.8 https://github.com/ethereum/go-ethereum && \
-  (cd go-ethereum && make geth) && \
-  cp go-ethereum/build/bin/geth /geth && \
+  # git clone --depth 1 --branch release/1.8 https://github.com/ethereum/go-ethereum && \
+  git clone https://github.com/jpmorganchase/quorum --branch v2.2.3 && \
+  (cd quorum && make geth) && \
+  cp quorum/build/bin/geth /geth && \
   apt-get remove -y git make gcc libc-dev && apt autoremove -y && apt-get clean && \
-  rm -rf /go-ethereum && mkdir /opt/ethdata
+  rm -rf /quorum && mkdir /opt/ethdata
 
 EXPOSE 8545
+EXPOSE 8546
 EXPOSE 30303
+EXPOSE 30303/udp
 
 ADD ./ethdata /opt/ethdata
 COPY efficient-mining.js /usr/local/efficient-mining.js
@@ -27,6 +30,6 @@ CMD /geth --networkid 23332 \
           --rpc --rpcport=8545 --rpcaddr=0.0.0.0 --rpccorsdomain "*" \
           --rpcvhosts=* \
           --etherbase abef44954d64269443125e86ce92b1d99c959017 \
-          --unlock 0xabef44954d64269443125e86ce92b1d99c959017 \
-          --password /opt/ethdata/node-password.txt \
+          # --unlock 0xabef44954d64269443125e86ce92b1d99c959017 \
+          # --password /opt/ethdata/node-password.txt \
           js /usr/local/efficient-mining.js

@@ -3,6 +3,7 @@ package noderpc
 import (
 	"context"
 	"io"
+	"strings"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -43,12 +44,28 @@ func (c *Client) SetUsername(ctx context.Context, username string) error {
 	return errors.WithStack(err)
 }
 
+func (c *Client) EthAddress(ctx context.Context) (string, error) {
+	resp, err := c.client.EthAddress(ctx, &pb.EthAddressRequest{})
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	return resp.Address, nil
+}
+
 func (c *Client) InitRepo(ctx context.Context, repoID string, path string, name string, email string) error {
 	_, err := c.client.InitRepo(ctx, &pb.InitRepoRequest{
 		RepoID: repoID,
 		Path:   path,
 		Name:   name,
 		Email:  email,
+	})
+	return errors.WithStack(err)
+}
+
+func (c *Client) ImportRepo(ctx context.Context, repoRoot string, repoID string) error {
+	_, err := c.client.ImportRepo(ctx, &pb.ImportRepoRequest{
+		RepoRoot: repoRoot,
+		RepoID:   repoID,
 	})
 	return errors.WithStack(err)
 }
@@ -158,9 +175,17 @@ func (c *Client) RegisterRepoID(ctx context.Context, repoID string) error {
 	return errors.WithStack(err)
 }
 
+func (c *Client) IsRepoIDRegistered(ctx context.Context, repoID string) (bool, error) {
+	resp, err := c.client.IsRepoIDRegistered(ctx, &pb.IsRepoIDRegisteredRequest{RepoID: repoID})
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+	return resp.IsRegistered, nil
+}
+
 func (c *Client) TrackLocalRepo(ctx context.Context, repoPath string, forceReload bool) error {
 	_, err := c.client.TrackLocalRepo(ctx, &pb.TrackLocalRepoRequest{RepoPath: repoPath, ForceReload: forceReload})
-	return errors.WithStack(err)
+	return errors.WithStack(translateError(err))
 }
 
 type MaybeLocalRepo struct {
@@ -265,7 +290,7 @@ func (c *Client) GetRepoUsers(ctx context.Context, repoID string, userType nodee
 func (c *Client) PushRepo(ctx context.Context, repoRoot string, branchName string, force bool) (<-chan nodep2p.Progress, error) {
 	pushRepoClient, err := c.client.PushRepo(ctx, &pb.PushRepoRequest{RepoRoot: repoRoot, BranchName: branchName, Force: force})
 	if err != nil {
-		return nil, err
+		return nil, translateError(err)
 	}
 
 	ch := make(chan nodep2p.Progress)
@@ -277,7 +302,7 @@ func (c *Client) PushRepo(ctx context.Context, repoRoot string, branchName strin
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				ch <- nodep2p.Progress{Error: err}
+				ch <- nodep2p.Progress{Error: translateError(err)}
 				return
 			}
 
@@ -325,6 +350,33 @@ func (c *Client) SignMessage(ctx context.Context, message []byte) ([]byte, error
 func (c *Client) SetUserPermissions(ctx context.Context, repoID string, username string, perms nodeeth.UserPermissions) error {
 	_, err := c.client.SetUserPermissions(ctx, &pb.SetUserPermissionsRequest{RepoID: repoID, Username: username, Puller: perms.Puller, Pusher: perms.Pusher, Admin: perms.Admin})
 	return errors.WithStack(err)
+}
+
+// @@TODO: refactor using proper gRPC errors
+func translateError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	// @@TODO: refactor using proper gRPC errors
+	if strings.Contains(err.Error(), "repo ID not registered") {
+		return nodep2p.ErrRepoIDNotRegistered
+	} else if strings.Contains(err.Error(), "error looking up axon.repoid") {
+		return repo.ErrNoRepoID
+	} else if strings.Contains(err.Error(), "not tracking the given repo") {
+		return repo.ErrNotTracked
+	} else if strings.Contains(err.Error(), "no replicators available") {
+		return nodep2p.ErrNoReplicatorsAvailable
+	} else if strings.Contains(err.Error(), "every replicator failed to replicate repo") {
+		return nodep2p.ErrAllReplicatorsFailed
+	} else {
+		return err
+	}
+}
+
+func (c *Client) SetFileChunking(ctx context.Context, repoID string, repoRoot string, filename string, enabled bool) error {
+	_, err := c.client.SetFileChunking(ctx, &pb.SetFileChunkingRequest{RepoID: repoID, RepoRoot: repoRoot, Filename: filename, Enabled: enabled})
+	return err
 }
 
 type MaybeEvent struct {

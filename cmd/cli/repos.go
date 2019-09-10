@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/Conscience/protocol/repo"
 )
@@ -46,4 +47,19 @@ func getLocalRepos() ([]string, error) {
 	}
 
 	return repos, nil
+}
+
+func importRepo(repoRoot, repoID string) error {
+	client, err := getClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	repoRoot, err = filepath.Abs(repoRoot)
+	if err != nil {
+		return err
+	}
+
+	return client.ImportRepo(context.Background(), repoRoot, repoID)
 }

@@ -32,7 +32,7 @@ var (
 )
 
 func main() {
-	reader := decode.Decode(GIT_DIR, os.Stdin, fetchChunks)
+	reader := decode.Decode(repository, os.Stdin, fetchChunks)
 	_, err := io.Copy(os.Stdout, reader)
 	if err != nil {
 		die(err)
@@ -61,7 +61,7 @@ func fetchChunks(chunks [][]byte) error {
 		return err
 	}
 
-	err = os.MkdirAll(DataDir, 0777)
+	err = os.MkdirAll(repository.ChunkDir(), 0777)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func fetchChunks(chunks [][]byte) error {
 			f := chunkWriters[objectID]
 
 			if f == nil {
-				f, err = os.Create(filepath.Join(DataDir, objectID))
+				f, err = os.Create(filepath.Join(repository.ChunkDir(), objectID))
 				if err != nil {
 					return errors.WithStack(err)
 				}

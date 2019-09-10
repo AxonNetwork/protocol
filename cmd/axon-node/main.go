@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -24,7 +27,7 @@ import (
 	"github.com/Conscience/protocol/log"
 	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm"
-	"github.com/Conscience/protocol/swarm/logger"
+	"github.com/Conscience/protocol/swarm/nodeexec"
 	"github.com/Conscience/protocol/swarm/nodehttp"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/noderpc"
@@ -73,7 +76,7 @@ func run(configPath string) error {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	// Add our custom logger hook (used by nodehttp.Server)
-	logger.InstallHook()
+	nodehttp.InstallLogrusHook()
 
 	// Read the config file
 	cfg, err := config.ReadConfigAtPath(configPath)
@@ -132,6 +135,115 @@ var replCommands = map[string]struct {
 	HelpText string
 	Handler  func(ctx context.Context, args []string, n *swarm.Node) error
 }{
+	"exec": {
+		"asdf",
+		func(ctx context.Context, args []string, n *swarm.Node) error {
+			var blahJS = []byte(`
+	    const fs = require('fs')
+
+	    const y = Math.floor(Math.random() * 1000)
+	    fs.writeFileSync('/data/shared/nodejs-' + y + '.txt', 'from node')
+
+	    let x = fs.readdirSync('/data')
+	    console.log('/data ~>', x)
+	    x = fs.readdirSync('/data/shared')
+	    console.log('/data/shared ~>', x)
+
+	    const _in = fs.createReadStream('/data/in')
+	    const _out = fs.createWriteStream('/data/out')
+
+	    _in.on('data', data => {
+	        console.log('got some data ~>', data)
+	        _out.write('here was your input: <'+data.toString()+'>')
+	        _out.end()
+	    })
+	`)
+
+			var blahPY = []byte(`
+	import os
+	from os.path import join, getsize
+
+	with open('/data/shared/python.txt', 'w') as f:
+	    f.write('from python')
+
+	for root, dirs, files in os.walk('/data'):
+	    for f in files:
+	        print(root + '/' + f)
+
+	with open('/data/in') as _in:
+	    with open('/data/out', 'w') as _out:
+
+	        data = _in.read(1024)
+	        print('got data ~> %s' % str(data))
+	        _out.write(data.upper())
+	`)
+
+			var inputStages = []nodeexec.InputStage{
+				{
+					"python",
+					[]nodeexec.File{{"blah.py", int64(len(blahPY)), bytes.NewReader(blahPY)}},
+					"blah.py",
+					nil,
+				},
+				{
+					"node",
+					[]nodeexec.File{{"blah.js", int64(len(blahJS)), bytes.NewReader(blahJS)}},
+					"blah.js",
+					nil,
+				},
+				{
+					"node",
+					[]nodeexec.File{{"blah.js", int64(len(blahJS)), bytes.NewReader(blahJS)}},
+					"blah.js",
+					nil,
+				},
+			}
+
+			pipelineIn, pipelineOut, err := nodeexec.StartPipeline(inputStages)
+			if err != nil {
+				fmt.Println(err)
+				return err
+			}
+			log.Warnln("done starting pipeline!")
+
+			wg := &sync.WaitGroup{}
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				buf := make([]byte, 1024)
+				for {
+					log.Warnln("[read] reading...")
+					n, err := io.ReadFull(pipelineOut, buf)
+					if err == io.EOF {
+						break
+					} else if err == io.ErrUnexpectedEOF {
+
+					} else if err != nil {
+						panic(err)
+					}
+					log.Warnln("[read]", n, "bytes")
+
+					log.Warnln("[out]", string(buf[:n]))
+				}
+			}()
+
+			data := []byte("Us and them\nAnd after all we're only ordinary men\nMe, and you\nGod only knows it's not what we would choose to do\nForward he cried from the rear\nAnd the front rank died\nAnd the General sat, as the lines on the map\nMoved from side to side\nBlack and Blue\nAnd who knows which is which and who is who\nUp and down\nAnd in the end it's only round and round and round\nHaven't you heard it's a battle of words\nThe poster bearer cried\nListen son, said the man with the gun\nThere's room for you inside\nDown and out\nIt can't be helped but there's a lot of it about\nWith, without\nAnd who'll deny that's what the fighting's all about\nGet out of the way, it's a busy day\nAnd I've got things on my mind\nFor want of the price of tea and a slice\nThe old man died")
+			log.Warnln("[write] writing...")
+			num, err := io.Copy(pipelineIn, bytes.NewReader(data))
+			if err != nil {
+				return err
+			}
+			log.Warnln("[write] wrote", num, "bytes")
+			pipelineIn.Close()
+
+			wg.Wait()
+
+			return nil
+		},
+	},
+
 	"addrs": {
 		"list the p2p addresses this node is using to communicate with its swarm",
 		func(ctx context.Context, args []string, n *swarm.Node) error {
@@ -406,7 +518,7 @@ var replCommands = map[string]struct {
 				Repo:       r,
 				BranchName: "master",
 				ProgressCb: func(percent int) {
-					log.Warnln("Push Progress: ", percent)
+					log.Warnln("Push progress: ", percent)
 				},
 			})
 			if err != nil {
@@ -423,6 +535,13 @@ var replCommands = map[string]struct {
 func inputLoop(ctx context.Context, n *swarm.Node) {
 	fmt.Println("Type \"help\" for a list of commands.")
 	fmt.Println()
+
+	var longestCommandLength int
+	for cmd := range replCommands {
+		if len(cmd) > longestCommandLength {
+			longestCommandLength = len(cmd)
+		}
+	}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -444,8 +563,11 @@ func inputLoop(ctx context.Context, n *swarm.Node) {
 		} else if parts[0] == "help" {
 			log.Println("___ Commands _________")
 			log.Println()
+
 			for cmd, info := range replCommands {
-				log.Printf("%v\t\t- %v", cmd, info.HelpText)
+				difference := longestCommandLength - len(cmd)
+				space := strings.Repeat(" ", difference+4)
+				log.Printf("%v%v- %v", cmd, space, info.HelpText)
 			}
 			continue
 		}

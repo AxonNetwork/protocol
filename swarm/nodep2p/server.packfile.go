@@ -18,7 +18,7 @@ func (h *Host) handlePackfileStreamRequest(stream netp2p.Stream) {
 
 	var err error
 	defer func() {
-		if err != nil {
+		if err != nil && err != io.EOF {
 			log.Errorf("[packfile server] %+v", errors.WithStack(err))
 		}
 	}()

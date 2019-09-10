@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -19,6 +20,7 @@ import (
 	"github.com/Conscience/protocol/swarm"
 	"github.com/Conscience/protocol/swarm/nodeeth"
 	"github.com/Conscience/protocol/swarm/nodeevents"
+	"github.com/Conscience/protocol/swarm/nodeexec"
 	"github.com/Conscience/protocol/swarm/nodep2p"
 	"github.com/Conscience/protocol/swarm/noderpc/pb"
 	"github.com/Conscience/protocol/util"
@@ -89,6 +91,21 @@ func (s *Server) GetUsername(ctx context.Context, req *pb.GetUsernameRequest) (*
 	}
 
 	return &pb.GetUsernameResponse{Username: un, Signature: signature}, nil
+}
+
+func (s *Server) GetEthereumBIP39Seed(ctx context.Context, req *pb.GetEthereumBIP39SeedRequest) (*pb.GetEthereumBIP39SeedResponse, error) {
+	return &pb.GetEthereumBIP39SeedResponse{Seed: s.node.Config.Node.EthereumBIP39Seed}, nil
+}
+
+func (s *Server) SetEthereumBIP39Seed(ctx context.Context, req *pb.SetEthereumBIP39SeedRequest) (*pb.SetEthereumBIP39SeedResponse, error) {
+	err := s.node.Config.Update(func() error {
+		s.node.Config.Node.EthereumBIP39Seed = req.Seed
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pb.SetEthereumBIP39SeedResponse{}, nil
 }
 
 func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.InitRepoResponse, error) {
@@ -170,6 +187,74 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 	}
 
 	return &pb.InitRepoResponse{Path: path}, nil
+}
+
+func (s *Server) ImportRepo(ctx context.Context, req *pb.ImportRepoRequest) (*pb.ImportRepoResponse, error) {
+	log.Warnf("ImportRepo <repoID:%v> <repoRoot:%v>", req.RepoID, req.RepoRoot)
+	if req.RepoRoot == "" {
+		return nil, errors.New("missing RepoRoot param")
+	}
+
+	r, err := repo.Open(req.RepoRoot)
+	if err != nil {
+		log.Warnln("ImportRepo repo.Open err ~>", err)
+		return nil, err
+	}
+
+	var isUninitialized bool
+
+	_, err = r.RepoID()
+	if errors.Cause(err) == repo.ErrNoRepoID {
+		isUninitialized = true
+	} else if err != nil {
+		log.Warnln("ImportRepo repoID err ~>", err)
+		return nil, err
+	}
+
+	log.Warnln("ImportRepo isUninitialized ~>", isUninitialized)
+	if !isUninitialized && req.RepoID != "" {
+		log.Warnln("ImportRepo 111")
+		return nil, errors.New("repo already initialized, cannot specify a new RepoID") // @@TODO: maybe relax this restriction
+	} else if isUninitialized && req.RepoID == "" {
+		log.Warnln("ImportRepo 222")
+		return nil, errors.New("must specify RepoID if repo is not initialized")
+	}
+
+	if isUninitialized {
+		// Before anything else, try to claim the repoID in the smart contract
+		isRegistered, err := s.node.EthereumClient().IsRepoIDRegistered(ctx, req.RepoID)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		} else if isRegistered {
+			return nil, errors.New("repoID already registered")
+		}
+
+		tx, err := s.node.EthereumClient().RegisterRepoID(ctx, req.RepoID)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		log.Infof("[rpc] create repo tx sent: %s", tx.Hash().Hex())
+
+		txResult := <-tx.Await(ctx)
+		if txResult.Err != nil {
+			return nil, errors.WithStack(txResult.Err)
+		}
+
+		log.Infof("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
+
+		err = r.SetupConfig(req.RepoID)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+
+	// Have the node track the local repo
+	_, err = s.node.RepoManager().TrackRepo(req.RepoRoot, true)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return &pb.ImportRepoResponse{}, nil
 }
 
 func (s *Server) CheckpointRepo(ctx context.Context, req *pb.CheckpointRepoRequest) (*pb.CheckpointRepoResponse, error) {
@@ -273,12 +358,13 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 	ctx := server.Context()
 
 	r, err := s.node.RepoManager().RepoAtPathOrID(req.Path, req.RepoID)
-	if err != nil {
+	if errors.Cause(err) == repo.Err404 {
+		// no-op
+	} else if err != nil {
 		return errors.WithStack(err)
 	}
 
-	// ch, manifest, err := nodep2p.NewClient(s.node, req.RepoID, req.Path, &cfg).FetchFromCommit(ctx, *util.OidFromBytes(req.Commit), nodep2p.CheckoutType(req.CheckoutType), nil)
-	ch, manifest, err := s.node.P2PHost().FetchFromCommit(ctx, r, *util.OidFromBytes(req.Commit), nodep2p.CheckoutType(req.CheckoutType), nil)
+	ch, manifest, err := s.node.P2PHost().FetchFromCommit(ctx, req.RepoID, r, *util.OidFromBytes(req.Commit), nodep2p.CheckoutType(req.CheckoutType), nil)
 	if err != nil {
 		return err
 	}
@@ -343,7 +429,12 @@ func (s *Server) FetchFromCommit(req *pb.FetchFromCommitRequest, server pb.NodeR
 }
 
 func (s *Server) FetchChunks(req *pb.FetchChunksRequest, server pb.NodeRPC_FetchChunksServer) error {
-	ch := s.node.P2PHost().FetchChunks(context.TODO(), req.RepoID, req.Chunks)
+	var chunkManifest []nodep2p.ManifestObject
+	for i := range req.Chunks {
+		chunkManifest = append(chunkManifest, nodep2p.ManifestObject{Hash: req.Chunks[i]})
+	}
+
+	ch := s.node.P2PHost().FetchChunks(context.TODO(), req.RepoID, chunkManifest)
 
 	for pkt := range ch {
 		if pkt.Error != nil {
@@ -383,6 +474,14 @@ func (s *Server) RegisterRepoID(ctx context.Context, req *pb.RegisterRepoIDReque
 	log.Printf("[rpc] create repo tx resolved: %s", tx.Hash().Hex())
 
 	return &pb.RegisterRepoIDResponse{}, nil
+}
+
+func (s *Server) IsRepoIDRegistered(ctx context.Context, req *pb.IsRepoIDRegisteredRequest) (*pb.IsRepoIDRegisteredResponse, error) {
+	isRegistered, err := s.node.EthereumClient().IsRepoIDRegistered(ctx, req.RepoID)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.IsRepoIDRegisteredResponse{IsRegistered: isRegistered}, nil
 }
 
 func (s *Server) TrackLocalRepo(ctx context.Context, req *pb.TrackLocalRepoRequest) (*pb.TrackLocalRepoResponse, error) {
@@ -484,7 +583,7 @@ func (s *Server) IsBehindRemote(ctx context.Context, req *pb.IsBehindRemoteReque
 func (s *Server) PushRepo(req *pb.PushRepoRequest, server pb.NodeRPC_PushRepoServer) error {
 	r := s.node.RepoManager().RepoAtPath(req.RepoRoot)
 	if r == nil {
-		return errors.Errorf("no repo at path '%v'", req.RepoRoot)
+		return repo.ErrNotTracked
 	}
 
 	ctx, cancel := context.WithCancel(server.Context())
@@ -1243,4 +1342,96 @@ func (s *Server) CreateCommit(server pb.NodeRPC_CreateCommitServer) error {
 		return errors.WithStack(err)
 	}
 	return nil
+}
+
+func (s *Server) RunPipeline(ctx context.Context, req *pb.RunPipelineRequest) (*pb.RunPipelineResponse, error) {
+	inputRepo := s.node.RepoManager().Repo(req.InputRepoID)
+	if inputRepo == nil {
+		panic("fuck") // @@TODO: try to fetch?
+	}
+
+	inputObject, err := inputRepo.OpenObject(req.InputObjectID)
+	if err != nil {
+		panic(err) // @@TODO: try to fetch?
+	}
+
+	var inputStages []nodeexec.InputStage
+
+	for _, stage := range req.Stages {
+		stageRepo := s.node.RepoManager().Repo(stage.CodeRepoID)
+		if stageRepo == nil {
+			panic("fuck") // @@TODO: try to fetch?
+		}
+
+		commitID := repo.CommitID{Hash: util.OidFromBytes(stage.CommitHash)}
+
+		files, err := stageRepo.ListFiles(context.Background(), commitID)
+		if err != nil {
+			return nil, err
+		}
+
+		var stageFiles []nodeexec.File
+		for _, file := range files {
+			contentsReader, err := stageRepo.OpenFileAtCommit(file.Filename, commitID)
+			if err != nil {
+				return nil, err
+			}
+
+			stageFiles = append(stageFiles, nodeexec.File{
+				Filename: file.Filename,
+				Size:     int64(file.Size),
+				Contents: contentsReader,
+			})
+		}
+
+		inputStages = append(inputStages, nodeexec.InputStage{
+			Platform:      stage.Platform,
+			Files:         stageFiles,
+			EntryFilename: stage.EntryFilename,
+			EntryArgs:     stage.EntryArgs,
+		})
+	}
+
+	pipelineIn, pipelineOut, err := nodeexec.StartPipeline(inputStages)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	log.Warnln("done starting pipeline!")
+
+	wg := &sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		buf := make([]byte, 1024)
+		for {
+			log.Warnln("[read] reading...")
+			n, err := io.ReadFull(pipelineOut, buf)
+			if err == io.EOF {
+				break
+			} else if err == io.ErrUnexpectedEOF {
+
+			} else if err != nil {
+				panic(err)
+			}
+			log.Warnln("[read]", n, "bytes")
+
+			log.Warnln("[out]", string(buf[:n]))
+		}
+	}()
+
+	// data := []byte("Us and them\nAnd after all we're only ordinary men\nMe, and you\nGod only knows it's not what we would choose to do\nForward he cried from the rear\nAnd the front rank died\nAnd the General sat, as the lines on the map\nMoved from side to side\nBlack and Blue\nAnd who knows which is which and who is who\nUp and down\nAnd in the end it's only round and round and round\nHaven't you heard it's a battle of words\nThe poster bearer cried\nListen son, said the man with the gun\nThere's room for you inside\nDown and out\nIt can't be helped but there's a lot of it about\nWith, without\nAnd who'll deny that's what the fighting's all about\nGet out of the way, it's a busy day\nAnd I've got things on my mind\nFor want of the price of tea and a slice\nThe old man died")
+	log.Warnln("[write] writing...")
+	num, err := io.Copy(pipelineIn, inputObject)
+	if err != nil {
+		return nil, err
+	}
+	log.Warnln("[write] wrote", num, "bytes")
+	pipelineIn.Close()
+
+	wg.Wait()
+
+	return &pb.RunPipelineResponse{}, nil
 }

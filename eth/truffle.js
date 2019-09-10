@@ -1,14 +1,5 @@
 const HDWalletProvider = require('truffle-hdwallet-provider')
 
-// defaults
-// const conf = {
-//     mnemonic: '',
-//     host: ''
-// }
-// const appCfg = require('rc')('axon', conf)
-// const mnemonic = appCfg.node.EthereumBIP39Seed
-// const host = appCfg.node.EthereumHost
-
 module.exports = {
   /**
    * Networks define how you connect to your ethereum client and let you set the
@@ -57,9 +48,11 @@ module.exports = {
     },
     awsgeth: {
       network_id: 23332,
-      provider: () => new HDWalletProvider(mnemonic, host),
+      provider: () => new HDWalletProvider(process.env.MASTER_MNEMONIC, 'http://hera.axon.science:8545'),
       gas: 6900000,
-      gasPrice: 50000000000,
+      gasPrice: 0, //50000000000,
+      // type: 'quorum',
+      // websockets: true,
     },
     rinkeby: {
       port: 8545,
