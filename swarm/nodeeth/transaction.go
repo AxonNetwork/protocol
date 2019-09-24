@@ -2,6 +2,7 @@ package nodeeth
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -39,18 +40,20 @@ func (tx Transaction) Await(ctx context.Context) <-chan TxResult {
 
 			default:
 				receipt, err := tx.c.TransactionReceipt(ctx, tx.Hash())
-				if err != nil && err != ethereum.NotFound {
+				if err != nil && strings.Contains(err.Error(), "missing required field 'transactionHash' for Log") {
+					// This means we're talking to a Parity node and we don't have the receipt yet.
+					// no-op.
+
+				} else if err != nil && err != ethereum.NotFound {
 					ch <- TxResult{nil, errors.WithStack(err)}
 					return
+
 				} else if receipt != nil {
 					ch <- TxResult{receipt, nil}
 					return
 				}
 				time.Sleep(time.Millisecond * POLL_INTERVAL)
 			}
-
-			// @@TODO: make configurable
-			time.Sleep(2 * time.Second)
 		}
 	}()
 

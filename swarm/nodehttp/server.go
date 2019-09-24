@@ -493,7 +493,7 @@ func die500(w http.ResponseWriter, err error) {
 	log.Errorln("[http]", err)
 	// w.WriteHeader(500)
 	// w.Write([]byte("Internal server error: " + err.Error()))
-	http.Error(w, "Internal server error: "+err.Error(), 500)
+	http.Error(w, "Internal server error: "+err.Error()+"\n"+util.StackTrace(1).String(), 500)
 }
 
 func tplIndex(cfg config.Config) *template.Template {

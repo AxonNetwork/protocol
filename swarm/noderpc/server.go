@@ -190,14 +190,12 @@ func (s *Server) InitRepo(ctx context.Context, req *pb.InitRepoRequest) (*pb.Ini
 }
 
 func (s *Server) ImportRepo(ctx context.Context, req *pb.ImportRepoRequest) (*pb.ImportRepoResponse, error) {
-	log.Warnf("ImportRepo <repoID:%v> <repoRoot:%v>", req.RepoID, req.RepoRoot)
 	if req.RepoRoot == "" {
 		return nil, errors.New("missing RepoRoot param")
 	}
 
 	r, err := repo.Open(req.RepoRoot)
 	if err != nil {
-		log.Warnln("ImportRepo repo.Open err ~>", err)
 		return nil, err
 	}
 
@@ -207,16 +205,12 @@ func (s *Server) ImportRepo(ctx context.Context, req *pb.ImportRepoRequest) (*pb
 	if errors.Cause(err) == repo.ErrNoRepoID {
 		isUninitialized = true
 	} else if err != nil {
-		log.Warnln("ImportRepo repoID err ~>", err)
 		return nil, err
 	}
 
-	log.Warnln("ImportRepo isUninitialized ~>", isUninitialized)
 	if !isUninitialized && req.RepoID != "" {
-		log.Warnln("ImportRepo 111")
 		return nil, errors.New("repo already initialized, cannot specify a new RepoID") // @@TODO: maybe relax this restriction
 	} else if isUninitialized && req.RepoID == "" {
-		log.Warnln("ImportRepo 222")
 		return nil, errors.New("must specify RepoID if repo is not initialized")
 	}
 
@@ -820,6 +814,14 @@ func (s *Server) SignMessage(ctx context.Context, req *pb.SignMessageRequest) (*
 
 func (s *Server) EthAddress(ctx context.Context, req *pb.EthAddressRequest) (*pb.EthAddressResponse, error) {
 	return &pb.EthAddressResponse{Address: s.node.EthereumClient().Address().String()}, nil
+}
+
+func (s *Server) GetUserPermissions(ctx context.Context, req *pb.GetUserPermissionsRequest) (*pb.GetUserPermissionsResponse, error) {
+	perms, err := s.node.EthereumClient().GetUserPermissions(ctx, req.RepoID, req.Username)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetUserPermissionsResponse{Puller: perms.Puller, Pusher: perms.Pusher, Admin: perms.Admin}, nil
 }
 
 func (s *Server) SetUserPermissions(ctx context.Context, req *pb.SetUserPermissionsRequest) (*pb.SetUserPermissionsResponse, error) {

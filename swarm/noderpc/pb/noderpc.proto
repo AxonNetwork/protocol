@@ -34,6 +34,7 @@ service NodeRPC {
 
   rpc SetRepoPublic(SetRepoPublicRequest) returns (SetRepoPublicResponse) {}
   rpc IsRepoPublic(IsRepoPublicRequest) returns (IsRepoPublicResponse) {}
+  rpc GetUserPermissions(GetUserPermissionsRequest) returns (GetUserPermissionsResponse) {}
   rpc SetUserPermissions(SetUserPermissionsRequest) returns (SetUserPermissionsResponse) {}
   rpc GetRepoUsers(GetRepoUsersRequest) returns (GetRepoUsersResponse) {}
 
@@ -320,6 +321,17 @@ message GetRepoUsersRequest {
 message GetRepoUsersResponse {
     uint64 total = 1;
     repeated string users = 2;
+}
+
+message GetUserPermissionsRequest {
+    string repoID = 1;
+    string username = 2;
+}
+
+message GetUserPermissionsResponse {
+    bool puller = 1;
+    bool pusher = 2;
+    bool admin = 3;
 }
 
 message SetUserPermissionsRequest {

@@ -39,6 +39,14 @@ func (c *Client) Close() error {
 	return errors.WithStack(err)
 }
 
+func (c *Client) GetUsername(ctx context.Context) (string, error) {
+	resp, err := c.client.GetUsername(ctx, &pb.GetUsernameRequest{})
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	return resp.Username, nil
+}
+
 func (c *Client) SetUsername(ctx context.Context, username string) error {
 	_, err := c.client.SetUsername(ctx, &pb.SetUsernameRequest{Username: username})
 	return errors.WithStack(err)
@@ -345,6 +353,14 @@ func (c *Client) SignMessage(ctx context.Context, message []byte) ([]byte, error
 		return nil, err
 	}
 	return resp.Signature, nil
+}
+
+func (c *Client) GetUserPermissions(ctx context.Context, repoID string, username string) (nodeeth.UserPermissions, error) {
+	perms, err := c.client.GetUserPermissions(ctx, &pb.GetUserPermissionsRequest{RepoID: repoID, Username: username})
+	if err != nil {
+		return nodeeth.UserPermissions{}, errors.WithStack(err)
+	}
+	return nodeeth.UserPermissions{Puller: perms.Puller, Pusher: perms.Pusher, Admin: perms.Admin}, nil
 }
 
 func (c *Client) SetUserPermissions(ctx context.Context, repoID string, username string, perms nodeeth.UserPermissions) error {

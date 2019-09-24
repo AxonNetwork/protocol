@@ -41,9 +41,9 @@ function build_native {
     fi
 
     mkdir -p build/native
-    cd cmd/axon-node
+    cd cmd/axond
     GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    mv main ../../build/native/axon-node
+    mv main ../../build/native/axond
     cd -
 
     # mkdir -p build/native
@@ -80,9 +80,9 @@ function build_native {
 function build_docker {
     rm -rf ./build/docker &&
     mkdir -p build/docker &&
-    pushd $__dirname/cmd/axon-node &&
+    pushd $__dirname/cmd/axond &&
     GO111MODULE=on go build --tags "static" -o main ./*.go &&
-    mv main ../../build/docker/axon-node &&
+    mv main ../../build/docker/axond &&
     popd
 }
 

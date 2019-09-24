@@ -54,6 +54,14 @@ module.exports = {
       // type: 'quorum',
       // websockets: true,
     },
+    bloxberg: {
+      network_id: 8995,
+      provider: () => new HDWalletProvider(process.env.MASTER_MNEMONIC, 'https://bloxberg.org/eth/rpc'),
+      gas: 6900000,
+      gasPrice: 0, //50000000000,
+      // type: 'quorum',
+      // websockets: true,
+    },
     rinkeby: {
       port: 8545,
       network_id: 4,

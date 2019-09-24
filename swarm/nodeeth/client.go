@@ -223,7 +223,9 @@ func (n *Client) GetRemoteRef(ctx context.Context, repoID string, refName string
 		// The geth codebase (which handles ABI unpacking) doesn't currently seem to understand a
 		// transaction/call return value containing a Solidity require/assert error message
 		// (as in `require(someCondition, "condition not met")`).  @@TODO?
-		if strings.Contains(err.Error(), "abi: unmarshalling empty output") || strings.Contains(err.Error(), "abi: improperly formatted output") {
+		if strings.Contains(err.Error(), "abi: unmarshalling empty output") ||
+			strings.Contains(err.Error(), "abi: improperly formatted output") ||
+			strings.Contains(err.Error(), "VM execution error") {
 			return git.Oid{}, nil
 		} else {
 			return git.Oid{}, err
@@ -238,7 +240,9 @@ func (n *Client) GetRemoteRefs(ctx context.Context, repoID string, pageSize uint
 		// The geth codebase (which handles ABI unpacking) doesn't currently seem to understand a
 		// transaction/call return value containing a Solidity require/assert error message
 		// (as in `require(someCondition, "condition not met")`).  @@TODO?
-		if strings.Contains(err.Error(), "abi: unmarshalling empty output") || strings.Contains(err.Error(), "abi: improperly formatted output") {
+		if strings.Contains(err.Error(), "abi: unmarshalling empty output") ||
+			strings.Contains(err.Error(), "abi: improperly formatted output") ||
+			strings.Contains(err.Error(), "VM execution error") {
 			return map[string]repo.Ref{}, 0, nil
 		} else {
 			return nil, 0, err
@@ -371,6 +375,15 @@ type UserPermissions struct {
 	Puller bool
 	Pusher bool
 	Admin  bool
+}
+
+func (n *Client) GetUserPermissions(ctx context.Context, repoID string, username string) (UserPermissions, error) {
+	p, err := n.protocolContract.GetUserPermissions(n.callOpts(ctx), repoID, username)
+	if err != nil {
+		return UserPermissions{}, err
+	}
+
+	return UserPermissions{Puller: p.Puller, Pusher: p.Pusher, Admin: p.Admin}, nil
 }
 
 func (n *Client) SetUserPermissions(ctx context.Context, repoID string, username string, perms UserPermissions) (*Transaction, error) {

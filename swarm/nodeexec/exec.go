@@ -28,7 +28,7 @@ import (
 //
 // docker container prune && docker volume prune
 // ./swarm-node/scripts/ecr-build.sh
-// docker run -v /var/run/docker.sock:/var/run/docker.sock -v pipelines:/pipelines -e CONSOLE_LOGGING=1 -it axon-node
+// docker run -v /var/run/docker.sock:/var/run/docker.sock -v pipelines:/pipelines -e CONSOLE_LOGGING=1 -it axond
 //
 
 type InputStage struct {
