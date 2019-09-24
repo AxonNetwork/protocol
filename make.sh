@@ -46,11 +46,16 @@ function build_native {
     mv main ../../build/native/axond
     cd -
 
-    # mkdir -p build/native
-    # cd remote-helper
-    # GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
-    # mv main ../build/native/git-remote-axon
-    # cd -
+    mkdir -p build/native
+    cd remote-helper
+    GO111MODULE=on go build --tags "static" -ldflags "-s -w" -o main ./*.go
+    mv main ../build/native/git-remote-axon
+    cd -
+
+    echo
+    echo 'Build complete.  Move the following artifacts into your $PATH:'
+    echo '  - axond: ./build/native/axond'
+    echo '  - git-remote-axon: ./build/native/git-remote-axon'
 
     # mkdir -p build/native
     # cd filters/encode/cmd
