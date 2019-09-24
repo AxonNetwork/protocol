@@ -3,12 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Conscience/protocol/config"
+	"github.com/Conscience/protocol/repo"
 	"github.com/Conscience/protocol/swarm/noderpc"
 
 	"github.com/pkg/errors"
@@ -38,7 +42,7 @@ func main() {
 				}
 				defer client.Close()
 
-				ethAddr, err := client.EthAddress()
+				ethAddr, err := client.EthAddress(context.Background())
 				if err != nil {
 					return err
 				}
@@ -127,6 +131,28 @@ func main() {
 			},
 		},
 		{
+			Name:      "get-username",
+			UsageText: "axon get-username <username>",
+			Usage:     "get your username on the Axon network",
+			ArgsUsage: "[args usage]",
+			Action: func(c *cli.Context) error {
+				client, err := getClient()
+				if err != nil {
+					return err
+				}
+				defer client.Close()
+
+				// @@TODO: give context a timeout and make it configurable
+				username, err := client.GetUsername(context.Background())
+				if err != nil {
+					return err
+				}
+
+				fmt.Fprintf(c.App.Writer, "%v\n", username)
+				return nil
+			},
+		},
+		{
 			Name:      "set-username",
 			UsageText: "axon set-username <username>",
 			Usage:     "set your username on the Axon network",
@@ -162,27 +188,9 @@ func main() {
 					return errors.New("final parameter must be either 'on' or 'off'")
 				}
 
-				pwd, err := os.Getwd()
+				repoRoot, err := getCwdRepoRoot()
 				if err != nil {
 					return err
-				}
-
-				var repoRoot string
-				for {
-					_, err := os.Stat(filepath.Join(pwd, ".git"))
-					if os.IsNotExist(err) {
-						if pwd == "/" {
-							return errors.New("you must call this command inside of a repository")
-						} else {
-							pwd = filepath.Dir(pwd)
-							continue
-						}
-					} else if err != nil {
-						return err
-					} else {
-						repoRoot = pwd
-						break
-					}
 				}
 
 				filename, err = filepath.Abs(filename)
@@ -247,11 +255,17 @@ func main() {
 			Usage:     "return all on-chain refs for the given repo",
 			ArgsUsage: "[args usage]",
 			Action: func(c *cli.Context) error {
-				if len(c.Args()) < 1 {
-					return ErrNotEnoughArgs
-				}
+				var repoID string
+				if len(c.Args()) == 0 {
+					var err error
+					repoID, err = getCwdRepoID()
+					if err != nil {
+						return err
+					}
 
-				repoID := c.Args().Get(0)
+				} else {
+					repoID = c.Args().Get(0)
+				}
 
 				refs, err := getAllRefs(repoID)
 				if err != nil {
@@ -259,6 +273,65 @@ func main() {
 				}
 				for _, ref := range refs {
 					fmt.Fprintf(c.App.Writer, "%s %s\n", ref.CommitHash, ref.RefName)
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:      "get-perms",
+			UsageText: "axon get-perms <username> [repo ID] ",
+			Usage:     "list a user's permissions in the given repo (if repo ID is omitted, uses the current directory)",
+			ArgsUsage: "[args usage]",
+			Action: func(c *cli.Context) error {
+				if len(c.Args()) < 1 {
+					return ErrNotEnoughArgs
+				}
+
+				username := c.Args().Get(0)
+
+				var repoID string
+				if len(c.Args()) == 1 {
+					var err error
+					repoID, err = getCwdRepoID()
+					if err != nil {
+						return err
+					}
+
+				} else {
+					repoID = c.Args().Get(1)
+				}
+
+				client, err := getClient()
+				if err != nil {
+					return err
+				}
+				defer client.Close()
+
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+
+				perms, err := client.GetUserPermissions(ctx, repoID, username)
+				if err != nil {
+					return err
+				}
+
+				if perms.Puller {
+					fmt.Fprintf(c.App.Writer, "puller: [✔]\n")
+				} else {
+					fmt.Fprintf(c.App.Writer, "puller: [ ]\n")
+				}
+
+				if perms.Pusher {
+					fmt.Fprintf(c.App.Writer, "pusher: [✔]\n")
+				} else {
+					fmt.Fprintf(c.App.Writer, "pusher: [ ]\n")
+				}
+
+				if perms.Admin {
+					fmt.Fprintf(c.App.Writer, "admin:  [✔]\n")
+				} else {
+					fmt.Fprintf(c.App.Writer, "admin:  [ ]\n")
 				}
 
 				return nil
@@ -275,7 +348,44 @@ func main() {
 func getClient() (*noderpc.Client, error) {
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return noderpc.NewClient(cfg.RPCClient.Host)
+}
+
+func getCwdRepoRoot() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	for {
+		_, err := os.Stat(filepath.Join(cwd, ".git"))
+		if os.IsNotExist(err) {
+			if cwd == "/" {
+				return "", errors.New("you must call this command inside of a repository")
+			} else {
+				cwd = filepath.Dir(cwd)
+				continue
+			}
+		} else if err != nil {
+			return "", errors.WithStack(err)
+		} else {
+			return cwd, nil
+		}
+	}
+}
+
+func getCwdRepoID() (string, error) {
+	repoRoot, err := getCwdRepoRoot()
+	if err != nil {
+		return "", err
+	}
+
+	r, err := repo.Open(repoRoot)
+	if err != nil {
+		return "", err
+	}
+
+	return r.RepoID()
 }
